@@ -441,6 +441,7 @@ langdag dag create <name>         # Create new DAG from YAML
 langdag dag show <id>             # Show DAG definition
 langdag dag validate <file>       # Validate DAG file
 langdag dag delete <id>           # Delete a DAG
+langdag dag print <id>            # Print full DAG tree with branches
 
 # Workflow Execution
 langdag run <dag> [--input JSON]  # Execute a workflow DAG
@@ -452,6 +453,7 @@ langdag chat new                  # Start new conversation
 langdag chat continue <conv-id>   # Continue existing conversation
 langdag chat list                 # List all conversations
 langdag chat show <conv-id>       # Show conversation as DAG
+langdag chat print <conv-id>      # Print full conversation tree with forks
 langdag chat fork <conv-id> <node># Fork conversation from specific node
 langdag chat delete <conv-id>     # Delete conversation
 
@@ -550,6 +552,73 @@ Forked conversation: conv_def456 (from node_4)
 You> Actually, show me how to use json.Decoder instead
 
 Assistant> Sure! json.Decoder is great for streaming...
+```
+
+### Example: Print DAG with Branches
+
+The `print` command visualizes the full DAG structure, including all branches and forks.
+
+```bash
+# Print a workflow DAG
+$ langdag dag print research_agent
+
+research_agent (workflow)
+│
+├─► input
+│   │
+│   └─► planner [llm]
+│       │   model: claude-sonnet-4-20250514
+│       │   tokens: 150 in / 420 out
+│       │
+│       └─► researcher [llm]
+│           │   model: claude-sonnet-4-20250514
+│           │   tools: [web_search, fetch_url]
+│           │
+│           ├─► [tool] web_search("Go concurrency patterns")
+│           │   └─► [tool_result] 3 results
+│           │
+│           └─► synthesizer [llm]
+│               │
+│               └─► output
+│                   result: "# Research Report..."
+
+# Print a conversation with forks
+$ langdag chat print conv_abc123 --include-forks
+
+conv_abc123 "JSON parsing in Go"
+│
+├─► n1 [user] "What's the best way to parse JSON..."
+│   │
+│   └─► n2 [assistant] "In Go, you have several options..."
+│       │   tokens: 45/312, latency: 892ms
+│       │
+│       └─► n3 [user] "Can you show me an example..."
+│           │
+│           └─► n4 [assistant] "Here's a complete example..."
+│               │   tokens: 38/580, latency: 1204ms
+│               │
+│               ├─► n5 [user] "Search for Go 1.22..."      ← conv_abc123 continues
+│               │   │
+│               │   └─► n6 [assistant] tool_call(web_search)
+│               │       │
+│               │       └─► n7 [tool_result] {...}
+│               │           │
+│               │           └─► n8 [assistant] "According to..."
+│               │
+│               └─► n9 [user] "Show me json.Decoder..."    ← fork: conv_def456
+│                   │
+│                   └─► n10 [assistant] "json.Decoder is great..."
+│                       │   tokens: 52/445, latency: 967ms
+│                       │
+│                       └─► n11 [user] "How about streaming large files?"
+│                           │
+│                           └─► n12 [assistant] "For large files..."
+
+# Output formats
+langdag chat print <id> --format=tree      # Default: ASCII tree
+langdag chat print <id> --format=json      # JSON structure
+langdag chat print <id> --format=dot       # Graphviz DOT format
+langdag chat print <id> --format=mermaid   # Mermaid diagram
 ```
 
 ---
@@ -777,6 +846,106 @@ LANGDAG_STORAGE_PATH=./langdag.db
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 ```
+
+---
+
+## Deployment
+
+### Single Binary
+
+LangDAG compiles to a single static binary with no runtime dependencies:
+
+```bash
+# Build
+go build -o langdag ./cmd/langdag
+
+# Cross-compile
+GOOS=linux GOARCH=amd64 go build -o langdag-linux ./cmd/langdag
+GOOS=darwin GOARCH=arm64 go build -o langdag-darwin ./cmd/langdag
+GOOS=windows GOARCH=amd64 go build -o langdag.exe ./cmd/langdag
+```
+
+### Docker
+
+```dockerfile
+# Dockerfile
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=1 GOOS=linux go build -o langdag ./cmd/langdag
+
+# Runtime image
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates sqlite
+
+WORKDIR /app
+COPY --from=builder /app/langdag /usr/local/bin/langdag
+
+# Default data directory
+RUN mkdir -p /data
+ENV LANGDAG_STORAGE_PATH=/data/langdag.db
+
+EXPOSE 8080
+
+ENTRYPOINT ["langdag"]
+CMD ["serve"]
+```
+
+```bash
+# Build image
+docker build -t langdag:latest .
+
+# Run CLI
+docker run --rm -it \
+  -v $(pwd)/data:/data \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  langdag chat new
+
+# Run API server
+docker run -d \
+  -p 8080:8080 \
+  -v $(pwd)/data:/data \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  langdag:latest serve
+
+# Docker Compose
+```
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  langdag:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - langdag-data:/data
+      - ./dags:/app/dags:ro    # Mount workflow DAGs
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LANGDAG_STORAGE_PATH=/data/langdag.db
+    restart: unless-stopped
+
+volumes:
+  langdag-data:
+```
+
+### Production Considerations
+
+| Aspect | Recommendation |
+|--------|----------------|
+| Storage | Mount `/data` as persistent volume |
+| Secrets | Use Docker secrets or env vars (never in image) |
+| Health check | `GET /health` endpoint |
+| Logging | JSON format to stdout (`logging.format: json`) |
+| Scaling | Stateless API, shared PostgreSQL for multi-instance |
 
 ---
 
