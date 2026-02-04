@@ -256,6 +256,100 @@ See the [OpenAPI specification](api/openapi.yaml) for full API documentation.
 
 ---
 
+## SDKs
+
+Official client SDKs for integrating LangDAG into your applications:
+
+### Python
+
+```bash
+pip install langdag
+```
+
+```python
+from langdag import LangDAGClient
+
+client = LangDAGClient(api_key="your-api-key")
+
+# Start a conversation
+response = client.chat("What is a DAG?")
+print(response.content)
+
+# Continue the conversation
+response = client.continue_chat(response.dag_id, "Give me an example")
+
+# Stream responses
+for event in client.chat("Explain graphs", stream=True):
+    if event.is_delta:
+        print(event.content, end="")
+```
+
+Async support is also available via `AsyncLangDAGClient`.
+
+### Go
+
+```bash
+go get github.com/langdag/langdag-go
+```
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    langdag "github.com/langdag/langdag-go"
+)
+
+func main() {
+    client := langdag.NewClient("http://localhost:8080",
+        langdag.WithAPIKey("your-api-key"))
+
+    // Start a conversation
+    resp, _ := client.Chat(context.Background(), &langdag.NewChatRequest{
+        Message: "What is a DAG?",
+    }, nil)
+    fmt.Println(resp.Content)
+
+    // Stream responses
+    client.ChatStream(ctx, &langdag.NewChatRequest{
+        Message: "Explain graphs",
+    }, func(event langdag.SSEEvent) error {
+        if event.Type == "delta" {
+            fmt.Print(event.Content)
+        }
+        return nil
+    })
+}
+```
+
+### TypeScript
+
+```bash
+npm install langdag
+```
+
+```typescript
+import { LangDAGClient } from 'langdag';
+
+const client = new LangDAGClient({ apiKey: 'your-api-key' });
+
+// Start a conversation
+const response = await client.chat({ message: 'What is a DAG?' });
+console.log(response.content);
+
+// Stream responses
+for await (const event of client.chat({ message: 'Explain graphs', stream: true })) {
+  if (event.type === 'delta') {
+    process.stdout.write(event.content);
+  }
+}
+```
+
+See the [SDK source code](sdks/) and [example projects](examples/) for more details.
+
+---
+
 ## Architecture
 
 ```
@@ -296,8 +390,8 @@ See the [OpenAPI specification](api/openapi.yaml) for full API documentation.
 - [x] Conversation mode (new, continue, fork)
 - [x] Workflow mode (YAML, validation, execution)
 - [x] Tree visualization
-- [ ] REST API
-- [ ] WebSocket streaming
+- [x] REST API with SSE streaming
+- [x] Python, Go, TypeScript SDKs
 - [ ] OpenAI & Ollama providers
 - [ ] PostgreSQL storage
 - [ ] Web UI
