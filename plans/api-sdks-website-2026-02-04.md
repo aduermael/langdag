@@ -46,7 +46,7 @@ Generate and publish client libraries.
 **Parallel Tasks: 4a, 4b, 4c**
 
 - [x] 4a: Create Python SDK in `sdks/python/` (using httpx, async support)
-- [ ] 4b: Create Go SDK in `sdks/go/` (using net/http)
+- [x] 4b: Create Go SDK in `sdks/go/` (using net/http)
 - [ ] 4c: Create TypeScript SDK in `sdks/typescript/` (using fetch, typed responses)
 - [ ] 4d: Add SDK installation instructions to README
 
