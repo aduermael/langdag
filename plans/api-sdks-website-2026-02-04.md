@@ -59,7 +59,7 @@ Create example applications demonstrating SDK usage.
 **Parallel Tasks: 5a, 5b, 5c**
 
 - [x] 5a: Python example: `examples/python/` - agent interaction, DAG exploration, branching
-- [ ] 5b: Go example: `examples/go/` - same functionality
+- [x] 5b: Go example: `examples/go/` - same functionality
 - [ ] 5c: TypeScript example: `examples/typescript/` - same functionality
 
 ---
