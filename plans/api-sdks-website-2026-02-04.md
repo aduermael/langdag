@@ -8,9 +8,9 @@ This plan restructures the project to lead with the CLI experience, implement a 
 
 Rewrite README to prioritize the interactive CLI journey before introducing the API and workflows.
 
-- [ ] 1a: Update README with CLI-first quick start (setup key, chat, list dags, show dag, continue/fork, show branches)
-- [ ] 1b: Move workflow examples to a secondary section after CLI basics
-- [ ] 1c: Add new section for "Use as API Server" after CLI and workflow sections
+- [x] 1a: Update README with CLI-first quick start (setup key, chat, list dags, show dag, continue/fork, show branches)
+- [x] 1b: Move workflow examples to a secondary section after CLI basics
+- [x] 1c: Add new section for "Use as API Server" after CLI and workflow sections
 
 ---
 
