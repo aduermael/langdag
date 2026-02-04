@@ -219,10 +219,11 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, dag *
 	}
 
 	var output json.RawMessage
+	var tokensIn, tokensOut int
 	var err error
 
 	if opts.Stream {
-		output, err = e.streamLLMNode(ctx, req, node.ID, events)
+		output, tokensIn, tokensOut, err = e.streamLLMNode(ctx, req, node.ID, events)
 	} else {
 		resp, err := e.provider.Complete(ctx, req)
 		if err != nil {
@@ -238,6 +239,8 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, dag *
 			}
 		}
 		output = json.RawMessage(fmt.Sprintf("%q", text))
+		tokensIn = resp.Usage.InputTokens
+		tokensOut = resp.Usage.OutputTokens
 	}
 
 	if err != nil {
@@ -252,6 +255,8 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, dag *
 		NodeType:  node.Type,
 		Content:   json.RawMessage(fmt.Sprintf("%q", prompt)),
 		Model:     model,
+		TokensIn:  tokensIn,
+		TokensOut: tokensOut,
 		Status:    types.DAGStatusCompleted,
 		Input:     state["input"],
 		Output:    output,
@@ -263,14 +268,15 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, dag *
 	return output, nil
 }
 
-// streamLLMNode streams an LLM node execution.
-func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionRequest, nodeID string, events chan<- ExecutionEvent) (json.RawMessage, error) {
+// streamLLMNode streams an LLM node execution and returns output with token counts.
+func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionRequest, nodeID string, events chan<- ExecutionEvent) (json.RawMessage, int, int, error) {
 	stream, err := e.provider.Stream(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 
 	var fullText string
+	var tokensIn, tokensOut int
 	for event := range stream {
 		switch event.Type {
 		case types.StreamEventDelta:
@@ -280,12 +286,17 @@ func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionReque
 				NodeID:  nodeID,
 				Content: event.Content,
 			}
+		case types.StreamEventDone:
+			if event.Response != nil {
+				tokensIn = event.Response.Usage.InputTokens
+				tokensOut = event.Response.Usage.OutputTokens
+			}
 		case types.StreamEventError:
-			return nil, event.Error
+			return nil, 0, 0, event.Error
 		}
 	}
 
-	return json.RawMessage(fmt.Sprintf("%q", fullText)), nil
+	return json.RawMessage(fmt.Sprintf("%q", fullText)), tokensIn, tokensOut, nil
 }
 
 // executeMergeNode executes a merge node.
