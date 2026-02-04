@@ -1,0 +1,134 @@
+<style>
+.terminal {
+  background: #1a1b26;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  overflow: hidden;
+  max-width: 700px;
+  margin: 2rem auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+}
+
+.terminal-header {
+  background: #24283b;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-btn.red { background: #f7768e; }
+.terminal-btn.yellow { background: #e0af68; }
+.terminal-btn.green { background: #9ece6a; }
+
+.terminal-title {
+  color: #a9b1d6;
+  font-size: 13px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.terminal-body {
+  padding: 20px;
+  color: #a9b1d6;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 300px;
+}
+
+.terminal-line {
+  margin-bottom: 4px;
+}
+
+.prompt {
+  color: #7aa2f7;
+}
+
+.command {
+  color: #c0caf5;
+}
+
+.output {
+  color: #9aa5ce;
+}
+
+.success {
+  color: #9ece6a;
+}
+
+.highlight {
+  color: #bb9af7;
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background: #7aa2f7;
+  animation: blink 1s infinite;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.demo-controls {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.demo-btn {
+  background: #7aa2f7;
+  color: #1a1b26;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.demo-btn:hover {
+  background: #9ab8f7;
+}
+</style>
+
+<div class="terminal">
+  <div class="terminal-header">
+    <span class="terminal-btn red"></span>
+    <span class="terminal-btn yellow"></span>
+    <span class="terminal-btn green"></span>
+    <span class="terminal-title">langdag — zsh</span>
+  </div>
+  <div class="terminal-body" id="terminal-content">
+    <div class="terminal-line"><span class="prompt">$</span> <span class="command">langdag chat new --model claude-sonnet-4-20250514</span></div>
+    <div class="terminal-line"><span class="success">🟢 New conversation started</span> <span class="highlight">(ID: dag_k7x2m9)</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="prompt">You:</span> <span class="command">What is LangDAG?</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="output">LangDAG is a high-performance tool that models LLM</span></div>
+    <div class="terminal-line"><span class="output">conversations and workflows as directed acyclic graphs.</span></div>
+    <div class="terminal-line"><span class="output">It provides a unified abstraction for:</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="output">• Interactive chat sessions</span></div>
+    <div class="terminal-line"><span class="output">• Pre-defined YAML pipelines</span></div>
+    <div class="terminal-line"><span class="output">• Conversation forking & branching</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="prompt">$</span> <span class="command">langdag print dag_k7x2m9</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="highlight">dag_k7x2m9</span> <span class="output">(conversation)</span></div>
+    <div class="terminal-line"><span class="output">└── [1] user: "What is LangDAG?"</span></div>
+    <div class="terminal-line"><span class="output">    └── [2] assistant: "LangDAG is a high-performance..."</span></div>
+    <div class="terminal-line">&nbsp;</div>
+    <div class="terminal-line"><span class="prompt">$</span> <span class="typing-cursor"></span></div>
+  </div>
+</div>
