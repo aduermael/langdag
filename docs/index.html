@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangDAG - LLM Conversations as Directed Acyclic Graphs</title>
+  <meta name="description" content="High-performance Go tool for managing LLM conversations and workflows as DAGs">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-card: #1a1a24;
+      --text-primary: #f0f0f5;
+      --text-secondary: #a0a0b0;
+      --accent-cyan: #00d4ff;
+      --accent-purple: #a855f7;
+      --accent-blue: #3b82f6;
+      --gradient: linear-gradient(135deg, #00d4ff 0%, #a855f7 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header */
+    header {
+      padding: 20px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(10, 10, 15, 0.8);
+      backdrop-filter: blur(20px);
+      z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .logo svg {
+      width: 40px;
+      height: 40px;
+    }
+
+    .logo span {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+      font-size: 0.95rem;
+    }
+
+    .btn-primary {
+      background: var(--gradient);
+      color: #000;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 40px rgba(0, 212, 255, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-secondary);
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 180px 0 120px;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border-radius: 100px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .hero-badge span {
+      color: var(--accent-cyan);
+    }
+
+    h1 {
+      font-size: clamp(3rem, 8vw, 5rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #fff 0%, #a0a0b0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* DAG Visualization */
+    .dag-visual {
+      margin: 80px auto 0;
+      max-width: 700px;
+      padding: 40px;
+      background: var(--bg-card);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .dag-visual svg {
+      width: 100%;
+      height: auto;
+    }
+
+    /* Features */
+    .features {
+      padding: 120px 0;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .section-header h2 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+    }
+
+    .section-header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      padding: 32px;
+      background: var(--bg-card);
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.05);
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      transform: translateY(-4px);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* Code Example */
+    .code-section {
+      padding: 120px 0;
+      background: var(--bg-secondary);
+    }
+
+    .code-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+    }
+
+    @media (max-width: 900px) {
+      .code-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .code-block {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .code-header {
+      padding: 16px 20px;
+      background: rgba(255,255,255,0.03);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .code-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .code-dot.red { background: #ff5f57; }
+    .code-dot.yellow { background: #febc2e; }
+    .code-dot.green { background: #28c840; }
+
+    .code-title {
+      margin-left: auto;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    pre {
+      padding: 24px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+
+    .code-content {
+      color: var(--text-secondary);
+    }
+
+    .code-content .keyword { color: #c678dd; }
+    .code-content .string { color: #98c379; }
+    .code-content .comment { color: #5c6370; }
+    .code-content .prompt { color: var(--accent-cyan); }
+
+    /* Install */
+    .install {
+      padding: 120px 0;
+    }
+
+    .install-box {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 48px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .install-box h2 {
+      font-size: 2rem;
+      margin-bottom: 16px;
+    }
+
+    .install-box p {
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    .install-command {
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--bg-primary);
+      padding: 16px 24px;
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      border: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 24px;
+    }
+
+    .install-command code {
+      color: var(--accent-cyan);
+    }
+
+    /* Footer */
+    footer {
+      padding: 48px 0;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+
+      .hero {
+        padding: 140px 0 80px;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .install-box {
+        padding: 32px 24px;
+      }
+
+      .install-command {
+        font-size: 0.85rem;
+        padding: 12px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <nav>
+        <a href="#" class="logo">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="8" cy="20" r="6" fill="url(#grad1)"/>
+            <circle cx="20" cy="8" r="6" fill="url(#grad1)"/>
+            <circle cx="20" cy="32" r="6" fill="url(#grad1)"/>
+            <circle cx="32" cy="20" r="6" fill="url(#grad2)"/>
+            <path d="M13 17L17 11" stroke="#00d4ff" stroke-width="2" stroke-linecap="round"/>
+            <path d="M13 23L17 29" stroke="#00d4ff" stroke-width="2" stroke-linecap="round"/>
+            <path d="M23 11L27 17" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
+            <path d="M23 29L27 23" stroke="#a855f7" stroke-width="2" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#00b4d8"/>
+              </linearGradient>
+              <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#a855f7"/>
+                <stop offset="100%" stop-color="#7c3aed"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>LangDAG</span>
+        </a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#demo">Demo</a>
+          <a href="https://github.com/aduermael/langdag/blob/main/docs/DESIGN.md">Docs</a>
+          <a href="https://github.com/aduermael/langdag" class="btn btn-secondary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            GitHub
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <div class="hero-badge">
+          <span>v0.2.0</span> — Built with Go for maximum performance
+        </div>
+        <h1>LLM Conversations<br>as DAGs</h1>
+        <p>A high-performance tool for orchestrating LLM interactions. Model conversations and workflows as directed acyclic graphs.</p>
+        <div class="hero-buttons">
+          <a href="https://github.com/aduermael/langdag" class="btn btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            View on GitHub
+          </a>
+          <a href="#demo" class="btn btn-secondary">See Demo</a>
+        </div>
+
+        <div class="dag-visual">
+          <svg viewBox="0 0 600 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="20" y="45" width="80" height="35" rx="8" fill="#1e1e2e" stroke="#00d4ff" stroke-width="2"/>
+            <text x="60" y="68" text-anchor="middle" fill="#00d4ff" font-family="Inter" font-size="14">User</text>
+
+            <rect x="170" y="45" width="80" height="35" rx="8" fill="#1e1e2e" stroke="#a855f7" stroke-width="2"/>
+            <text x="210" y="68" text-anchor="middle" fill="#a855f7" font-family="Inter" font-size="14">LLM</text>
+
+            <rect x="320" y="45" width="80" height="35" rx="8" fill="#1e1e2e" stroke="#3b82f6" stroke-width="2"/>
+            <text x="360" y="68" text-anchor="middle" fill="#3b82f6" font-family="Inter" font-size="14">Tool</text>
+
+            <rect x="470" y="45" width="80" height="35" rx="8" fill="#1e1e2e" stroke="#a855f7" stroke-width="2"/>
+            <text x="510" y="68" text-anchor="middle" fill="#a855f7" font-family="Inter" font-size="14">LLM</text>
+
+            <path d="M100 62.5 L170 62.5" stroke="#00d4ff" stroke-width="2" marker-end="url(#arrow1)"/>
+            <path d="M250 62.5 L320 62.5" stroke="#a855f7" stroke-width="2" marker-end="url(#arrow2)"/>
+            <path d="M400 62.5 L470 62.5" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow3)"/>
+
+            <defs>
+              <marker id="arrow1" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#00d4ff"/>
+              </marker>
+              <marker id="arrow2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7"/>
+              </marker>
+              <marker id="arrow3" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-header">
+          <h2>Built for Performance</h2>
+          <p>Written in Go with a focus on speed, simplicity, and developer experience</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3>~1ms Overhead</h3>
+            <p>Pure Go implementation with minimal latency. Single static binary with zero runtime dependencies.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔀</div>
+            <h3>Two Modes</h3>
+            <p>Workflow mode for YAML pipelines, Conversation mode for dynamic chats. Same engine, same storage.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌊</div>
+            <h3>Native Streaming</h3>
+            <p>Real-time token streaming via SSE. WebSocket support for bidirectional communication.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔧</div>
+            <h3>Tool Integration</h3>
+            <p>Three execution modes: Auto, Interrupt, or WebSocket. Native function calling support.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌳</div>
+            <h3>Conversation Forking</h3>
+            <p>Branch from any node in your conversation. Explore alternative paths while preserving history.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💾</div>
+            <h3>Persistent Storage</h3>
+            <p>SQLite by default (zero config). PostgreSQL ready for production. Full replay capabilities.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="code-section" id="demo">
+      <div class="container">
+        <div class="code-container">
+          <div>
+            <h2 style="font-size: 2rem; margin-bottom: 16px;">Simple CLI Interface</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 1.1rem;">
+              Start conversations, run workflows, and manage your DAGs with intuitive commands.
+            </p>
+            <a href="https://github.com/aduermael/langdag" class="btn btn-primary">Get Started</a>
+          </div>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-dot red"></span>
+              <span class="code-dot yellow"></span>
+              <span class="code-dot green"></span>
+              <span class="code-title">terminal</span>
+            </div>
+            <pre class="code-content"><span class="prompt">$</span> langdag chat new --model claude-sonnet-4-20250514
+
+<span class="string">🟢 New conversation started</span> (ID: dag_k7x2m9)
+
+<span class="prompt">You:</span> What is LangDAG?
+
+<span class="comment"># LangDAG responds with streaming output...</span>
+
+<span class="prompt">$</span> langdag print dag_k7x2m9
+
+<span class="keyword">dag_k7x2m9</span> (conversation)
+└── [1] user: "What is LangDAG?"
+    └── [2] assistant: "LangDAG is..."
+
+<span class="prompt">$</span> langdag chat continue dag_k7x2m9 --node 1
+<span class="comment"># Fork from node 1 to explore alternatives</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="install">
+      <div class="container">
+        <div class="install-box">
+          <h2>Get Started in Seconds</h2>
+          <p>Clone and build with a single command</p>
+          <div class="install-command">
+            <code>git clone https://github.com/aduermael/langdag && cd langdag && go build ./cmd/langdag</code>
+          </div>
+          <br>
+          <a href="https://github.com/aduermael/langdag" class="btn btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Built with ❤️ in Go • <a href="https://github.com/aduermael/langdag/blob/main/LICENSE">MIT License</a> • <a href="https://github.com/aduermael/langdag">GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>
