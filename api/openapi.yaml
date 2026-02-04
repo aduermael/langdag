@@ -1,0 +1,666 @@
+openapi: 3.1.0
+info:
+  title: LangDAG API
+  description: |
+    REST API for managing LLM conversations as directed acyclic graphs (DAGs).
+
+    LangDAG provides:
+    - DAG management for conversations and workflow runs
+    - Chat with streaming support via Server-Sent Events (SSE)
+    - Workflow creation and execution
+
+    ## Streaming
+
+    Chat endpoints support real-time streaming via SSE. Set `stream: true` in the request body
+    to receive incremental responses as they're generated.
+
+    SSE events:
+    - `start` - Stream started, includes `dag_id`
+    - `delta` - Incremental content chunk
+    - `done` - Stream complete, includes `node_id`
+    - `error` - Error occurred
+
+    ## IDs
+
+    All IDs are UUIDs. For convenience, partial ID prefixes are accepted (minimum 4 characters).
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: health
+    description: Health check endpoints
+  - name: dags
+    description: DAG management
+  - name: chat
+    description: Chat conversations
+  - name: workflows
+    description: Workflow templates
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      security: []
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /dags:
+    get:
+      tags: [dags]
+      summary: List all DAGs
+      description: Returns all DAG instances (conversations and workflow runs)
+      responses:
+        '200':
+          description: List of DAGs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DAG'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /dags/{id}:
+    get:
+      tags: [dags]
+      summary: Get DAG details
+      description: Returns a DAG with all its nodes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: DAG ID (full or prefix)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DAG details with nodes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DAGDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [dags]
+      summary: Delete a DAG
+      description: Deletes a DAG and all its nodes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: DAG ID (full or prefix)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DAG deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  id:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat:
+    post:
+      tags: [chat]
+      summary: Start new conversation
+      description: |
+        Creates a new conversation DAG and sends the first message.
+
+        Set `stream: true` to receive the response as SSE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewChatRequest'
+      responses:
+        '200':
+          description: Chat response (non-streaming)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEStream'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/{id}:
+    post:
+      tags: [chat]
+      summary: Continue conversation
+      description: |
+        Continues an existing conversation by appending a new message.
+
+        Set `stream: true` to receive the response as SSE.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: DAG ID (full or prefix)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContinueChatRequest'
+      responses:
+        '200':
+          description: Chat response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEStream'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/{id}/fork:
+    post:
+      tags: [chat]
+      summary: Fork conversation
+      description: |
+        Forks a conversation from a specific node, creating a new branch.
+        This allows exploring alternative conversation paths.
+
+        Set `stream: true` to receive the response as SSE.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: DAG ID (full or prefix)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForkChatRequest'
+      responses:
+        '200':
+          description: Chat response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEStream'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows:
+    get:
+      tags: [workflows]
+      summary: List workflows
+      description: Returns all workflow templates
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workflow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [workflows]
+      summary: Create workflow
+      description: Creates a new workflow template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowRequest'
+      responses:
+        '201':
+          description: Workflow created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workflows/{id}/run:
+    post:
+      tags: [workflows]
+      summary: Run workflow
+      description: Executes a workflow template, creating a new DAG instance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Workflow ID or name
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunWorkflowRequest'
+      responses:
+        '200':
+          description: Workflow run result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunWorkflowResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token authentication
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+    DAG:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        workflow_id:
+          type: string
+          format: uuid
+          description: Set if created from a workflow
+        model:
+          type: string
+        system_prompt:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - created_at
+        - updated_at
+
+    DAGDetail:
+      allOf:
+        - $ref: '#/components/schemas/DAG'
+        - type: object
+          properties:
+            node_count:
+              type: integer
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/Node'
+
+    Node:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        parent_id:
+          type: string
+          format: uuid
+          description: Parent node ID (for tree structure)
+        sequence:
+          type: integer
+          description: Node sequence number
+        node_type:
+          type: string
+          enum: [user, assistant, tool_call, tool_result, llm, input, output]
+        content:
+          type: string
+          description: Node content (message text or JSON)
+        model:
+          type: string
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+        latency_ms:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - sequence
+        - node_type
+        - content
+        - created_at
+
+    NewChatRequest:
+      type: object
+      properties:
+        model:
+          type: string
+          default: claude-sonnet-4-20250514
+          description: LLM model to use
+        system_prompt:
+          type: string
+          description: Optional system prompt
+        message:
+          type: string
+          description: Initial message to send
+        stream:
+          type: boolean
+          default: false
+          description: Enable SSE streaming
+      required:
+        - message
+
+    ContinueChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Message to send
+        stream:
+          type: boolean
+          default: false
+          description: Enable SSE streaming
+      required:
+        - message
+
+    ForkChatRequest:
+      type: object
+      properties:
+        node_id:
+          type: string
+          description: Node ID to fork from (full or prefix)
+        message:
+          type: string
+          description: Message to send
+        stream:
+          type: boolean
+          default: false
+          description: Enable SSE streaming
+      required:
+        - node_id
+        - message
+
+    ChatResponse:
+      type: object
+      properties:
+        dag_id:
+          type: string
+          format: uuid
+        node_id:
+          type: string
+          format: uuid
+          description: ID of the assistant's response node
+        content:
+          type: string
+          description: Response content
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+
+    SSEStream:
+      type: string
+      description: |
+        Server-Sent Events stream. Events:
+
+        ```
+        event: start
+        data: {"dag_id": "..."}
+
+        event: delta
+        data: {"content": "..."}
+
+        event: done
+        data: {"node_id": "...", "dag_id": "..."}
+
+        event: error
+        data: error message
+        ```
+
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: integer
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - version
+        - created_at
+        - updated_at
+
+    CreateWorkflowRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Workflow name (must be unique)
+        description:
+          type: string
+        defaults:
+          $ref: '#/components/schemas/WorkflowDefaults'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolDefinition'
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowEdge'
+      required:
+        - name
+        - nodes
+
+    WorkflowDefaults:
+      type: object
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+        max_tokens:
+          type: integer
+        temperature:
+          type: number
+
+    ToolDefinition:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        input_schema:
+          type: object
+      required:
+        - name
+        - description
+        - input_schema
+
+    WorkflowNode:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Node ID (unique within workflow)
+        type:
+          type: string
+          enum: [llm, tool, branch, merge, input, output]
+        content:
+          type: object
+        model:
+          type: string
+        system:
+          type: string
+        prompt:
+          type: string
+        tools:
+          type: array
+          items:
+            type: string
+        handler:
+          type: string
+        condition:
+          type: string
+      required:
+        - id
+        - type
+
+    WorkflowEdge:
+      type: object
+      properties:
+        from:
+          type: string
+          description: Source node ID
+        to:
+          type: string
+          description: Target node ID
+        condition:
+          type: string
+        transform:
+          type: string
+      required:
+        - from
+        - to
+
+    RunWorkflowRequest:
+      type: object
+      properties:
+        input:
+          type: object
+          additionalProperties: true
+          description: Input data for the workflow
+        stream:
+          type: boolean
+          default: false
+          description: Enable SSE streaming
+
+    RunWorkflowResponse:
+      type: object
+      properties:
+        dag_id:
+          type: string
+          format: uuid
+          description: ID of the created DAG instance
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        output:
+          type: object
+          additionalProperties: true
+          description: Workflow output (if completed)

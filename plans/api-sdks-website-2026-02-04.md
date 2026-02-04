@@ -32,10 +32,10 @@ Build the REST API server using the existing config infrastructure.
 
 Create formal API documentation.
 
-- [ ] 3a: Write OpenAPI 3.1 spec in `api/openapi.yaml`
-- [ ] 3b: Add request/response schemas for all endpoints
-- [ ] 3c: Document SSE streaming format
-- [ ] 3d: Add authentication section (API key header)
+- [x] 3a: Write OpenAPI 3.1 spec in `api/openapi.yaml`
+- [x] 3b: Add request/response schemas for all endpoints
+- [x] 3c: Document SSE streaming format
+- [x] 3d: Add authentication section (API key header)
 
 ---
 
