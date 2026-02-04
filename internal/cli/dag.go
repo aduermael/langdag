@@ -224,7 +224,7 @@ func runDAGShow(cmd *cobra.Command, args []string) {
 	}
 }
 
-// printDAGTree prints nodes as a tree structure
+// printDAGTree prints nodes as a tree structure, only indenting at branch points
 func printDAGTree(nodes []*types.DAGNode) {
 	if len(nodes) == 0 {
 		return
@@ -242,35 +242,47 @@ func printDAGTree(nodes []*types.DAGNode) {
 		}
 	}
 
-	// Print tree recursively
-	for i, root := range roots {
-		isLast := i == len(roots)-1
-		printNodeTree(root, "", isLast, childrenMap)
+	// Print tree, flattening linear chains
+	// isLastInBranch: true if this is the last sibling at the current branch level
+	var printChain func(node *types.DAGNode, prefix string, isLastInBranch bool)
+	printChain = func(node *types.DAGNode, prefix string, isLastInBranch bool) {
+		children := childrenMap[node.ID]
+		isLeaf := len(children) == 0
+		isBranchPoint := len(children) > 1
+
+		// Use └─ only at leaf nodes (end of chain)
+		connector := "├─"
+		if isLeaf {
+			connector = "└─"
+		}
+
+		fmt.Printf("%s%s ", prefix, connector)
+		printDAGNodeCompact(node)
+
+		if isLeaf {
+			return
+		}
+
+		if isBranchPoint {
+			// Branch point: print each branch with proper indentation
+			for i, child := range children {
+				childIsLast := i == len(children)-1
+				var childPrefix string
+				if childIsLast {
+					childPrefix = prefix + "   "
+				} else {
+					childPrefix = prefix + "│  "
+				}
+				printChain(child, childPrefix, childIsLast)
+			}
+		} else {
+			// Single child: continue at same level
+			printChain(children[0], prefix, isLastInBranch)
+		}
 	}
-}
 
-// printNodeTree recursively prints a node and its children
-func printNodeTree(node *types.DAGNode, prefix string, isLast bool, childrenMap map[string][]*types.DAGNode) {
-	// Determine connector
-	connector := "├─"
-	if isLast {
-		connector = "└─"
-	}
-
-	fmt.Printf("%s%s ", prefix, connector)
-	printDAGNodeCompact(node)
-
-	// Determine prefix for children
-	childPrefix := prefix + "│  "
-	if isLast {
-		childPrefix = prefix + "   "
-	}
-
-	// Print children
-	children := childrenMap[node.ID]
-	for i, child := range children {
-		childIsLast := i == len(children)-1
-		printNodeTree(child, childPrefix, childIsLast, childrenMap)
+	for _, root := range roots {
+		printChain(root, "", true)
 	}
 }
 
