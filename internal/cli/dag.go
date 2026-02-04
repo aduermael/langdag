@@ -277,7 +277,7 @@ func printDAGTree(nodes []*types.DAGNode) {
 
 		if isBranchPoint {
 			// Branch point: print each branch with indentation
-			childPrefix := prefix + "   "
+			childPrefix := prefix + " "
 			for i, child := range children {
 				childHasMoreSiblings := i < len(children)-1
 				printChain(child, childPrefix, childHasMoreSiblings)
