@@ -68,11 +68,11 @@ Create example applications demonstrating SDK usage.
 
 Update the landing page with multi-language code examples.
 
-- [ ] 6a: Add language toggle component (Python / Go / TypeScript)
-- [ ] 6b: Create code snippets showing SDK usage for each language
-- [ ] 6c: Update demo section to show: agent interaction, DAG exploration, branching
-- [ ] 6d: Add quick CLI example at the top (brief, to showcase SDKs are the main feature)
-- [ ] 6e: Link to SDK documentation and example projects
+- [x] 6a: Add language toggle component (Python / Go / TypeScript)
+- [x] 6b: Create code snippets showing SDK usage for each language
+- [x] 6c: Update demo section to show: agent interaction, DAG exploration, branching
+- [x] 6d: Add quick CLI example at the top (brief, to showcase SDKs are the main feature)
+- [x] 6e: Link to SDK documentation and example projects
 
 ---
 
