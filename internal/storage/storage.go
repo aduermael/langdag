@@ -34,6 +34,7 @@ type Storage interface {
 	AddDAGNode(ctx context.Context, node *types.DAGNode) error
 	GetDAGNodes(ctx context.Context, dagID string) ([]*types.DAGNode, error)
 	GetDAGNode(ctx context.Context, id string) (*types.DAGNode, error)
+	GetDAGNodeByPrefix(ctx context.Context, prefix string) (*types.DAGNode, error)
 	GetLastDAGNode(ctx context.Context, dagID string) (*types.DAGNode, error)
 	UpdateDAGNode(ctx context.Context, node *types.DAGNode) error
 }

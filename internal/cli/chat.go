@@ -19,6 +19,7 @@ import (
 var (
 	chatModel        string
 	chatSystemPrompt string
+	chatNodeID       string
 )
 
 // chatCmd is the parent command for chat operations.
@@ -38,11 +39,13 @@ var chatNewCmd = &cobra.Command{
 
 // chatContinueCmd continues an existing DAG.
 var chatContinueCmd = &cobra.Command{
-	Use:   "continue <dag-id>",
+	Use:   "continue [dag-id]",
 	Short: "Continue an existing DAG",
-	Long:  `Continue an existing DAG by attaching a human node. Works with any DAG - from chat or workflow.`,
-	Args:  cobra.ExactArgs(1),
-	Run:   runChatContinue,
+	Long: `Continue an existing DAG by attaching a human node. Works with any DAG - from chat or workflow.
+
+Use --node to fork from a specific node, creating a new branch in the conversation.`,
+	Args: cobra.MaximumNArgs(1),
+	Run:  runChatContinue,
 }
 
 func init() {
@@ -51,6 +54,8 @@ func init() {
 
 	chatNewCmd.Flags().StringVarP(&chatModel, "model", "m", "claude-sonnet-4-20250514", "model to use")
 	chatNewCmd.Flags().StringVarP(&chatSystemPrompt, "system", "s", "", "system prompt")
+
+	chatContinueCmd.Flags().StringVarP(&chatNodeID, "node", "n", "", "fork from a specific node ID (creates a new branch)")
 }
 
 // initStorage initializes the SQLite storage from config.
@@ -124,7 +129,11 @@ func runChatNew(cmd *cobra.Command, args []string) {
 
 func runChatContinue(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
-	dagID := args[0]
+
+	// Validate arguments
+	if chatNodeID == "" && len(args) == 0 {
+		exitError("requires either a dag-id argument or --node flag")
+	}
 
 	// Load config
 	cfg, err := config.Load()
@@ -151,29 +160,48 @@ func runChatContinue(cmd *cobra.Command, args []string) {
 	// Create conversation manager
 	mgr := conversation.NewManager(store, prov)
 
-	// Get DAG - try full ID first, then partial match
-	dag, err := mgr.GetDAG(ctx, dagID)
-	if err != nil {
-		exitError("failed to get DAG: %v", err)
-	}
-	if dag == nil {
-		// Try partial ID match
-		dags, err := mgr.ListDAGs(ctx)
+	var dag *types.DAG
+
+	if chatNodeID != "" {
+		// Fork from a specific node
+		dag, err = mgr.ForkFromNode(ctx, chatNodeID)
 		if err != nil {
-			exitError("failed to list DAGs: %v", err)
+			exitError("failed to fork from node: %v", err)
 		}
-		for _, d := range dags {
-			if strings.HasPrefix(d.ID, dagID) {
-				dag = d
-				break
+		fmt.Printf("Forked from node %s\n", chatNodeID)
+		fmt.Printf("New DAG: %s\n", dag.ID)
+		if dag.ForkedFromDAG != "" {
+			fmt.Printf("Parent DAG: %s\n", dag.ForkedFromDAG)
+		}
+	} else {
+		// Continue existing DAG
+		dagID := args[0]
+
+		// Get DAG - try full ID first, then partial match
+		dag, err = mgr.GetDAG(ctx, dagID)
+		if err != nil {
+			exitError("failed to get DAG: %v", err)
+		}
+		if dag == nil {
+			// Try partial ID match
+			dags, err := mgr.ListDAGs(ctx)
+			if err != nil {
+				exitError("failed to list DAGs: %v", err)
+			}
+			for _, d := range dags {
+				if strings.HasPrefix(d.ID, dagID) {
+					dag = d
+					break
+				}
 			}
 		}
-	}
-	if dag == nil {
-		exitError("DAG not found: %s", dagID)
+		if dag == nil {
+			exitError("DAG not found: %s", dagID)
+		}
+
+		fmt.Printf("Continuing DAG: %s\n", dag.ID)
 	}
 
-	fmt.Printf("Continuing DAG: %s\n", dag.ID)
 	if dag.Title != "" {
 		fmt.Printf("Title: %s\n", dag.Title)
 	}
@@ -183,7 +211,7 @@ func runChatContinue(cmd *cobra.Command, args []string) {
 	fmt.Println()
 
 	// Show recent history
-	nodes, err := mgr.GetNodes(ctx, dagID)
+	nodes, err := mgr.GetNodes(ctx, dag.ID)
 	if err == nil && len(nodes) > 0 {
 		fmt.Println("Recent messages:")
 		start := 0

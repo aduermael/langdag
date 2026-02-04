@@ -308,3 +308,97 @@ func (m *Manager) GenerateTitle(text string) string {
 	}
 	return text
 }
+
+// ForkFromNode creates a new DAG that branches from a specific node.
+// It copies all nodes up to and including the specified node to the new DAG.
+func (m *Manager) ForkFromNode(ctx context.Context, nodeID string) (*types.DAG, error) {
+	// Find the node by ID (try exact match first, then prefix)
+	node, err := m.storage.GetDAGNode(ctx, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+	if node == nil {
+		// Try prefix match
+		node, err = m.storage.GetDAGNodeByPrefix(ctx, nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node by prefix: %w", err)
+		}
+	}
+	if node == nil {
+		return nil, fmt.Errorf("node not found: %s", nodeID)
+	}
+
+	// Get the parent DAG
+	parentDAG, err := m.storage.GetDAG(ctx, node.DAGID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parent DAG: %w", err)
+	}
+	if parentDAG == nil {
+		return nil, fmt.Errorf("parent DAG not found: %s", node.DAGID)
+	}
+
+	// Get all nodes up to and including the fork point
+	allNodes, err := m.storage.GetDAGNodes(ctx, parentDAG.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	// Filter nodes up to the fork point (by sequence)
+	var nodesToCopy []*types.DAGNode
+	for _, n := range allNodes {
+		if n.Sequence <= node.Sequence {
+			nodesToCopy = append(nodesToCopy, n)
+		}
+	}
+
+	// Create new DAG
+	now := time.Now()
+	newDAG := &types.DAG{
+		ID:             uuid.New().String(),
+		Title:          parentDAG.Title,
+		WorkflowID:     parentDAG.WorkflowID,
+		Model:          parentDAG.Model,
+		SystemPrompt:   parentDAG.SystemPrompt,
+		Tools:          parentDAG.Tools,
+		Status:         types.DAGStatusRunning,
+		ForkedFromDAG:  parentDAG.ID,
+		ForkedFromNode: node.ID,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if err := m.storage.CreateDAG(ctx, newDAG); err != nil {
+		return nil, fmt.Errorf("failed to create forked DAG: %w", err)
+	}
+
+	// Copy nodes to the new DAG with new IDs
+	oldToNewID := make(map[string]string)
+	for _, oldNode := range nodesToCopy {
+		newNodeID := uuid.New().String()
+		oldToNewID[oldNode.ID] = newNodeID
+
+		newNode := &types.DAGNode{
+			ID:        newNodeID,
+			DAGID:     newDAG.ID,
+			ParentID:  oldToNewID[oldNode.ParentID], // Map to new parent ID
+			Sequence:  oldNode.Sequence,
+			NodeType:  oldNode.NodeType,
+			Content:   oldNode.Content,
+			Model:     oldNode.Model,
+			TokensIn:  oldNode.TokensIn,
+			TokensOut: oldNode.TokensOut,
+			LatencyMs: oldNode.LatencyMs,
+			Status:    oldNode.Status,
+			Input:     oldNode.Input,
+			Output:    oldNode.Output,
+			Error:     oldNode.Error,
+			CreatedAt: oldNode.CreatedAt,
+		}
+
+		if err := m.storage.AddDAGNode(ctx, newNode); err != nil {
+			return nil, fmt.Errorf("failed to copy node: %w", err)
+		}
+	}
+
+	return newDAG, nil
+}

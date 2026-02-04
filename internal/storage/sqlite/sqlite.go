@@ -397,6 +397,41 @@ func (s *SQLiteStorage) GetDAGNode(ctx context.Context, id string) (*types.DAGNo
 	return &node, nil
 }
 
+// GetDAGNodeByPrefix retrieves a node by ID prefix.
+func (s *SQLiteStorage) GetDAGNodeByPrefix(ctx context.Context, prefix string) (*types.DAGNode, error) {
+	var node types.DAGNode
+	var parentID, model, status, errStr sql.NullString
+	var tokensIn, tokensOut, latencyMs sql.NullInt64
+	var input, output sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at
+		FROM dag_nodes WHERE id LIKE ? || '%' LIMIT 1
+	`, prefix).Scan(&node.ID, &node.DAGID, &parentID, &node.Sequence, &node.NodeType, &node.Content, &model, &tokensIn, &tokensOut, &latencyMs, &status, &input, &output, &errStr, &node.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get DAG node by prefix: %w", err)
+	}
+
+	node.ParentID = parentID.String
+	node.Model = model.String
+	node.TokensIn = int(tokensIn.Int64)
+	node.TokensOut = int(tokensOut.Int64)
+	node.LatencyMs = int(latencyMs.Int64)
+	node.Status = types.DAGStatus(status.String)
+	node.Error = errStr.String
+	if input.Valid {
+		node.Input = json.RawMessage(input.String)
+	}
+	if output.Valid {
+		node.Output = json.RawMessage(output.String)
+	}
+
+	return &node, nil
+}
+
 // GetLastDAGNode retrieves the last node in a DAG.
 func (s *SQLiteStorage) GetLastDAGNode(ctx context.Context, dagID string) (*types.DAGNode, error) {
 	var node types.DAGNode
