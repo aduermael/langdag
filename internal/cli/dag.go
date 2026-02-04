@@ -243,17 +243,29 @@ func printDAGTree(nodes []*types.DAGNode) {
 	}
 
 	// Print tree, flattening linear chains
-	// isLastInBranch: true if this is the last sibling at the current branch level
-	var printChain func(node *types.DAGNode, prefix string, isLastInBranch bool)
-	printChain = func(node *types.DAGNode, prefix string, isLastInBranch bool) {
+	// hasMoreSiblings: true if there are more sibling branches after this one
+	var printChain func(node *types.DAGNode, prefix string, hasMoreSiblings bool)
+	printChain = func(node *types.DAGNode, prefix string, hasMoreSiblings bool) {
 		children := childrenMap[node.ID]
 		isLeaf := len(children) == 0
 		isBranchPoint := len(children) > 1
 
-		// Use └─ only at leaf nodes (end of chain)
-		connector := "├─"
-		if isLeaf {
-			connector = "└─"
+		// Determine connector: │├─ or │└─ if more siblings, ├─ or └─ if last sibling
+		var connector string
+		if isLeaf || isBranchPoint {
+			// End of this chain segment
+			if hasMoreSiblings {
+				connector = "│└─"
+			} else {
+				connector = "└─"
+			}
+		} else {
+			// Chain continues
+			if hasMoreSiblings {
+				connector = "│├─"
+			} else {
+				connector = "├─"
+			}
 		}
 
 		fmt.Printf("%s%s ", prefix, connector)
@@ -264,25 +276,20 @@ func printDAGTree(nodes []*types.DAGNode) {
 		}
 
 		if isBranchPoint {
-			// Branch point: print each branch with proper indentation
+			// Branch point: print each branch with indentation
+			childPrefix := prefix + "   "
 			for i, child := range children {
-				childIsLast := i == len(children)-1
-				var childPrefix string
-				if childIsLast {
-					childPrefix = prefix + "   "
-				} else {
-					childPrefix = prefix + "│  "
-				}
-				printChain(child, childPrefix, childIsLast)
+				childHasMoreSiblings := i < len(children)-1
+				printChain(child, childPrefix, childHasMoreSiblings)
 			}
 		} else {
 			// Single child: continue at same level
-			printChain(children[0], prefix, isLastInBranch)
+			printChain(children[0], prefix, hasMoreSiblings)
 		}
 	}
 
 	for _, root := range roots {
-		printChain(root, "", true)
+		printChain(root, "", false)
 	}
 }
 
