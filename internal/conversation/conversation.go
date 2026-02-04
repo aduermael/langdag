@@ -237,6 +237,13 @@ func (m *Manager) saveAssistantResponse(ctx context.Context, dag *types.DAG, use
 	var content json.RawMessage
 	var tokensIn, tokensOut int
 
+	// Extract token usage from response
+	if response != nil {
+		tokensIn = response.Usage.InputTokens
+		tokensOut = response.Usage.OutputTokens
+	}
+
+	// Determine content format
 	if response != nil && len(response.Content) > 0 {
 		// Check if response contains tool calls
 		hasToolUse := false
@@ -254,8 +261,6 @@ func (m *Manager) saveAssistantResponse(ctx context.Context, dag *types.DAG, use
 			// Save just the text
 			content, _ = json.Marshal(text)
 		}
-		tokensIn = response.Usage.InputTokens
-		tokensOut = response.Usage.OutputTokens
 	} else {
 		content, _ = json.Marshal(text)
 	}
