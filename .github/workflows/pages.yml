@@ -28,12 +28,12 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
-          bundler-cache: true
-          working-directory: docs
 
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v4
+        with:
+          enablement: true
 
       - name: Build with Jekyll
         run: |
