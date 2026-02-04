@@ -11,6 +11,7 @@ import (
 	"github.com/langdag/langdag/internal/provider/anthropic"
 	"github.com/langdag/langdag/internal/workflow"
 	"github.com/langdag/langdag/pkg/types"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -37,10 +38,11 @@ var workflowCreateCmd = &cobra.Command{
 
 // workflowListCmd lists all workflows.
 var workflowListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all workflows",
-	Long:  `List all stored workflow templates.`,
-	Run:   runWorkflowList,
+	Use:     "ls",
+	Aliases: []string{"list"},
+	Short:   "List all workflows",
+	Long:    `List all stored workflow templates.`,
+	Run:     runWorkflowList,
 }
 
 // workflowShowCmd shows a workflow.
@@ -63,11 +65,12 @@ var workflowValidateCmd = &cobra.Command{
 
 // workflowDeleteCmd deletes a workflow.
 var workflowDeleteCmd = &cobra.Command{
-	Use:   "delete <id-or-name>",
-	Short: "Delete a workflow",
-	Long:  `Delete a workflow template.`,
-	Args:  cobra.ExactArgs(1),
-	Run:   runWorkflowDelete,
+	Use:     "rm <id-or-name>",
+	Aliases: []string{"delete"},
+	Short:   "Delete a workflow",
+	Long:    `Delete a workflow template.`,
+	Args:    cobra.ExactArgs(1),
+	Run:     runWorkflowDelete,
 }
 
 // workflowRunCmd runs a workflow.
@@ -160,19 +163,50 @@ func runWorkflowList(cmd *cobra.Command, args []string) {
 	}
 
 	if len(workflows) == 0 {
-		fmt.Println("No workflows found.")
+		if outputJSON {
+			fmt.Println("[]")
+		} else if outputYAML {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("No workflows found.")
+		}
 		return
 	}
 
-	fmt.Printf("Workflows (%d):\n\n", len(workflows))
-	for _, wf := range workflows {
-		fmt.Printf("  %s  %s (v%d)\n", wf.ID[:8], wf.Name, wf.Version)
-		if wf.Description != "" {
-			fmt.Printf("    %s\n", wf.Description)
-		}
-		fmt.Printf("    Nodes: %d, Edges: %d, Created: %s\n", len(wf.Nodes), len(wf.Edges), wf.CreatedAt.Format("2006-01-02 15:04"))
-		fmt.Println()
+	// Handle JSON/YAML output
+	if printFormatted(workflows) {
+		return
 	}
+
+	// Default: table output
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"ID", "Name", "Version", "Nodes", "Edges", "Created"})
+	table.SetBorder(false)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
+	for _, wf := range workflows {
+		name := wf.Name
+		if len(name) > 20 {
+			name = name[:17] + "..."
+		}
+
+		table.Append([]string{
+			wf.ID[:8],
+			name,
+			fmt.Sprintf("%d", wf.Version),
+			fmt.Sprintf("%d", len(wf.Nodes)),
+			fmt.Sprintf("%d", len(wf.Edges)),
+			wf.CreatedAt.Format("2006-01-02 15:04"),
+		})
+	}
+	table.Render()
 }
 
 func runWorkflowShow(cmd *cobra.Command, args []string) {
@@ -209,7 +243,12 @@ func runWorkflowShow(cmd *cobra.Command, args []string) {
 		exitError("workflow not found: %s", idOrName)
 	}
 
-	// Print workflow info
+	// Handle JSON/YAML output
+	if printFormatted(wf) {
+		return
+	}
+
+	// Default: structured text output
 	fmt.Printf("Workflow: %s (v%d)\n", wf.Name, wf.Version)
 	fmt.Printf("ID: %s\n", wf.ID)
 	if wf.Description != "" {

@@ -27,13 +27,13 @@ It provides two modes:
 Both modes create DAG instances that can be inspected and continued.
 
 Examples:
-  langdag workflow create <file>     # Create workflow template from YAML
-  langdag workflow list              # List all workflow templates
-  langdag workflow run <name>        # Execute workflow → creates a DAG
-  langdag dag list                   # List all DAG instances
-  langdag dag show <id>              # Show DAG with its nodes
+  langdag ls                         # List all DAG instances
+  langdag show <id>                  # Show DAG with its nodes
   langdag chat new                   # Start new chat → creates a DAG
-  langdag chat continue <id>         # Continue any DAG interactively`,
+  langdag chat continue <id>         # Continue any DAG interactively
+  langdag workflow create <file>     # Create workflow template from YAML
+  langdag workflow ls                # List all workflow templates
+  langdag workflow run <name>        # Execute workflow → creates a DAG`,
 }
 
 // Execute runs the root command.
@@ -44,11 +44,16 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/langdag/config.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
+	rootCmd.PersistentFlags().BoolVar(&outputJSON, "json", false, "output in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&outputYAML, "yaml", false, "output in YAML format")
+	rootCmd.MarkFlagsMutuallyExclusive("json", "yaml")
 
 	// Add subcommands
-	rootCmd.AddCommand(workflowCmd)
-	rootCmd.AddCommand(dagCmd)
+	rootCmd.AddCommand(lsCmd)
+	rootCmd.AddCommand(showCmd)
+	rootCmd.AddCommand(rmCmd)
 	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(workflowCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)
 }

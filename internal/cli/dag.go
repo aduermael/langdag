@@ -4,30 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/langdag/langdag/internal/config"
 	"github.com/langdag/langdag/pkg/types"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
-// dagCmd is the parent command for DAG instance operations.
-var dagCmd = &cobra.Command{
-	Use:   "dag",
-	Short: "Manage DAG instances",
-	Long:  `Commands for managing DAG instances - created from workflows or chat sessions.`,
+// lsCmd lists all DAG instances.
+var lsCmd = &cobra.Command{
+	Use:     "ls",
+	Aliases: []string{"list"},
+	Short:   "List all DAG instances",
+	Long:    `List all DAG instances, whether created from workflows or chat sessions.`,
+	Run:     runDAGList,
 }
 
-// dagListCmd lists all DAG instances.
-var dagListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all DAG instances",
-	Long:  `List all DAG instances, whether created from workflows or chat sessions.`,
-	Run:   runDAGList,
-}
-
-// dagShowCmd shows a DAG instance.
-var dagShowCmd = &cobra.Command{
+// showCmd shows a DAG instance.
+var showCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show DAG instance details",
 	Long:  `Show the details and node history of a DAG instance.`,
@@ -35,19 +31,14 @@ var dagShowCmd = &cobra.Command{
 	Run:   runDAGShow,
 }
 
-// dagDeleteCmd deletes a DAG instance.
-var dagDeleteCmd = &cobra.Command{
-	Use:   "delete <id>",
-	Short: "Delete a DAG instance",
-	Long:  `Delete a DAG instance and all its nodes.`,
-	Args:  cobra.ExactArgs(1),
-	Run:   runDAGDelete,
-}
-
-func init() {
-	dagCmd.AddCommand(dagListCmd)
-	dagCmd.AddCommand(dagShowCmd)
-	dagCmd.AddCommand(dagDeleteCmd)
+// rmCmd deletes a DAG instance.
+var rmCmd = &cobra.Command{
+	Use:     "rm <id>",
+	Aliases: []string{"delete"},
+	Short:   "Delete a DAG instance",
+	Long:    `Delete a DAG instance and all its nodes.`,
+	Args:    cobra.ExactArgs(1),
+	Run:     runDAGDelete,
 }
 
 func runDAGList(cmd *cobra.Command, args []string) {
@@ -73,31 +64,69 @@ func runDAGList(cmd *cobra.Command, args []string) {
 	}
 
 	if len(dags) == 0 {
-		fmt.Println("No DAGs found.")
+		if outputJSON {
+			fmt.Println("[]")
+		} else if outputYAML {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("No DAGs found.")
+		}
 		return
 	}
 
-	fmt.Printf("DAGs (%d):\n\n", len(dags))
+	// Handle JSON/YAML output
+	if printFormatted(dags) {
+		return
+	}
+
+	// Default: table output
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"ID", "Title", "Source", "Status", "Model", "Created"})
+	table.SetBorder(false)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetTablePadding("  ")
+	table.SetNoWhiteSpace(true)
+
 	for _, dag := range dags {
 		title := dag.Title
 		if title == "" {
 			title = "(untitled)"
 		}
+		if len(title) > 20 {
+			title = title[:17] + "..."
+		}
 
-		// Show source indicator
 		source := "chat"
 		if dag.WorkflowID != "" {
 			source = "workflow"
 		}
 
-		fmt.Printf("  %s  %s [%s]\n", dag.ID[:8], title, source)
-		fmt.Printf("    Status: %s", dag.Status)
-		if dag.Model != "" {
-			fmt.Printf(", Model: %s", dag.Model)
+		model := dag.Model
+		if len(model) > 30 {
+			model = model[:27] + "..."
 		}
-		fmt.Printf(", Created: %s\n", dag.CreatedAt.Format("2006-01-02 15:04"))
-		fmt.Println()
+
+		table.Append([]string{
+			dag.ID[:8],
+			title,
+			source,
+			string(dag.Status),
+			model,
+			dag.CreatedAt.Format("2006-01-02 15:04"),
+		})
 	}
+	table.Render()
+}
+
+// DAGWithNodes is used for JSON/YAML output of a DAG with its nodes.
+type DAGWithNodes struct {
+	*types.DAG `yaml:",inline"`
+	Nodes      []*types.DAGNode `json:"nodes" yaml:"nodes"`
 }
 
 func runDAGShow(cmd *cobra.Command, args []string) {
@@ -145,7 +174,17 @@ func runDAGShow(cmd *cobra.Command, args []string) {
 		exitError("failed to get nodes: %v", err)
 	}
 
-	// Print DAG info
+	// Handle JSON/YAML output
+	if outputJSON || outputYAML {
+		output := DAGWithNodes{
+			DAG:   dag,
+			Nodes: nodes,
+		}
+		printFormatted(output)
+		return
+	}
+
+	// Default: structured text output
 	fmt.Printf("DAG: %s\n", dag.ID)
 	if dag.Title != "" {
 		fmt.Printf("Title: %s\n", dag.Title)
