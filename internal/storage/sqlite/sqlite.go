@@ -272,48 +272,6 @@ func (s *SQLiteStorage) ListDAGs(ctx context.Context) ([]*types.DAG, error) {
 	return dags, rows.Err()
 }
 
-// GetForkedDAGs returns all DAGs that were forked from the given DAG.
-func (s *SQLiteStorage) GetForkedDAGs(ctx context.Context, dagID string) ([]*types.DAG, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, workflow_id, model, system_prompt, tools, status, input, output, forked_from_dag, forked_from_node, created_at, updated_at
-		FROM dags WHERE forked_from_dag = ? ORDER BY created_at ASC
-	`, dagID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get forked DAGs: %w", err)
-	}
-	defer rows.Close()
-
-	var dags []*types.DAG
-	for rows.Next() {
-		var dag types.DAG
-		var toolsJSON sql.NullString
-		var workflowID, forkedFromDAG, forkedFromNode sql.NullString
-		var input, output sql.NullString
-
-		if err := rows.Scan(&dag.ID, &dag.Title, &workflowID, &dag.Model, &dag.SystemPrompt, &toolsJSON, &dag.Status, &input, &output, &forkedFromDAG, &forkedFromNode, &dag.CreatedAt, &dag.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan forked DAG: %w", err)
-		}
-
-		if toolsJSON.Valid && toolsJSON.String != "" {
-			if err := json.Unmarshal([]byte(toolsJSON.String), &dag.Tools); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tools: %w", err)
-			}
-		}
-		dag.WorkflowID = workflowID.String
-		dag.ForkedFromDAG = forkedFromDAG.String
-		dag.ForkedFromNode = forkedFromNode.String
-		if input.Valid {
-			dag.Input = json.RawMessage(input.String)
-		}
-		if output.Valid {
-			dag.Output = json.RawMessage(output.String)
-		}
-
-		dags = append(dags, &dag)
-	}
-	return dags, rows.Err()
-}
-
 // UpdateDAG updates an existing DAG instance.
 func (s *SQLiteStorage) UpdateDAG(ctx context.Context, dag *types.DAG) error {
 	var toolsJSON []byte

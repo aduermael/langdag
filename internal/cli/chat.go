@@ -43,7 +43,7 @@ var chatContinueCmd = &cobra.Command{
 	Short: "Continue an existing DAG",
 	Long: `Continue an existing DAG by attaching a human node. Works with any DAG - from chat or workflow.
 
-Use --node to fork from a specific node, creating a new branch in the conversation.`,
+Use --node to continue from a specific node, creating a new branch in the conversation.`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runChatContinue,
 }
@@ -55,7 +55,7 @@ func init() {
 	chatNewCmd.Flags().StringVarP(&chatModel, "model", "m", "claude-sonnet-4-20250514", "model to use")
 	chatNewCmd.Flags().StringVarP(&chatSystemPrompt, "system", "s", "", "system prompt")
 
-	chatContinueCmd.Flags().StringVarP(&chatNodeID, "node", "n", "", "fork from a specific node ID (creates a new branch)")
+	chatContinueCmd.Flags().StringVarP(&chatNodeID, "node", "n", "", "continue from a specific node ID (creates a new branch)")
 }
 
 // initStorage initializes the SQLite storage from config.
@@ -161,20 +161,21 @@ func runChatContinue(cmd *cobra.Command, args []string) {
 	mgr := conversation.NewManager(store, prov)
 
 	var dag *types.DAG
+	var currentNodeID string
 
 	if chatNodeID != "" {
-		// Fork from a specific node
-		dag, err = mgr.ForkFromNode(ctx, chatNodeID)
+		// Continue from a specific node
+		node, nodeDag, err := mgr.GetNodeWithDAG(ctx, chatNodeID)
 		if err != nil {
-			exitError("failed to fork from node: %v", err)
+			exitError("failed to get node: %v", err)
 		}
-		fmt.Printf("Forked from node %s\n", chatNodeID)
-		fmt.Printf("New DAG: %s\n", dag.ID)
-		if dag.ForkedFromDAG != "" {
-			fmt.Printf("Parent DAG: %s\n", dag.ForkedFromDAG)
-		}
+		dag = nodeDag
+		currentNodeID = node.ID
+
+		fmt.Printf("Continuing from node %s\n", node.ID[:8])
+		fmt.Printf("DAG: %s\n", dag.ID)
 	} else {
-		// Continue existing DAG
+		// Continue existing DAG from the end
 		dagID := args[0]
 
 		// Get DAG - try full ID first, then partial match
@@ -210,27 +211,38 @@ func runChatContinue(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println()
 
-	// Show recent history
+	// Show recent history (walk up from current node if set, otherwise show last nodes)
 	nodes, err := mgr.GetNodes(ctx, dag.ID)
 	if err == nil && len(nodes) > 0 {
 		fmt.Println("Recent messages:")
-		start := 0
-		if len(nodes) > 4 {
-			start = len(nodes) - 4
-		}
-		for _, node := range nodes[start:] {
-			printNode(node)
+		if currentNodeID != "" {
+			// Show path to current node
+			printPathToNode(nodes, currentNodeID)
+		} else {
+			// Show last 4 nodes
+			start := 0
+			if len(nodes) > 4 {
+				start = len(nodes) - 4
+			}
+			for _, node := range nodes[start:] {
+				printNode(node)
+			}
 		}
 		fmt.Println()
 	}
 
-	// Run interactive loop
-	runInteractiveChat(ctx, mgr, dag)
+	// Run interactive loop with current node tracking
+	runInteractiveChatFromNode(ctx, mgr, dag, currentNodeID)
 }
 
 func runInteractiveChat(ctx context.Context, mgr *conversation.Manager, dag *types.DAG) {
+	runInteractiveChatFromNode(ctx, mgr, dag, "")
+}
+
+func runInteractiveChatFromNode(ctx context.Context, mgr *conversation.Manager, dag *types.DAG, startNodeID string) {
 	reader := bufio.NewReader(os.Stdin)
 	titleSet := dag.Title != ""
+	currentNodeID := startNodeID
 
 	for {
 		fmt.Print("You> ")
@@ -262,7 +274,7 @@ func runInteractiveChat(ctx context.Context, mgr *conversation.Manager, dag *typ
 
 		// Send message and stream response
 		fmt.Print("\nAssistant> ")
-		events, err := mgr.SendMessage(ctx, dag.ID, input)
+		events, err := mgr.SendMessageAfter(ctx, dag.ID, currentNodeID, input)
 		if err != nil {
 			fmt.Printf("\nError: %v\n", err)
 			continue
@@ -274,9 +286,47 @@ func runInteractiveChat(ctx context.Context, mgr *conversation.Manager, dag *typ
 				fmt.Print(event.Content)
 			case types.StreamEventError:
 				fmt.Printf("\nError: %v\n", event.Error)
+			case types.StreamEventNodeSaved:
+				// Update current position to the assistant's response node
+				currentNodeID = event.NodeID
 			}
 		}
 		fmt.Println()
+	}
+}
+
+// printPathToNode prints the path from root to a specific node
+func printPathToNode(nodes []*types.DAGNode, targetNodeID string) {
+	// Build node map
+	nodeMap := make(map[string]*types.DAGNode)
+	for _, n := range nodes {
+		nodeMap[n.ID] = n
+	}
+
+	// Walk up from target to collect path
+	var path []*types.DAGNode
+	currentID := targetNodeID
+	for currentID != "" {
+		node, ok := nodeMap[currentID]
+		if !ok {
+			break
+		}
+		path = append(path, node)
+		currentID = node.ParentID
+	}
+
+	// Reverse to get chronological order
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+
+	// Print last 4 nodes of the path
+	start := 0
+	if len(path) > 4 {
+		start = len(path) - 4
+	}
+	for _, node := range path[start:] {
+		printNode(node)
 	}
 }
 

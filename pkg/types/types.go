@@ -179,6 +179,7 @@ const (
 	StreamEventContentDone StreamEventType = "content_done"
 	StreamEventDone        StreamEventType = "done"
 	StreamEventError       StreamEventType = "error"
+	StreamEventNodeSaved   StreamEventType = "node_saved"
 )
 
 // StreamEvent represents an event during streaming completion.
@@ -188,6 +189,7 @@ type StreamEvent struct {
 	ContentBlock *ContentBlock       `json:"content_block,omitempty"` // For content_done events
 	Response     *CompletionResponse `json:"response,omitempty"`      // For done events
 	Error        error               `json:"-"`                       // For error events
+	NodeID       string              `json:"node_id,omitempty"`       // For node_saved events
 }
 
 // ModelInfo represents information about a model.

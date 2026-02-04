@@ -27,7 +27,6 @@ type Storage interface {
 	CreateDAG(ctx context.Context, dag *types.DAG) error
 	GetDAG(ctx context.Context, id string) (*types.DAG, error)
 	ListDAGs(ctx context.Context) ([]*types.DAG, error)
-	GetForkedDAGs(ctx context.Context, dagID string) ([]*types.DAG, error)
 	UpdateDAG(ctx context.Context, dag *types.DAG) error
 	DeleteDAG(ctx context.Context, id string) error
 

@@ -67,7 +67,7 @@ func (m *Manager) GetNodes(ctx context.Context, dagID string) ([]*types.DAGNode,
 	return m.storage.GetDAGNodes(ctx, dagID)
 }
 
-// AddUserMessage adds a user message to the DAG.
+// AddUserMessage adds a user message to the DAG after the last node.
 func (m *Manager) AddUserMessage(ctx context.Context, dagID, content string) (*types.DAGNode, error) {
 	// Get the last node to determine parent and sequence
 	lastNode, err := m.storage.GetLastDAGNode(ctx, dagID)
@@ -75,11 +75,27 @@ func (m *Manager) AddUserMessage(ctx context.Context, dagID, content string) (*t
 		return nil, fmt.Errorf("failed to get last node: %w", err)
 	}
 
-	sequence := 1
 	var parentID string
 	if lastNode != nil {
-		sequence = lastNode.Sequence + 1
 		parentID = lastNode.ID
+	}
+
+	return m.AddUserMessageAfter(ctx, dagID, parentID, content)
+}
+
+// AddUserMessageAfter adds a user message after a specific node (for branching).
+func (m *Manager) AddUserMessageAfter(ctx context.Context, dagID, parentNodeID, content string) (*types.DAGNode, error) {
+	// Get max sequence to determine next sequence number
+	nodes, err := m.storage.GetDAGNodes(ctx, dagID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	maxSeq := 0
+	for _, n := range nodes {
+		if n.Sequence > maxSeq {
+			maxSeq = n.Sequence
+		}
 	}
 
 	contentJSON, err := json.Marshal(content)
@@ -90,8 +106,8 @@ func (m *Manager) AddUserMessage(ctx context.Context, dagID, content string) (*t
 	node := &types.DAGNode{
 		ID:        uuid.New().String(),
 		DAGID:     dagID,
-		ParentID:  parentID,
-		Sequence:  sequence,
+		ParentID:  parentNodeID,
+		Sequence:  maxSeq + 1,
 		NodeType:  types.NodeTypeUser,
 		Content:   contentJSON,
 		Status:    types.DAGStatusCompleted,
@@ -114,8 +130,14 @@ func (m *Manager) AddUserMessage(ctx context.Context, dagID, content string) (*t
 	return node, nil
 }
 
-// SendMessage sends a message and gets a streaming response.
+// SendMessage sends a message and gets a streaming response. Returns the assistant node ID.
 func (m *Manager) SendMessage(ctx context.Context, dagID, userMessage string) (<-chan types.StreamEvent, error) {
+	return m.SendMessageAfter(ctx, dagID, "", userMessage)
+}
+
+// SendMessageAfter sends a message after a specific node (for branching). Returns events channel.
+// If parentNodeID is empty, appends to the last node.
+func (m *Manager) SendMessageAfter(ctx context.Context, dagID, parentNodeID, userMessage string) (<-chan types.StreamEvent, error) {
 	// Get DAG
 	dag, err := m.storage.GetDAG(ctx, dagID)
 	if err != nil {
@@ -126,13 +148,18 @@ func (m *Manager) SendMessage(ctx context.Context, dagID, userMessage string) (<
 	}
 
 	// Add user message
-	userNode, err := m.AddUserMessage(ctx, dagID, userMessage)
+	var userNode *types.DAGNode
+	if parentNodeID == "" {
+		userNode, err = m.AddUserMessage(ctx, dagID, userMessage)
+	} else {
+		userNode, err = m.AddUserMessageAfter(ctx, dagID, parentNodeID, userMessage)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	// Build message history
-	messages, err := m.buildMessageHistory(ctx, dagID)
+	// Build message history from the user node (walking up the tree)
+	messages, err := m.buildMessageHistoryFromNode(ctx, dagID, userNode.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,9 +199,13 @@ func (m *Manager) SendMessage(ctx context.Context, dagID, userMessage string) (<
 			}
 		}
 
-		// Save assistant response
+		// Save assistant response and send node_saved event
 		if response != nil || fullText != "" {
-			m.saveAssistantResponse(ctx, dag, userNode, fullText, response, startTime)
+			nodeID := m.saveAssistantResponse(ctx, dag, userNode, fullText, response, startTime)
+			outputEvents <- types.StreamEvent{
+				Type:   types.StreamEventNodeSaved,
+				NodeID: nodeID,
+			}
 		}
 	}()
 
@@ -201,15 +232,39 @@ func (m *Manager) Complete(ctx context.Context, dagID, userMessage string) (*typ
 	return response, nil
 }
 
-// buildMessageHistory builds the message history for a DAG.
-func (m *Manager) buildMessageHistory(ctx context.Context, dagID string) ([]types.Message, error) {
+// buildMessageHistoryFromNode builds message history by walking up from a node to the root.
+func (m *Manager) buildMessageHistoryFromNode(ctx context.Context, dagID, nodeID string) ([]types.Message, error) {
+	// Get all nodes and build a lookup map
 	nodes, err := m.storage.GetDAGNodes(ctx, dagID)
 	if err != nil {
 		return nil, err
 	}
 
-	messages := make([]types.Message, 0, len(nodes))
-	for _, node := range nodes {
+	nodeMap := make(map[string]*types.DAGNode)
+	for _, n := range nodes {
+		nodeMap[n.ID] = n
+	}
+
+	// Walk up from the given node to collect the path
+	var path []*types.DAGNode
+	currentID := nodeID
+	for currentID != "" {
+		node, ok := nodeMap[currentID]
+		if !ok {
+			break
+		}
+		path = append(path, node)
+		currentID = node.ParentID
+	}
+
+	// Reverse to get chronological order (root to leaf)
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+
+	// Convert to messages
+	messages := make([]types.Message, 0, len(path))
+	for _, node := range path {
 		var role string
 		switch node.NodeType {
 		case types.NodeTypeUser:
@@ -231,8 +286,8 @@ func (m *Manager) buildMessageHistory(ctx context.Context, dagID string) ([]type
 	return messages, nil
 }
 
-// saveAssistantResponse saves the assistant's response as a DAG node.
-func (m *Manager) saveAssistantResponse(ctx context.Context, dag *types.DAG, userNode *types.DAGNode, text string, response *types.CompletionResponse, startTime time.Time) {
+// saveAssistantResponse saves the assistant's response as a DAG node and returns the node ID.
+func (m *Manager) saveAssistantResponse(ctx context.Context, dag *types.DAG, userNode *types.DAGNode, text string, response *types.CompletionResponse, startTime time.Time) string {
 	// Determine content to save
 	var content json.RawMessage
 	var tokensIn, tokensOut int
@@ -284,6 +339,7 @@ func (m *Manager) saveAssistantResponse(ctx context.Context, dag *types.DAG, use
 
 	m.storage.AddDAGNode(ctx, node)
 	m.storage.UpdateDAG(ctx, dag)
+	return node.ID
 }
 
 // UpdateTitle updates the DAG title.
@@ -309,96 +365,32 @@ func (m *Manager) GenerateTitle(text string) string {
 	return text
 }
 
-// ForkFromNode creates a new DAG that branches from a specific node.
-// It copies all nodes up to and including the specified node to the new DAG.
-func (m *Manager) ForkFromNode(ctx context.Context, nodeID string) (*types.DAG, error) {
+// GetNodeWithDAG finds a node by ID (or prefix) and returns both the node and its DAG.
+func (m *Manager) GetNodeWithDAG(ctx context.Context, nodeID string) (*types.DAGNode, *types.DAG, error) {
 	// Find the node by ID (try exact match first, then prefix)
 	node, err := m.storage.GetDAGNode(ctx, nodeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node: %w", err)
+		return nil, nil, fmt.Errorf("failed to get node: %w", err)
 	}
 	if node == nil {
 		// Try prefix match
 		node, err = m.storage.GetDAGNodeByPrefix(ctx, nodeID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get node by prefix: %w", err)
+			return nil, nil, fmt.Errorf("failed to get node by prefix: %w", err)
 		}
 	}
 	if node == nil {
-		return nil, fmt.Errorf("node not found: %s", nodeID)
+		return nil, nil, fmt.Errorf("node not found: %s", nodeID)
 	}
 
-	// Get the parent DAG
-	parentDAG, err := m.storage.GetDAG(ctx, node.DAGID)
+	// Get the DAG
+	dag, err := m.storage.GetDAG(ctx, node.DAGID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get parent DAG: %w", err)
+		return nil, nil, fmt.Errorf("failed to get DAG: %w", err)
 	}
-	if parentDAG == nil {
-		return nil, fmt.Errorf("parent DAG not found: %s", node.DAGID)
-	}
-
-	// Get all nodes up to and including the fork point
-	allNodes, err := m.storage.GetDAGNodes(ctx, parentDAG.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	if dag == nil {
+		return nil, nil, fmt.Errorf("DAG not found: %s", node.DAGID)
 	}
 
-	// Filter nodes up to the fork point (by sequence)
-	var nodesToCopy []*types.DAGNode
-	for _, n := range allNodes {
-		if n.Sequence <= node.Sequence {
-			nodesToCopy = append(nodesToCopy, n)
-		}
-	}
-
-	// Create new DAG
-	now := time.Now()
-	newDAG := &types.DAG{
-		ID:             uuid.New().String(),
-		Title:          parentDAG.Title,
-		WorkflowID:     parentDAG.WorkflowID,
-		Model:          parentDAG.Model,
-		SystemPrompt:   parentDAG.SystemPrompt,
-		Tools:          parentDAG.Tools,
-		Status:         types.DAGStatusRunning,
-		ForkedFromDAG:  parentDAG.ID,
-		ForkedFromNode: node.ID,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
-
-	if err := m.storage.CreateDAG(ctx, newDAG); err != nil {
-		return nil, fmt.Errorf("failed to create forked DAG: %w", err)
-	}
-
-	// Copy nodes to the new DAG with new IDs
-	oldToNewID := make(map[string]string)
-	for _, oldNode := range nodesToCopy {
-		newNodeID := uuid.New().String()
-		oldToNewID[oldNode.ID] = newNodeID
-
-		newNode := &types.DAGNode{
-			ID:        newNodeID,
-			DAGID:     newDAG.ID,
-			ParentID:  oldToNewID[oldNode.ParentID], // Map to new parent ID
-			Sequence:  oldNode.Sequence,
-			NodeType:  oldNode.NodeType,
-			Content:   oldNode.Content,
-			Model:     oldNode.Model,
-			TokensIn:  oldNode.TokensIn,
-			TokensOut: oldNode.TokensOut,
-			LatencyMs: oldNode.LatencyMs,
-			Status:    oldNode.Status,
-			Input:     oldNode.Input,
-			Output:    oldNode.Output,
-			Error:     oldNode.Error,
-			CreatedAt: oldNode.CreatedAt,
-		}
-
-		if err := m.storage.AddDAGNode(ctx, newNode); err != nil {
-			return nil, fmt.Errorf("failed to copy node: %w", err)
-		}
-	}
-
-	return newDAG, nil
+	return node, dag, nil
 }

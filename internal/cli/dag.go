@@ -174,18 +174,6 @@ func runDAGShow(cmd *cobra.Command, args []string) {
 		exitError("failed to get nodes: %v", err)
 	}
 
-	// Get forked DAGs
-	forkedDAGs, err := store.GetForkedDAGs(ctx, dag.ID)
-	if err != nil {
-		exitError("failed to get forked DAGs: %v", err)
-	}
-
-	// Build map of node ID -> forked DAGs
-	forksByNode := make(map[string][]*types.DAG)
-	for _, fork := range forkedDAGs {
-		forksByNode[fork.ForkedFromNode] = append(forksByNode[fork.ForkedFromNode], fork)
-	}
-
 	// Handle JSON/YAML output
 	if outputJSON || outputYAML {
 		output := DAGWithNodes{
@@ -209,11 +197,6 @@ func runDAGShow(cmd *cobra.Command, args []string) {
 		fmt.Printf("Source: chat\n")
 	}
 
-	// Show if this is a fork
-	if dag.ForkedFromDAG != "" {
-		fmt.Printf("Forked from: %s (node %s)\n", dag.ForkedFromDAG[:8], dag.ForkedFromNode[:8])
-	}
-
 	fmt.Printf("Status: %s\n", dag.Status)
 	if dag.Model != "" {
 		fmt.Printf("Model: %s\n", dag.Model)
@@ -232,46 +215,62 @@ func runDAGShow(cmd *cobra.Command, args []string) {
 		fmt.Printf("Output: %s\n", truncate(string(dag.Output), 60))
 	}
 
-	if len(forkedDAGs) > 0 {
-		fmt.Printf("Forks: %d\n", len(forkedDAGs))
-	}
-
 	fmt.Println()
 
-	// Print nodes as tree with forks
+	// Print nodes as a tree
 	if len(nodes) > 0 {
 		fmt.Println("Node history:")
-		for i, node := range nodes {
-			isLast := i == len(nodes)-1 && len(forksByNode[node.ID]) == 0
-			prefix := "├─"
-			if isLast {
-				prefix = "└─"
-			}
-			fmt.Printf("%s ", prefix)
-			printDAGNodeCompact(node)
+		printDAGTree(nodes)
+	}
+}
 
-			// Show forks from this node
-			forks := forksByNode[node.ID]
-			for j, fork := range forks {
-				forkIsLast := j == len(forks)-1 && i == len(nodes)-1
-				forkPrefix := "│  └─"
-				if forkIsLast {
-					forkPrefix = "   └─"
-				} else if i == len(nodes)-1 {
-					forkPrefix = "   ├─"
-				} else {
-					forkPrefix = "│  ├─"
-				}
-				title := fork.Title
-				if title == "" {
-					title = "(untitled)"
-				}
-				if len(title) > 30 {
-					title = title[:27] + "..."
-				}
-				fmt.Printf("%s [fork] %s: %s\n", forkPrefix, fork.ID[:8], title)
-			}
+// printDAGTree prints nodes as a tree structure
+func printDAGTree(nodes []*types.DAGNode) {
+	if len(nodes) == 0 {
+		return
+	}
+
+	// Build parent -> children map
+	childrenMap := make(map[string][]*types.DAGNode)
+	var roots []*types.DAGNode
+
+	for _, node := range nodes {
+		if node.ParentID == "" {
+			roots = append(roots, node)
+		} else {
+			childrenMap[node.ParentID] = append(childrenMap[node.ParentID], node)
 		}
+	}
+
+	// Print tree recursively
+	for i, root := range roots {
+		isLast := i == len(roots)-1
+		printNodeTree(root, "", isLast, childrenMap)
+	}
+}
+
+// printNodeTree recursively prints a node and its children
+func printNodeTree(node *types.DAGNode, prefix string, isLast bool, childrenMap map[string][]*types.DAGNode) {
+	// Determine connector
+	connector := "├─"
+	if isLast {
+		connector = "└─"
+	}
+
+	fmt.Printf("%s%s ", prefix, connector)
+	printDAGNodeCompact(node)
+
+	// Determine prefix for children
+	childPrefix := prefix + "│  "
+	if isLast {
+		childPrefix = prefix + "   "
+	}
+
+	// Print children
+	children := childrenMap[node.ID]
+	for i, child := range children {
+		childIsLast := i == len(children)-1
+		printNodeTree(child, childPrefix, childIsLast, childrenMap)
 	}
 }
 
