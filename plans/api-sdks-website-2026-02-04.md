@@ -18,13 +18,13 @@ Rewrite README to prioritize the interactive CLI journey before introducing the 
 
 Build the REST API server using the existing config infrastructure.
 
-- [ ] 2a: Create `internal/api/` package with HTTP server setup (using chi or stdlib)
-- [ ] 2b: Implement DAG endpoints: `GET /dags`, `GET /dags/{id}`, `DELETE /dags/{id}`
-- [ ] 2c: Implement Chat endpoints: `POST /chat` (new conversation), `POST /chat/{id}` (continue), `POST /chat/{id}/fork` (fork from node)
-- [ ] 2d: Implement Workflow endpoints: `GET /workflows`, `POST /workflows`, `POST /workflows/{id}/run`
-- [ ] 2e: Add streaming support via SSE for chat responses
-- [ ] 2f: Add `langdag serve` CLI command to start the API server
-- [ ] 2g: Create Dockerfile for containerized deployment
+- [x] 2a: Create `internal/api/` package with HTTP server setup (using chi or stdlib)
+- [x] 2b: Implement DAG endpoints: `GET /dags`, `GET /dags/{id}`, `DELETE /dags/{id}`
+- [x] 2c: Implement Chat endpoints: `POST /chat` (new conversation), `POST /chat/{id}` (continue), `POST /chat/{id}/fork` (fork from node)
+- [x] 2d: Implement Workflow endpoints: `GET /workflows`, `POST /workflows`, `POST /workflows/{id}/run`
+- [x] 2e: Add streaming support via SSE for chat responses
+- [x] 2f: Add `langdag serve` CLI command to start the API server
+- [x] 2g: Create Dockerfile for containerized deployment
 
 ---
 
