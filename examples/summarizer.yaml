@@ -1,0 +1,24 @@
+name: summarizer
+description: Summarize text input
+
+defaults:
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+
+nodes:
+  - id: input
+    type: input
+
+  - id: summarize
+    type: llm
+    system: "You are a concise summarizer. Provide clear, brief summaries."
+    prompt: "Summarize the following text:\n\n{{input}}"
+
+  - id: output
+    type: output
+
+edges:
+  - from: input
+    to: summarize
+  - from: summarize
+    to: output
