@@ -60,7 +60,7 @@ Create example applications demonstrating SDK usage.
 
 - [x] 5a: Python example: `examples/python/` - agent interaction, DAG exploration, branching
 - [x] 5b: Go example: `examples/go/` - same functionality
-- [ ] 5c: TypeScript example: `examples/typescript/` - same functionality
+- [x] 5c: TypeScript example: `examples/typescript/` - same functionality
 
 ---
 

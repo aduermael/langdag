@@ -1,0 +1,30 @@
+{
+  "name": "langdag-typescript-example",
+  "version": "1.0.0",
+  "description": "Example project demonstrating the LangDAG TypeScript SDK",
+  "type": "module",
+  "main": "dist/example.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/example.js",
+    "dev": "tsc && node dist/example.js"
+  },
+  "keywords": [
+    "langdag",
+    "example",
+    "typescript",
+    "llm",
+    "dag"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "langdag": "file:../../sdks/typescript"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
