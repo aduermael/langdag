@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/langdag/langdag/internal/config"
 	"github.com/langdag/langdag/internal/conversation"
+	"github.com/langdag/langdag/internal/provider"
 	"github.com/langdag/langdag/internal/provider/anthropic"
+	mockprovider "github.com/langdag/langdag/internal/provider/mock"
 	"github.com/langdag/langdag/internal/storage/sqlite"
 	"github.com/langdag/langdag/internal/workflow"
 )
@@ -56,8 +59,11 @@ func New(cfg *Config, appConfig *config.Config) (*Server, error) {
 	}
 
 	// Create provider
-	providerKey := appConfig.Providers.Anthropic.APIKey
-	prov := anthropic.New(providerKey)
+	prov, err := createProvider(appConfig)
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
 
 	// Create managers
 	convMgr := conversation.NewManager(store, prov)
@@ -175,4 +181,37 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // decodeJSON decodes JSON from the request body.
 func decodeJSON(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+// createProvider creates the LLM provider based on configuration.
+func createProvider(appConfig *config.Config) (provider.Provider, error) {
+	switch appConfig.Providers.Default {
+	case "mock":
+		cfg := mockprovider.Config{
+			Mode:          appConfig.Providers.Mock.Mode,
+			FixedResponse: appConfig.Providers.Mock.FixedResponse,
+		}
+		if appConfig.Providers.Mock.Delay != "" {
+			d, err := time.ParseDuration(appConfig.Providers.Mock.Delay)
+			if err != nil {
+				return nil, fmt.Errorf("invalid mock delay: %w", err)
+			}
+			cfg.Delay = d
+		}
+		if appConfig.Providers.Mock.ChunkDelay != "" {
+			d, err := time.ParseDuration(appConfig.Providers.Mock.ChunkDelay)
+			if err != nil {
+				return nil, fmt.Errorf("invalid mock chunk_delay: %w", err)
+			}
+			cfg.ChunkDelay = d
+		}
+		log.Printf("Using mock provider (mode: %s)", cfg.Mode)
+		return mockprovider.New(cfg), nil
+	default:
+		apiKey := appConfig.Providers.Anthropic.APIKey
+		if apiKey == "" {
+			return nil, fmt.Errorf("ANTHROPIC_API_KEY not set")
+		}
+		return anthropic.New(apiKey), nil
+	}
 }

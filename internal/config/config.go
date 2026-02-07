@@ -27,14 +27,24 @@ type StorageConfig struct {
 
 // ProvidersConfig represents provider configurations.
 type ProvidersConfig struct {
-	Anthropic ProviderConfig `mapstructure:"anthropic"`
-	OpenAI    ProviderConfig `mapstructure:"openai"`
+	Default   string             `mapstructure:"default"`
+	Anthropic ProviderConfig     `mapstructure:"anthropic"`
+	OpenAI    ProviderConfig     `mapstructure:"openai"`
+	Mock      MockProviderConfig `mapstructure:"mock"`
 }
 
 // ProviderConfig represents a single provider configuration.
 type ProviderConfig struct {
 	APIKey  string `mapstructure:"api_key"`
 	BaseURL string `mapstructure:"base_url"`
+}
+
+// MockProviderConfig represents mock provider configuration.
+type MockProviderConfig struct {
+	Mode          string `mapstructure:"mode"`           // random, echo, fixed
+	FixedResponse string `mapstructure:"fixed_response"` // response for fixed mode
+	Delay         string `mapstructure:"delay"`           // delay before responding
+	ChunkDelay    string `mapstructure:"chunk_delay"`     // delay between stream chunks
 }
 
 // ServerConfig represents server configuration.
@@ -91,8 +101,13 @@ func Load() (*Config, error) {
 	v.AutomaticEnv()
 
 	// Also support direct env var names
+	v.BindEnv("providers.default", "LANGDAG_PROVIDER")
 	v.BindEnv("providers.anthropic.api_key", "ANTHROPIC_API_KEY")
 	v.BindEnv("providers.openai.api_key", "OPENAI_API_KEY")
+	v.BindEnv("providers.mock.mode", "LANGDAG_MOCK_MODE")
+	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
+	v.BindEnv("providers.mock.delay", "LANGDAG_MOCK_DELAY")
+	v.BindEnv("providers.mock.chunk_delay", "LANGDAG_MOCK_CHUNK_DELAY")
 	v.BindEnv("storage.path", "LANGDAG_STORAGE_PATH")
 
 	// Unmarshal config
@@ -112,6 +127,10 @@ func setDefaults(v *viper.Viper) {
 	// Storage defaults
 	v.SetDefault("storage.driver", "sqlite")
 	v.SetDefault("storage.path", "./langdag.db")
+
+	// Provider defaults
+	v.SetDefault("providers.default", "anthropic")
+	v.SetDefault("providers.mock.mode", "random")
 
 	// Server defaults
 	v.SetDefault("server.host", "0.0.0.0")

@@ -51,11 +51,6 @@ func runServe(cmd *cobra.Command, args []string) {
 		exitError("failed to load config: %v", err)
 	}
 
-	// Check API key
-	if cfg.Providers.Anthropic.APIKey == "" {
-		exitError("ANTHROPIC_API_KEY not set")
-	}
-
 	// Create server
 	addr := fmt.Sprintf("%s:%d", serveHost, servePort)
 	serverCfg := &api.Config{
