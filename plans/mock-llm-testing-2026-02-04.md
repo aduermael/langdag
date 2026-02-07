@@ -13,7 +13,7 @@ Create a standalone mock LLM server that mimics the Anthropic API for testing pu
 - [x] 1c: Implement SSE streaming that mimics real token-by-token output with configurable chunk sizes and delays
 - [x] 1d: Add response modes: `random` (random lorem ipsum), `echo` (echo user message), `fixed` (configurable response), `error` (simulate errors)
 - [x] 1e: Add CLI flags for port, mode, delay, and response configuration
-- [ ] 1f: Add Makefile target to build and run mockllm
+- [x] 1f: Add Makefile target to build and run mockllm
 
 ---
 
