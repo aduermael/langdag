@@ -62,9 +62,9 @@ Unit tests and E2E test for the TypeScript SDK.
 
 Create test orchestration scripts.
 
-- [ ] 6a: Create `scripts/test-e2e.sh` that starts mock provider, langdag server, runs all SDK E2E tests, and cleans up
-- [ ] 6b: Add Makefile targets: `test`, `test-unit`, `test-e2e`, `test-go`, `test-python`, `test-typescript`
-- [ ] 6c: Create Docker Compose file for test environment (mockllm + langdag server)
+- [x] 6a: Create `scripts/test-e2e.sh` that starts mock provider, langdag server, runs all SDK E2E tests, and cleans up
+- [x] 6b: Add Makefile targets: `test`, `test-unit`, `test-e2e`, `test-go`, `test-python`, `test-typescript`
+- [x] 6c: Create Docker Compose file for test environment (mockllm + langdag server)
 
 ---
 

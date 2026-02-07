@@ -1,0 +1,14 @@
+services:
+  langdag:
+    build: .
+    environment:
+      - LANGDAG_PROVIDER=mock
+      - LANGDAG_MOCK_MODE=echo
+      - LANGDAG_STORAGE_PATH=/data/langdag-test.db
+    ports:
+      - "18090:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
