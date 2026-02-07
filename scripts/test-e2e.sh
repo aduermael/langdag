@@ -60,12 +60,12 @@ fi
 
 echo ""
 echo "=== Running Python SDK E2E tests ==="
-if [ -d sdks/python/.venv ]; then
-    PYTEST="sdks/python/.venv/bin/pytest"
-else
-    PYTEST="pytest"
+if [ ! -d sdks/python/.venv ]; then
+    echo "Setting up Python venv..."
+    (cd sdks/python && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" -q)
 fi
-if (cd sdks/python && $PYTEST tests/test_e2e.py -v); then
+PYTEST="$ROOT_DIR/sdks/python/.venv/bin/pytest"
+if (cd sdks/python && "$PYTEST" tests/test_e2e.py -v); then
     echo "Python SDK E2E: PASSED"
 else
     echo "Python SDK E2E: FAILED"
@@ -74,6 +74,10 @@ fi
 
 echo ""
 echo "=== Running TypeScript SDK E2E tests ==="
+if [ ! -d sdks/typescript/node_modules ]; then
+    echo "Installing TypeScript dependencies..."
+    (cd sdks/typescript && npm install -q)
+fi
 if (cd sdks/typescript && npx vitest run src/e2e.test.ts); then
     echo "TypeScript SDK E2E: PASSED"
 else
