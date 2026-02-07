@@ -41,9 +41,9 @@ Unit tests and E2E test for the Go SDK.
 
 Unit tests and E2E test for the Python SDK.
 
-- [ ] 4a: Add unit tests for sync client using pytest-httpx mocking
-- [ ] 4b: Add unit tests for async client using pytest-httpx async mocking
-- [ ] 4c: Add E2E test that connects to langdag server with mock provider
+- [x] 4a: Add unit tests for sync client using pytest-httpx mocking
+- [x] 4b: Add unit tests for async client using pytest-httpx async mocking
+- [x] 4c: Add E2E test that connects to langdag server with mock provider
 
 ---
 
