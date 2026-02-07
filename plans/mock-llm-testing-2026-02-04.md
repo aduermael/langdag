@@ -21,7 +21,7 @@ Create a standalone mock LLM server that mimics the Anthropic API for testing pu
 
 Enable LangDAG server to use the mock LLM provider.
 
-- [ ] 2a: Create mock provider in `internal/provider/mock/` implementing the Provider interface
+- [x] 2a: Create mock provider in `internal/provider/mock/` implementing the Provider interface
 - [ ] 2b: Add provider selection via environment variable or config (`LANGDAG_PROVIDER=mock`)
 - [ ] 2c: Update config to support mock provider settings (response mode, delay, etc.)
 
