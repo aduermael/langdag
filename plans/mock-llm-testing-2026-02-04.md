@@ -72,10 +72,10 @@ Create test orchestration scripts.
 
 Set up automated testing on each commit.
 
-- [ ] 7a: Create `.github/workflows/test.yml` with jobs for each SDK's unit tests
-- [ ] 7b: Add E2E test job that builds mockllm, starts services, runs E2E tests
-- [ ] 7c: Add matrix testing for Go versions (1.22, 1.23), Python (3.10, 3.11, 3.12), Node.js (18, 20, 22)
-- [ ] 7d: Add test status badge to README
+- [x] 7a: Create `.github/workflows/test.yml` with jobs for each SDK's unit tests
+- [x] 7b: Add E2E test job that builds mockllm, starts services, runs E2E tests
+- [x] 7c: Add matrix testing for Go versions (1.22, 1.23), Python (3.10, 3.11, 3.12), Node.js (18, 20, 22)
+- [x] 7d: Add test status badge to README
 
 ---
 

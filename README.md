@@ -5,7 +5,8 @@
 <h3 align="center"><em>LLM Conversations as Directed Acyclic Graphs</em></h3>
 
 <p align="center">
-  <a href="https://github.com/yourusername/langdag/releases"><img src="https://img.shields.io/badge/version-0.2.0-00ADD8?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/aduermael/langdag/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://github.com/aduermael/langdag/releases"><img src="https://img.shields.io/badge/version-0.2.0-00ADD8?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go"></a>
 </p>
