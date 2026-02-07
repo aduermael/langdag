@@ -31,8 +31,8 @@ Enable LangDAG server to use the mock LLM provider.
 
 Unit tests and E2E test for the Go SDK.
 
-- [ ] 3a: Add unit tests for `sdks/go/` covering client initialization, request building, error handling
-- [ ] 3b: Add unit tests for SSE parsing and event handling
+- [x] 3a: Add unit tests for `sdks/go/` covering client initialization, request building, error handling
+- [x] 3b: Add unit tests for SSE parsing and event handling
 - [ ] 3c: Add E2E test that spins up mock server + langdag server and tests full chat flow (streaming & non-streaming)
 
 ---
