@@ -8,11 +8,11 @@ This plan implements a mock LLM API server in Go for testing without consuming A
 
 Create a standalone mock LLM server that mimics the Anthropic API for testing purposes.
 
-- [ ] 1a: Create `tools/mockllm/` Go module with HTTP server supporting both streaming and non-streaming modes
-- [ ] 1b: Implement Anthropic-compatible `/v1/messages` endpoint with configurable response behavior (random text, fixed responses, delays)
-- [ ] 1c: Implement SSE streaming that mimics real token-by-token output with configurable chunk sizes and delays
-- [ ] 1d: Add response modes: `random` (random lorem ipsum), `echo` (echo user message), `fixed` (configurable response), `error` (simulate errors)
-- [ ] 1e: Add CLI flags for port, mode, delay, and response configuration
+- [x] 1a: Create `tools/mockllm/` Go module with HTTP server supporting both streaming and non-streaming modes
+- [x] 1b: Implement Anthropic-compatible `/v1/messages` endpoint with configurable response behavior (random text, fixed responses, delays)
+- [x] 1c: Implement SSE streaming that mimics real token-by-token output with configurable chunk sizes and delays
+- [x] 1d: Add response modes: `random` (random lorem ipsum), `echo` (echo user message), `fixed` (configurable response), `error` (simulate errors)
+- [x] 1e: Add CLI flags for port, mode, delay, and response configuration
 - [ ] 1f: Add Makefile target to build and run mockllm
 
 ---
