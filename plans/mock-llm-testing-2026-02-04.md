@@ -51,10 +51,10 @@ Unit tests and E2E test for the Python SDK.
 
 Unit tests and E2E test for the TypeScript SDK.
 
-- [ ] 5a: Set up Jest or Vitest testing framework in `sdks/typescript/`
-- [ ] 5b: Add unit tests for client methods and error handling
-- [ ] 5c: Add unit tests for SSE parsing
-- [ ] 5d: Add E2E test that connects to langdag server with mock provider
+- [x] 5a: Set up Jest or Vitest testing framework in `sdks/typescript/`
+- [x] 5b: Add unit tests for client methods and error handling
+- [x] 5c: Add unit tests for SSE parsing
+- [x] 5d: Add E2E test that connects to langdag server with mock provider
 
 ---
 
