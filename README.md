@@ -56,7 +56,7 @@ LangDAG is a **high-performance Go tool** that models LLM conversations and work
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/langdag.git
+git clone https://github.com/aduermael/langdag.git
 cd langdag
 go build -o langdag ./cmd/langdag
 ```
@@ -64,7 +64,7 @@ go build -o langdag ./cmd/langdag
 ### Go Install
 
 ```bash
-go install github.com/yourusername/langdag/cmd/langdag@latest
+go install github.com/aduermael/langdag/cmd/langdag@latest
 ```
 
 ---
@@ -295,7 +295,7 @@ Workflows create DAGs that can be continued interactively using `langdag chat co
 ## Documentation
 
 - **[Design Document](docs/DESIGN.md)** — Deep dive into architecture
-- **[API Reference](https://yourusername.github.io/langdag/api)** — REST & WebSocket APIs
+- **[API Reference](https://aduermael.github.io/langdag/api)** — REST & WebSocket APIs
 - **[Examples](examples/)** — Sample workflows
 
 ---

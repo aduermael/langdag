@@ -17,7 +17,7 @@ Be respectful and constructive. We're all here to build great software.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/langdag.git
+git clone https://github.com/aduermael/langdag.git
 cd langdag
 
 # Build

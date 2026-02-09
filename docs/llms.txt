@@ -1,0 +1,37 @@
+# LangDAG
+
+> LLM Conversations as Directed Acyclic Graphs
+
+LangDAG is a high-performance Go tool for orchestrating LLM interactions. It models conversations and workflows as directed acyclic graphs (DAGs), enabling branching, forking, and replaying of AI conversations.
+
+## Key Features
+
+- Two modes: Workflow (YAML pipelines) and Conversation (dynamic chat)
+- Native streaming via SSE and WebSocket
+- Conversation forking: branch from any node to explore alternatives
+- Tool integration with Auto, Interrupt, and WebSocket execution modes
+- Persistent storage: SQLite (default) or PostgreSQL
+- ~1ms overhead, single static binary, zero runtime dependencies
+
+## SDKs
+
+- Python: `pip install langdag`
+- Go: `go get github.com/langdag/langdag-go`
+- TypeScript: `npm install langdag`
+
+## Quick Start
+
+```bash
+# Run the server
+git clone https://github.com/aduermael/langdag && cd langdag
+go run ./cmd/langdag serve
+
+# Or install directly
+go install github.com/aduermael/langdag/cmd/langdag@latest
+```
+
+## Links
+
+- Website: https://langdag.com
+- GitHub: https://github.com/aduermael/langdag
+- License: MIT

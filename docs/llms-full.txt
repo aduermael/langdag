@@ -1,0 +1,236 @@
+# LangDAG
+
+> LLM Conversations as Directed Acyclic Graphs
+
+LangDAG is a high-performance Go tool for orchestrating LLM interactions. It models conversations and workflows as directed acyclic graphs (DAGs), enabling branching, forking, and replaying of AI conversations.
+
+## Core Concept
+
+A conversation is a DAG — it grows incrementally as users and LLMs exchange messages. Each message is a node, and edges represent the flow of conversation. Forking creates new branches from any existing node, preserving full history.
+
+```
+┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
+│  User   │────>│   LLM   │────>│  Tool   │────>│   LLM   │
+└─────────┘     └─────────┘     └─────────┘     └─────────┘
+                    │                               │
+                    └──────── conversation ─────────┘
+                                 = DAG
+```
+
+## Features
+
+- **Two Modes**: Workflow (YAML pipelines) and Conversation (dynamic chat) — same engine
+- **Performance**: Pure Go, ~1ms overhead, single static binary, zero runtime deps
+- **Native Streaming**: SSE + WebSocket support with tool call interruption
+- **Tool Integration**: Auto, Interrupt, or WebSocket execution modes
+- **Conversation Forking**: Branch from any node, explore alternative paths
+- **Persistent Storage**: SQLite (default) or PostgreSQL, full history replay
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                      CLI / API                           │
+├──────────────────────────────────────────────────────────┤
+│                    DAG Executor                          │
+│   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
+│   │  Parser   │   │ Scheduler │   │  Runner   │         │
+│   └───────────┘   └───────────┘   └───────────┘         │
+├──────────────────────────────────────────────────────────┤
+│                   Provider Layer                         │
+│   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
+│   │ Anthropic │   │  OpenAI   │   │  Ollama   │         │
+│   └───────────┘   └───────────┘   └───────────┘         │
+├──────────────────────────────────────────────────────────┤
+│                   Storage Layer                          │
+│   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
+│   │  SQLite   │   │ PostgreSQL│   │   Redis   │         │
+│   └───────────┘   └───────────┘   └───────────┘         │
+└──────────────────────────────────────────────────────────┘
+```
+
+## REST API
+
+Start the server:
+
+```bash
+langdag serve --port 8080
+```
+
+### Endpoints
+
+- `GET /dags` — List all DAGs
+- `GET /dags/{id}` — Get DAG details with all nodes
+- `POST /chat` — Start a new conversation (supports SSE streaming)
+- `POST /chat/{id}` — Continue a conversation (supports SSE streaming)
+- `POST /chat/{id}/fork` — Fork from a specific node
+- `POST /workflows/{id}/run` — Execute a workflow
+
+### SSE Event Types
+
+- `dag_info` — DAG metadata (id, title)
+- `node_info` — Node metadata (node_id, node_type)
+- `delta` — Streaming content token
+- `done` — Stream complete
+- `error` — Error occurred
+
+## SDKs
+
+### Python
+
+```bash
+pip install langdag
+```
+
+```python
+from langdag import LangDAGClient
+
+with LangDAGClient() as client:
+    # Start a streaming conversation
+    events = client.chat(message="What is LangDAG?", stream=True)
+    for event in events:
+        if event.event == SSEEventType.DELTA:
+            print(event.content, end="")
+
+    # Fork from any node
+    events = client.fork_chat(
+        dag_id=dag_id,
+        node_id=node_id,
+        message="Tell me more",
+        stream=True
+    )
+
+    # List and explore DAGs
+    dags = client.list_dags()
+    dag = client.get_dag(dag_id)
+```
+
+### Go
+
+```bash
+go get github.com/langdag/langdag-go
+```
+
+```go
+client := langdag.NewClient("http://localhost:8080")
+
+// Stream a conversation
+err := client.ChatStream(ctx, &langdag.NewChatRequest{
+    Message: "What is LangDAG?",
+}, func(event langdag.SSEEvent) error {
+    if event.Type == langdag.SSEEventDelta {
+        fmt.Print(event.Content)
+    }
+    return nil
+})
+
+// Fork from any node
+err := client.ForkChatStream(ctx, dagID, &langdag.ForkChatRequest{
+    NodeID:  nodeID,
+    Message: "Tell me more",
+}, func(event langdag.SSEEvent) error {
+    // handle events
+    return nil
+})
+
+// List and explore DAGs
+dags, err := client.ListDAGs(ctx)
+dag, err := client.GetDAG(ctx, dagID)
+```
+
+### TypeScript
+
+```bash
+npm install langdag
+```
+
+```typescript
+import { LangDAGClient } from 'langdag';
+
+const client = new LangDAGClient();
+
+// Stream a conversation
+const stream = client.chat({ message: "What is LangDAG?", stream: true });
+for await (const event of stream) {
+  if (event.type === 'delta') {
+    process.stdout.write(event.content);
+  }
+}
+
+// Fork from any node
+const forkStream = client.forkChat(dagId, {
+  node_id: nodeId,
+  message: "Tell me more",
+  stream: true,
+});
+
+// List and explore DAGs
+const dags = await client.listDags();
+const dag = await client.getDag(dagId);
+```
+
+## CLI Usage
+
+```bash
+# Set your API key
+export ANTHROPIC_API_KEY="your-api-key"
+
+# Start a new conversation
+langdag chat new
+
+# List all conversations
+langdag ls
+
+# View a conversation DAG
+langdag show <id>
+
+# Continue a conversation
+langdag chat continue <id>
+
+# Fork from a specific node
+langdag chat continue --node <node-id>
+
+# Create and run a workflow
+langdag workflow create research.yaml
+langdag workflow run research --input '{"query": "quantum computing"}'
+```
+
+## Workflow YAML Format
+
+```yaml
+name: research_agent
+description: Research a topic
+
+defaults:
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+
+nodes:
+  - id: input
+    type: input
+  - id: researcher
+    type: llm
+    system: "You are a research assistant."
+    prompt: "Research this topic: {{input}}"
+  - id: output
+    type: output
+
+edges:
+  - from: input
+    to: researcher
+  - from: researcher
+    to: output
+```
+
+## Configuration
+
+Environment variables (prefixed with `LANGDAG_`):
+
+- `LANGDAG_PROVIDER` — LLM provider (e.g., `anthropic`, `mock`)
+- `ANTHROPIC_API_KEY` — API key for Anthropic provider
+
+## Links
+
+- Website: https://langdag.com
+- GitHub: https://github.com/aduermael/langdag
+- License: MIT

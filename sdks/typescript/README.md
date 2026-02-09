@@ -1,6 +1,6 @@
 # LangDAG TypeScript SDK
 
-TypeScript client for the [LangDAG](https://github.com/your-org/langdag) REST API.
+TypeScript client for the [LangDAG](https://github.com/aduermael/langdag) REST API.
 
 LangDAG manages LLM conversations as directed acyclic graphs (DAGs), enabling branching, forking, and workflow execution.
 
