@@ -1,183 +1,275 @@
-# SDK Client API Simplification
+# SDK, CLI & Data Model Simplification
 
-Redesign the client SDK interface around **nodes** instead of chat verbs. The current API has 6 chat methods (`Chat`, `ChatStream`, `ContinueChat`, `ContinueChatStream`, `ForkChat`, `ForkChatStream`) that obscure the core abstraction: a DAG of nodes where any node can be extended with a new message.
+Everything is a **node**. There is no separate DAG entity. A DAG is simply the tree hanging off a root node (a node with no parent). The node ID is the only identifier needed.
 
 ## Design Philosophy
 
-The DAG is the central concept. A conversation is just a DAG with user/assistant nodes. "Forking" and "continuing" are the same operation: **creating a new child node from any existing node**. The distinction between "continue" and "fork" is a server concern (continue = append to latest leaf, fork = branch from a specific node), but from the client's perspective it's always: "given this node, say something new."
+- **One concept**: nodes. A root node defines a conversation/workflow tree.
+- **One verb**: `Prompt`. Same method on `Client` (new tree) and `Node` (extend tree).
+- **One ID space**: node IDs. No DAG IDs. "List DAGs" = "list root nodes."
+- **CLI mirrors SDK**: `langdag prompt` works like `client.Prompt()` / `node.Prompt()`.
 
-The single verb for this is **`Prompt`** — it means the same thing whether called on a `Client` (new DAG) or a `Node` (extend existing DAG).
+## Data Model
 
-## Proposed Go Client API
+### Current (being replaced)
+
+Two tables: `dags` (metadata: title, status, model, system_prompt, tools, input, output, forked_from) and `dag_nodes` (id, dag_id, parent_id, sequence, node_type, content, model, tokens, latency, status).
+
+### New: Everything is nodes
+
+Single `nodes` table. Root nodes (parent_id = NULL) carry the metadata that used to live on the DAG.
+
+```sql
+CREATE TABLE nodes (
+    id TEXT PRIMARY KEY,
+    parent_id TEXT REFERENCES nodes(id),
+    sequence INTEGER NOT NULL,
+    node_type TEXT NOT NULL,           -- "user", "assistant", "system", "tool_call", "tool_result"
+    content TEXT NOT NULL DEFAULT '',
+
+    -- LLM execution metadata (on assistant nodes)
+    model TEXT,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    latency_ms INTEGER,
+    status TEXT,
+
+    -- Root node metadata (NULL on non-root nodes)
+    title TEXT,
+    system_prompt TEXT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_nodes_parent ON nodes(parent_id);
+CREATE INDEX idx_nodes_root ON nodes(parent_id) WHERE parent_id IS NULL;
+```
+
+Key changes:
+- `title` lives on the root node (set from first user message or explicitly)
+- `system_prompt` lives on the root node
+- `status` is per-node (not per-DAG)
+- `model` is per-node (different nodes can use different models)
+- No `dag_id` column — a node's tree is found by traversing `parent_id` to root
+- `forked_from` concept disappears — forking is just adding a child to a non-leaf node
+
+### Migration
+
+- For each existing DAG: its first node becomes the root, with `title` and `system_prompt` copied from the DAG row
+- All `dag_nodes.dag_id` references are replaced by parent_id chains
+- The `dags` table is dropped
+
+## Server REST API
+
+```
+POST   /prompt                     Start new tree (returns assistant node)
+POST   /nodes/{id}/prompt          Prompt from existing node (returns assistant node)
+GET    /nodes                      List root nodes (the "DAGs")
+GET    /nodes/{id}                 Get a single node
+GET    /nodes/{id}/tree            Get full tree from this node
+DELETE /nodes/{id}                 Delete node and its subtree
+GET    /health                     Health check
+```
+
+All endpoints support `?stream=true` for SSE where applicable.
+
+The `/prompt` and `/nodes/{id}/prompt` endpoints accept:
+```json
+{
+    "message": "string",
+    "model": "string (optional)",
+    "system_prompt": "string (optional, only for /prompt)",
+    "stream": false
+}
+```
+
+## Go SDK
 
 ```go
 client := langdag.NewClient("http://localhost:8080")
 
-// Start a new conversation (returns the assistant's response Node)
+// New conversation
 node, err := client.Prompt(ctx, "What is LangDAG?", langdag.WithSystem("You are helpful."))
 fmt.Println(node.Content)
 
-// Continue from any node — same method
+// Continue from any node
 node2, err := node.Prompt(ctx, "Tell me more")
 
-// "Fork" is just prompting an earlier node
-alt, err := node.Prompt(ctx, "What about the architecture?")
-// node now has two children: node2 and alt
+// Branch from earlier node
+alt, err := node.Prompt(ctx, "Different angle")
 
-// Streaming variant
+// Streaming
 stream, err := node.PromptStream(ctx, "Tell me more")
 for event := range stream.Events() {
     fmt.Print(event.Content)
 }
-resultNode, err := stream.Node() // get final Node after stream completes
+result, err := stream.Node()
 
-// Get the full DAG
-dag, err := client.GetDAG(ctx, dagID)
-for _, n := range dag.Nodes {
-    fmt.Printf("[%s] %s: %s\n", n.ID[:8], n.Type, n.Content[:50])
+// Get any node by ID
+n, err := client.GetNode(ctx, nodeID)
+reply, err := n.Prompt(ctx, "Expand on this")
+
+// Get the full tree
+tree, err := client.GetTree(ctx, rootNodeID)
+for _, n := range tree.Nodes {
+    fmt.Printf("[%s] %s\n", n.Type, n.Content[:50])
 }
 
-// Get a specific node and prompt from it
-someNode, err := client.GetNode(ctx, dagID, nodeID)
-reply, err := someNode.Prompt(ctx, "Expand on this point")
-
-// List all DAGs
-dags, err := client.ListDAGs(ctx)
+// List root nodes ("list DAGs")
+roots, err := client.ListRoots(ctx)
 ```
-
-### Key Changes
-
-| Current | Proposed | Why |
-|---------|----------|-----|
-| `client.Chat(ctx, req, handler)` | `client.Prompt(ctx, msg, opts...)` | Start a new DAG |
-| `client.ChatStream(ctx, req, handler)` | `client.PromptStream(ctx, msg, opts...)` | Start a new DAG, streaming |
-| `client.ContinueChat(ctx, dagID, req, handler)` | `node.Prompt(ctx, msg)` | Continue from any node |
-| `client.ContinueChatStream(ctx, dagID, req, handler)` | `node.PromptStream(ctx, msg)` | Continue from any node, streaming |
-| `client.ForkChat(ctx, dagID, req, handler)` | `node.Prompt(ctx, msg)` | Same as continue — fork is just prompting a non-leaf |
-| `client.ForkChatStream(ctx, dagID, req, handler)` | `node.PromptStream(ctx, msg)` | Same as continue, streaming |
-| SSE callback handler | `stream.Events()` channel | More idiomatic Go |
-| `NewChatRequest{Message, SystemPrompt}` | `client.Prompt(ctx, msg, WithSystem(...))` | Functional options |
-| `ForkChatRequest{NodeID, Message}` | `node.Prompt(ctx, msg)` | Node knows its ID and DAG |
-| _(no equivalent)_ | `client.GetNode(ctx, id)` | Fetch a single node, ready to prompt |
 
 ### Core Types
 
 ```go
 type Node struct {
-    ID        string
-    DAGID     string
-    ParentID  string
-    Type      string    // "user", "assistant", etc.
-    Content   string
-    Sequence  int
-    TokensIn  int
-    TokensOut int
-    CreatedAt time.Time
+    ID           string
+    ParentID     string
+    Type         string    // "user", "assistant", "system", etc.
+    Content      string
+    Sequence     int
+    Model        string
+    TokensIn     int
+    TokensOut    int
+    LatencyMs    int
+    Status       string
+    Title        string    // only on root nodes
+    SystemPrompt string    // only on root nodes
+    CreatedAt    time.Time
 
-    client    *Client   // unexported — enables Prompt()
+    client       *Client   // unexported — enables Prompt()
+}
+
+type Tree struct {
+    Root  *Node
+    Nodes []Node
 }
 
 type Stream struct { /* ... */ }
-func (s *Stream) Events() <-chan SSEEvent  // channel-based iteration
-func (s *Stream) Node() (*Node, error)    // final Node after stream ends
-
-type DAG struct {
-    ID        string
-    Title     string
-    Status    string
-    Nodes     []Node
-    CreatedAt time.Time
-    UpdatedAt time.Time
-}
+func (s *Stream) Events() <-chan SSEEvent
+func (s *Stream) Node() (*Node, error)
 ```
 
 ### Client Methods
 
 ```go
-// Start new DAG
 func (c *Client) Prompt(ctx, message, ...PromptOption) (*Node, error)
 func (c *Client) PromptStream(ctx, message, ...PromptOption) (*Stream, error)
-
-// DAG operations
-func (c *Client) GetDAG(ctx, id) (*DAG, error)
-func (c *Client) ListDAGs(ctx) ([]DAG, error)
-func (c *Client) DeleteDAG(ctx, id) error
-
-// Node operations
-func (c *Client) GetNode(ctx, dagID, nodeID) (*Node, error)
-
-// Health
+func (c *Client) GetNode(ctx, id) (*Node, error)
+func (c *Client) GetTree(ctx, id) (*Tree, error)
+func (c *Client) ListRoots(ctx) ([]Node, error)
+func (c *Client) DeleteNode(ctx, id) error
 func (c *Client) Health(ctx) error
 ```
 
 ### Node Methods
 
 ```go
-// Continue the DAG from this node
 func (n *Node) Prompt(ctx, message) (*Node, error)
 func (n *Node) PromptStream(ctx, message) (*Stream, error)
-
-// Navigation (available when DAG was fetched with nodes)
-func (n *Node) Children() []Node
+func (n *Node) Children() []Node  // when tree was fetched
 ```
 
-### Prompt Options (for client.Prompt / client.PromptStream only)
+### Prompt Options
 
 ```go
-func WithSystem(prompt string) PromptOption
+func WithSystem(prompt string) PromptOption  // only for client.Prompt (new tree)
 func WithModel(model string) PromptOption
 ```
 
----
+## CLI
 
-## Phase 1: Implement Go SDK API
+```
+langdag prompt "What is LangDAG?"                    # new tree
+langdag prompt <node-id> "Tell me more"              # continue from node
+langdag prompt                                       # interactive mode (new tree)
+langdag prompt <node-id>                             # interactive mode from node
 
-Rewrite the Go SDK with the new node-centric interface.
+langdag ls                                           # list root nodes
+langdag show <node-id>                               # show tree from node
+langdag rm <node-id>                                 # delete node + subtree
+```
 
-- [ ] 1a: Define new `Node`, `Stream`, `DAG` types and `Client`/`Node` method signatures
-- [ ] 1b: Implement `Client.Prompt`, `Client.PromptStream`, `Node.Prompt`, `Node.PromptStream`
-- [ ] 1c: Implement `Client.GetNode` (may require a new server endpoint or use GetDAG + filter)
-- [ ] 1d: Update Go SDK unit tests
+The `langdag prompt` command replaces both `langdag chat new` and `langdag chat continue`. Interactive mode enters a REPL.
 
----
-
-## Phase 2: Update Go Example
-
-- [ ] 2a: Rewrite `examples/go/main.go` to use `Prompt`/`PromptStream` API
-
----
-
-## Phase 3: Align Python SDK
-
-Port the same pattern to Python: `client.prompt()` / `node.prompt()` / `node.prompt_stream()`.
-
-- [ ] 3a: Redesign Python SDK with `Node.prompt()` / `Node.prompt_stream()` pattern
-- [ ] 3b: Update Python SDK unit tests
-- [ ] 3c: Rewrite `examples/python/example.py`
+Flags:
+```
+langdag prompt -m <model> -s "system prompt" "message"
+langdag prompt <node-id> -m <model> "message"
+```
 
 ---
 
-## Phase 4: Align TypeScript SDK
+## Phase 1: Server Data Model
 
-Port the same pattern to TypeScript: `client.prompt()` / `node.prompt()` / `node.promptStream()`.
+Migrate from dags + dag_nodes to a single nodes table.
 
-- [ ] 4a: Redesign TypeScript SDK with `node.prompt()` / `node.promptStream()` pattern
-- [ ] 4b: Update TypeScript SDK unit tests
-- [ ] 4c: Rewrite `examples/typescript/example.ts`
+- [ ] 1a: Create new `nodes` table schema and migration from existing dags/dag_nodes
+- [ ] 1b: Update storage interface — replace DAG methods with node-only methods
+- [ ] 1c: Update SQLite storage implementation
+- [ ] 1d: Update storage tests
 
 ---
 
-## Phase 5: Update Website & Docs
+## Phase 2: Server REST API
 
-- [ ] 5a: Update website code examples to use new API
-- [ ] 5b: Update README SDK sections
-- [ ] 5c: Update OpenAPI spec if any endpoints changed (e.g., GetNode)
+Replace DAG-centric endpoints with node-centric endpoints.
+
+- [ ] 2a: Implement `POST /prompt` and `POST /nodes/{id}/prompt`
+- [ ] 2b: Implement `GET /nodes`, `GET /nodes/{id}`, `GET /nodes/{id}/tree`
+- [ ] 2c: Implement `DELETE /nodes/{id}`
+- [ ] 2d: Update API tests
+
+---
+
+## Phase 3: CLI
+
+Replace `chat new` / `chat continue` with unified `prompt` command.
+
+- [ ] 3a: Implement `langdag prompt` command (new tree + continue from node + interactive mode)
+- [ ] 3b: Update `langdag ls` to list root nodes
+- [ ] 3c: Update `langdag show` to show node tree
+- [ ] 3d: Update `langdag rm` to delete node subtree
+
+---
+
+## Phase 4: Go SDK
+
+- [ ] 4a: Rewrite Go SDK with `Prompt`/`PromptStream`, `GetNode`, `GetTree`, `ListRoots`
+- [ ] 4b: Update Go SDK unit tests
+- [ ] 4c: Rewrite `examples/go/main.go`
+
+---
+
+**Parallel Phases: 5, 6**
+
+## Phase 5: Python SDK
+
+- [ ] 5a: Rewrite Python SDK with `node.prompt()` / `node.prompt_stream()` pattern
+- [ ] 5b: Update Python SDK unit tests
+- [ ] 5c: Rewrite `examples/python/example.py`
+
+---
+
+## Phase 6: TypeScript SDK
+
+- [ ] 6a: Rewrite TypeScript SDK with `node.prompt()` / `node.promptStream()` pattern
+- [ ] 6b: Update TypeScript SDK unit tests
+- [ ] 6c: Rewrite `examples/typescript/example.ts`
+
+---
+
+## Phase 7: Docs & Website
+
+- [ ] 7a: Update OpenAPI spec for new endpoints
+- [ ] 7b: Update website code examples
+- [ ] 7c: Update README
 
 ---
 
 ## Notes
 
-- **Server API**: Existing endpoints stay the same. `GetNode` needs a new `GET /dags/{dagID}/nodes/{nodeID}` endpoint.
-- The `Node` struct holds an unexported `client` reference, so `node.Prompt()` works without passing the client around. Nodes returned from `GetDAG()` also get this reference injected.
-- Workflow methods (`ListWorkflows`, `CreateWorkflow`, `RunWorkflow`) stay as-is on the client — separate concern.
-- Channel-based `stream.Events()` is for the current unidirectional streaming. Bi-directional streams (interrupts) may warrant a different pattern later.
+- **Workflows**: The `workflows` table stays as-is for now (templates are a separate concern). Workflow execution will create nodes like everything else.
+- **Node ID prefix matching**: Keep the current behavior where short prefixes resolve to full IDs.
+- **Backward compatibility**: This is a breaking change to the API, SDK, and CLI. The migration handles existing data.
+- **Streaming**: Channel-based `stream.Events()` for unidirectional. Bi-directional (interrupts) is a future concern.
