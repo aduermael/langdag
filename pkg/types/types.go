@@ -30,24 +30,58 @@ type ContentBlock struct {
 	IsError   bool   `json:"is_error,omitempty"`
 }
 
-// NodeType represents the type of a node in a DAG.
+// NodeType represents the type of a node.
 type NodeType string
 
 const (
-	NodeTypeLLM        NodeType = "llm"
-	NodeTypeTool       NodeType = "tool"
-	NodeTypeBranch     NodeType = "branch"
-	NodeTypeMerge      NodeType = "merge"
-	NodeTypeInput      NodeType = "input"
-	NodeTypeOutput     NodeType = "output"
+	// Conversation tree node types
 	NodeTypeUser       NodeType = "user"
 	NodeTypeAssistant  NodeType = "assistant"
+	NodeTypeSystem     NodeType = "system"
 	NodeTypeToolCall   NodeType = "tool_call"
 	NodeTypeToolResult NodeType = "tool_result"
+
+	// Workflow template node types
+	NodeTypeLLM    NodeType = "llm"
+	NodeTypeTool   NodeType = "tool"
+	NodeTypeBranch NodeType = "branch"
+	NodeTypeMerge  NodeType = "merge"
+	NodeTypeInput  NodeType = "input"
+	NodeTypeOutput NodeType = "output"
 )
 
-// Node represents a node in a workflow template.
+// Node represents a node in the conversation/workflow tree.
+// Root nodes (ParentID == "") define the start of a tree and carry
+// metadata like Title and SystemPrompt.
 type Node struct {
+	ID       string   `json:"id"`
+	ParentID string   `json:"parent_id,omitempty"`
+	Sequence int      `json:"sequence"`
+	NodeType NodeType `json:"node_type"`
+	Content  string   `json:"content"`
+
+	// LLM execution metadata (on assistant nodes)
+	Model     string `json:"model,omitempty"`
+	TokensIn  int    `json:"tokens_in,omitempty"`
+	TokensOut int    `json:"tokens_out,omitempty"`
+	LatencyMs int    `json:"latency_ms,omitempty"`
+	Status    string `json:"status,omitempty"`
+
+	// Root node metadata (empty on non-root nodes)
+	Title        string `json:"title,omitempty"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Tree represents a tree of nodes rooted at a specific node.
+type Tree struct {
+	Root  *Node  `json:"root"`
+	Nodes []Node `json:"nodes"`
+}
+
+// WorkflowNode represents a node in a workflow template.
+type WorkflowNode struct {
 	ID        string          `json:"id"`
 	Type      NodeType        `json:"type"`
 	Content   json.RawMessage `json:"content,omitempty"`
@@ -90,58 +124,10 @@ type Workflow struct {
 	Description string           `json:"description,omitempty"`
 	Defaults    WorkflowDefaults `json:"defaults,omitempty"`
 	Tools       []ToolDefinition `json:"tools,omitempty"`
-	Nodes       []Node           `json:"nodes"`
+	Nodes       []WorkflowNode   `json:"nodes"`
 	Edges       []Edge           `json:"edges"`
 	CreatedAt   time.Time        `json:"created_at"`
 	UpdatedAt   time.Time        `json:"updated_at"`
-}
-
-// DAGStatus represents the status of a DAG instance.
-type DAGStatus string
-
-const (
-	DAGStatusPending   DAGStatus = "pending"
-	DAGStatusRunning   DAGStatus = "running"
-	DAGStatusCompleted DAGStatus = "completed"
-	DAGStatusFailed    DAGStatus = "failed"
-	DAGStatusCancelled DAGStatus = "cancelled"
-)
-
-// DAG represents a DAG instance (unified from conversations and runs).
-// A DAG can be created from a workflow template or started as a fresh chat.
-type DAG struct {
-	ID            string           `json:"id"`
-	Title         string           `json:"title,omitempty"`
-	WorkflowID    string           `json:"workflow_id,omitempty"` // NULL if started from chat
-	Model         string           `json:"model,omitempty"`
-	SystemPrompt  string           `json:"system_prompt,omitempty"`
-	Tools         []ToolDefinition `json:"tools,omitempty"`
-	Status        DAGStatus        `json:"status"`
-	Input         json.RawMessage  `json:"input,omitempty"`
-	Output        json.RawMessage  `json:"output,omitempty"`
-	ForkedFromDAG string           `json:"forked_from_dag,omitempty"`
-	ForkedFromNode string          `json:"forked_from_node,omitempty"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
-}
-
-// DAGNode represents a node in a DAG instance (unified from conversation_nodes and node_runs).
-type DAGNode struct {
-	ID        string          `json:"id"`
-	DAGID     string          `json:"dag_id"`
-	ParentID  string          `json:"parent_id,omitempty"`
-	Sequence  int             `json:"sequence"`
-	NodeType  NodeType        `json:"node_type"`
-	Content   json.RawMessage `json:"content"`
-	Model     string          `json:"model,omitempty"`
-	TokensIn  int             `json:"tokens_in,omitempty"`
-	TokensOut int             `json:"tokens_out,omitempty"`
-	LatencyMs int             `json:"latency_ms,omitempty"`
-	Status    DAGStatus       `json:"status,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	Output    json.RawMessage `json:"output,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
 }
 
 // CompletionRequest represents a request to an LLM provider.

@@ -204,10 +204,10 @@ langdag prompt <node-id> -m <model> "message"
 
 Migrate from dags + dag_nodes to a single nodes table.
 
-- [ ] 1a: Create new `nodes` table schema and migration from existing dags/dag_nodes
-- [ ] 1b: Update storage interface — replace DAG methods with node-only methods
-- [ ] 1c: Update SQLite storage implementation
-- [ ] 1d: Update storage tests
+- [x] 1a: Create new `nodes` table schema and migration from existing dags/dag_nodes
+- [x] 1b: Update storage interface — replace DAG methods with node-only methods
+- [x] 1c: Update SQLite storage implementation
+- [x] 1d: Update storage tests
 
 ---
 
@@ -215,9 +215,9 @@ Migrate from dags + dag_nodes to a single nodes table.
 
 Replace DAG-centric endpoints with node-centric endpoints.
 
-- [ ] 2a: Implement `POST /prompt` and `POST /nodes/{id}/prompt`
-- [ ] 2b: Implement `GET /nodes`, `GET /nodes/{id}`, `GET /nodes/{id}/tree`
-- [ ] 2c: Implement `DELETE /nodes/{id}`
+- [x] 2a: Implement `POST /prompt` and `POST /nodes/{id}/prompt`
+- [x] 2b: Implement `GET /nodes`, `GET /nodes/{id}`, `GET /nodes/{id}/tree`
+- [x] 2c: Implement `DELETE /nodes/{id}`
 - [ ] 2d: Update API tests
 
 ---
@@ -226,10 +226,10 @@ Replace DAG-centric endpoints with node-centric endpoints.
 
 Replace `chat new` / `chat continue` with unified `prompt` command.
 
-- [ ] 3a: Implement `langdag prompt` command (new tree + continue from node + interactive mode)
-- [ ] 3b: Update `langdag ls` to list root nodes
-- [ ] 3c: Update `langdag show` to show node tree
-- [ ] 3d: Update `langdag rm` to delete node subtree
+- [x] 3a: Implement `langdag prompt` command (new tree + continue from node + interactive mode)
+- [x] 3b: Update `langdag ls` to list root nodes
+- [x] 3c: Update `langdag show` to show node tree
+- [x] 3d: Update `langdag rm` to delete node subtree
 
 ---
 
