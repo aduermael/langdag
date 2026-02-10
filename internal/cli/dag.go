@@ -2,86 +2,103 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/langdag/langdag/internal/config"
+	"github.com/langdag/langdag/internal/storage/sqlite"
 	"github.com/langdag/langdag/pkg/types"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
-// lsCmd lists all DAG instances.
+// initStorage initializes the SQLite storage from config.
+func initStorage(ctx context.Context, cfg *config.Config) (*sqlite.SQLiteStorage, error) {
+	storagePath := cfg.Storage.Path
+	if storagePath == "./langdag.db" {
+		storagePath = config.GetDefaultStoragePath()
+	}
+
+	if err := config.EnsureStorageDir(storagePath); err != nil {
+		return nil, fmt.Errorf("failed to create storage directory: %w", err)
+	}
+
+	store, err := sqlite.New(storagePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open storage: %w", err)
+	}
+
+	if err := store.Init(ctx); err != nil {
+		store.Close()
+		return nil, fmt.Errorf("failed to initialize storage: %w", err)
+	}
+
+	return store, nil
+}
+
+// lsCmd lists all root nodes (conversations).
 var lsCmd = &cobra.Command{
 	Use:     "ls",
 	Aliases: []string{"list"},
-	Short:   "List all DAG instances",
-	Long:    `List all DAG instances, whether created from workflows or chat sessions.`,
-	Run:     runDAGList,
+	Short:   "List all conversations",
+	Long:    `List all root nodes (conversations and workflow runs).`,
+	Run:     runNodeList,
 }
 
-// showCmd shows a DAG instance.
+// showCmd shows a node tree.
 var showCmd = &cobra.Command{
 	Use:   "show <id>",
-	Short: "Show DAG instance details",
-	Long:  `Show the details and node history of a DAG instance.`,
+	Short: "Show node tree",
+	Long:  `Show the details and node tree from a given node.`,
 	Args:  cobra.ExactArgs(1),
-	Run:   runDAGShow,
+	Run:   runNodeShow,
 }
 
-// rmCmd deletes a DAG instance.
+// rmCmd deletes a node and its subtree.
 var rmCmd = &cobra.Command{
 	Use:     "rm <id>",
 	Aliases: []string{"delete"},
-	Short:   "Delete a DAG instance",
-	Long:    `Delete a DAG instance and all its nodes.`,
+	Short:   "Delete a node and its subtree",
+	Long:    `Delete a node and all its descendant nodes.`,
 	Args:    cobra.ExactArgs(1),
-	Run:     runDAGDelete,
+	Run:     runNodeDelete,
 }
 
-func runDAGList(cmd *cobra.Command, args []string) {
+func runNodeList(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		exitError("failed to load config: %v", err)
 	}
 
-	// Initialize storage
 	store, err := initStorage(ctx, cfg)
 	if err != nil {
 		exitError("%v", err)
 	}
 	defer store.Close()
 
-	// List DAGs
-	dags, err := store.ListDAGs(ctx)
+	roots, err := store.ListRootNodes(ctx)
 	if err != nil {
-		exitError("failed to list DAGs: %v", err)
+		exitError("failed to list nodes: %v", err)
 	}
 
-	if len(dags) == 0 {
-		if outputJSON {
-			fmt.Println("[]")
-		} else if outputYAML {
+	if len(roots) == 0 {
+		if outputJSON || outputYAML {
 			fmt.Println("[]")
 		} else {
-			fmt.Println("No DAGs found.")
+			fmt.Println("No conversations found.")
 		}
 		return
 	}
 
-	// Handle JSON/YAML output
-	if printFormatted(dags) {
+	if printFormatted(roots) {
 		return
 	}
 
-	// Default: table output
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"ID", "Title", "Source", "Status", "Model", "Created"})
+	table.SetHeader([]string{"ID", "Title", "Model", "Status", "Created"})
 	table.SetBorder(false)
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 	table.SetAlignment(tablewriter.ALIGN_LEFT)
@@ -92,147 +109,100 @@ func runDAGList(cmd *cobra.Command, args []string) {
 	table.SetTablePadding("  ")
 	table.SetNoWhiteSpace(true)
 
-	for _, dag := range dags {
-		title := dag.Title
+	for _, node := range roots {
+		title := node.Title
 		if title == "" {
 			title = "(untitled)"
 		}
-		if len(title) > 20 {
-			title = title[:17] + "..."
+		if len(title) > 30 {
+			title = title[:27] + "..."
 		}
 
-		source := "chat"
-		if dag.WorkflowID != "" {
-			source = "workflow"
-		}
-
-		model := dag.Model
+		model := node.Model
 		if len(model) > 30 {
 			model = model[:27] + "..."
 		}
 
 		table.Append([]string{
-			dag.ID[:8],
+			node.ID[:8],
 			title,
-			source,
-			string(dag.Status),
 			model,
-			dag.CreatedAt.Format("2006-01-02 15:04"),
+			node.Status,
+			node.CreatedAt.Format("2006-01-02 15:04"),
 		})
 	}
 	table.Render()
 }
 
-// DAGWithNodes is used for JSON/YAML output of a DAG with its nodes.
-type DAGWithNodes struct {
-	*types.DAG `yaml:",inline"`
-	Nodes      []*types.DAGNode `json:"nodes" yaml:"nodes"`
-}
-
-func runDAGShow(cmd *cobra.Command, args []string) {
+func runNodeShow(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
-	dagID := args[0]
+	nodeID := args[0]
 
-	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		exitError("failed to load config: %v", err)
 	}
 
-	// Initialize storage
 	store, err := initStorage(ctx, cfg)
 	if err != nil {
 		exitError("%v", err)
 	}
 	defer store.Close()
 
-	// Get DAG - try full ID first, then partial match
-	dag, err := store.GetDAG(ctx, dagID)
+	// Resolve node ID (try exact, then prefix)
+	node, err := store.GetNode(ctx, nodeID)
 	if err != nil {
-		exitError("failed to get DAG: %v", err)
+		exitError("failed to get node: %v", err)
 	}
-	if dag == nil {
-		// Try partial ID match
-		dags, err := store.ListDAGs(ctx)
+	if node == nil {
+		node, err = store.GetNodeByPrefix(ctx, nodeID)
 		if err != nil {
-			exitError("failed to list DAGs: %v", err)
-		}
-		for _, d := range dags {
-			if strings.HasPrefix(d.ID, dagID) {
-				dag = d
-				break
-			}
+			exitError("failed to get node: %v", err)
 		}
 	}
-	if dag == nil {
-		exitError("DAG not found: %s", dagID)
+	if node == nil {
+		exitError("node not found: %s", nodeID)
 	}
 
-	// Get nodes
-	nodes, err := store.GetDAGNodes(ctx, dag.ID)
+	// Get subtree
+	nodes, err := store.GetSubtree(ctx, node.ID)
 	if err != nil {
-		exitError("failed to get nodes: %v", err)
+		exitError("failed to get tree: %v", err)
 	}
 
-	// Handle JSON/YAML output
 	if outputJSON || outputYAML {
-		output := DAGWithNodes{
-			DAG:   dag,
-			Nodes: nodes,
-		}
-		printFormatted(output)
+		printFormatted(nodes)
 		return
 	}
 
-	// Default: structured text output
-	fmt.Printf("DAG: %s\n", dag.ID)
-	if dag.Title != "" {
-		fmt.Printf("Title: %s\n", dag.Title)
+	fmt.Printf("Node: %s\n", node.ID)
+	if node.Title != "" {
+		fmt.Printf("Title: %s\n", node.Title)
 	}
-
-	// Show source
-	if dag.WorkflowID != "" {
-		fmt.Printf("Source: workflow (%s)\n", dag.WorkflowID)
-	} else {
-		fmt.Printf("Source: chat\n")
+	if node.Model != "" {
+		fmt.Printf("Model: %s\n", node.Model)
 	}
-
-	fmt.Printf("Status: %s\n", dag.Status)
-	if dag.Model != "" {
-		fmt.Printf("Model: %s\n", dag.Model)
+	if node.SystemPrompt != "" {
+		fmt.Printf("System: %s\n", truncate(node.SystemPrompt, 60))
 	}
-	if dag.SystemPrompt != "" {
-		fmt.Printf("System: %s\n", truncate(dag.SystemPrompt, 60))
-	}
-	fmt.Printf("Created: %s\n", dag.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Created: %s\n", node.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("Nodes: %d\n", len(nodes))
-
-	// Show input/output for workflow DAGs
-	if dag.Input != nil && len(dag.Input) > 0 && string(dag.Input) != "{}" {
-		fmt.Printf("Input: %s\n", truncate(string(dag.Input), 60))
-	}
-	if dag.Output != nil && len(dag.Output) > 0 {
-		fmt.Printf("Output: %s\n", truncate(string(dag.Output), 60))
-	}
-
 	fmt.Println()
 
-	// Print nodes as a tree
 	if len(nodes) > 0 {
-		fmt.Println("Node history:")
-		printDAGTree(nodes)
+		fmt.Println("Node tree:")
+		printNodeTree(nodes)
 	}
 }
 
-// printDAGTree prints nodes as a tree structure, only indenting at branch points
-func printDAGTree(nodes []*types.DAGNode) {
+// printNodeTree prints nodes as a tree structure.
+func printNodeTree(nodes []*types.Node) {
 	if len(nodes) == 0 {
 		return
 	}
 
-	// Build parent -> children map
-	childrenMap := make(map[string][]*types.DAGNode)
-	var roots []*types.DAGNode
+	childrenMap := make(map[string][]*types.Node)
+	var roots []*types.Node
 
 	for _, node := range nodes {
 		if node.ParentID == "" {
@@ -242,25 +212,20 @@ func printDAGTree(nodes []*types.DAGNode) {
 		}
 	}
 
-	// Print tree, flattening linear chains
-	// hasMoreSiblings: true if there are more sibling branches after this one
-	var printChain func(node *types.DAGNode, prefix string, hasMoreSiblings bool)
-	printChain = func(node *types.DAGNode, prefix string, hasMoreSiblings bool) {
+	var printChain func(node *types.Node, prefix string, hasMoreSiblings bool)
+	printChain = func(node *types.Node, prefix string, hasMoreSiblings bool) {
 		children := childrenMap[node.ID]
 		isLeaf := len(children) == 0
 		isBranchPoint := len(children) > 1
 
-		// Determine connector: │├─ or │└─ if more siblings, ├─ or └─ if last sibling
 		var connector string
 		if isLeaf || isBranchPoint {
-			// End of this chain segment
 			if hasMoreSiblings {
 				connector = "│└─"
 			} else {
 				connector = "└─"
 			}
 		} else {
-			// Chain continues
 			if hasMoreSiblings {
 				connector = "│├─"
 			} else {
@@ -269,21 +234,19 @@ func printDAGTree(nodes []*types.DAGNode) {
 		}
 
 		fmt.Printf("%s%s ", prefix, connector)
-		printDAGNodeCompact(node)
+		printNodeCompact(node)
 
 		if isLeaf {
 			return
 		}
 
 		if isBranchPoint {
-			// Branch point: print each branch with indentation
 			childPrefix := prefix + " "
 			for i, child := range children {
 				childHasMoreSiblings := i < len(children)-1
 				printChain(child, childPrefix, childHasMoreSiblings)
 			}
 		} else {
-			// Single child: continue at same level
 			printChain(children[0], prefix, hasMoreSiblings)
 		}
 	}
@@ -293,76 +256,58 @@ func printDAGTree(nodes []*types.DAGNode) {
 	}
 }
 
-func runDAGDelete(cmd *cobra.Command, args []string) {
+func runNodeDelete(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
-	dagID := args[0]
+	nodeID := args[0]
 
-	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		exitError("failed to load config: %v", err)
 	}
 
-	// Initialize storage
 	store, err := initStorage(ctx, cfg)
 	if err != nil {
 		exitError("%v", err)
 	}
 	defer store.Close()
 
-	// Get DAG to verify it exists - try full ID first, then partial match
-	dag, err := store.GetDAG(ctx, dagID)
+	node, err := store.GetNode(ctx, nodeID)
 	if err != nil {
-		exitError("failed to get DAG: %v", err)
+		exitError("failed to get node: %v", err)
 	}
-	if dag == nil {
-		// Try partial ID match
-		dags, err := store.ListDAGs(ctx)
+	if node == nil {
+		node, err = store.GetNodeByPrefix(ctx, nodeID)
 		if err != nil {
-			exitError("failed to list DAGs: %v", err)
-		}
-		for _, d := range dags {
-			if strings.HasPrefix(d.ID, dagID) {
-				dag = d
-				break
-			}
+			exitError("failed to get node: %v", err)
 		}
 	}
-	if dag == nil {
-		exitError("DAG not found: %s", dagID)
+	if node == nil {
+		exitError("node not found: %s", nodeID)
 	}
 
-	// Delete DAG
-	if err := store.DeleteDAG(ctx, dag.ID); err != nil {
-		exitError("failed to delete DAG: %v", err)
+	if err := store.DeleteNode(ctx, node.ID); err != nil {
+		exitError("failed to delete node: %v", err)
 	}
 
-	title := dag.Title
+	title := node.Title
 	if title == "" {
-		title = "(untitled)"
+		title = truncate(node.Content, 30)
 	}
-	fmt.Printf("Deleted DAG: %s (%s)\n", dag.ID[:8], title)
+	fmt.Printf("Deleted node: %s (%s)\n", node.ID[:8], title)
 }
 
-func printDAGNodeCompact(node *types.DAGNode) {
-	var content string
-	if err := json.Unmarshal(node.Content, &content); err != nil {
-		content = string(node.Content)
-	}
-
+func printNodeCompact(node *types.Node) {
+	content := node.Content
 	role := string(node.NodeType)
 
-	// Truncate long content
 	if len(content) > 60 {
 		content = content[:57] + "..."
 	}
-
 	content = strings.ReplaceAll(content, "\n", " ")
 
-	// Build info string
 	var info []string
 	if node.Status != "" {
-		info = append(info, string(node.Status))
+		info = append(info, node.Status)
 	}
 	if node.TokensIn > 0 || node.TokensOut > 0 {
 		info = append(info, fmt.Sprintf("tokens: %d/%d", node.TokensIn, node.TokensOut))

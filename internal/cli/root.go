@@ -27,13 +27,13 @@ It provides two modes:
 Both modes create DAG instances that can be inspected and continued.
 
 Examples:
-  langdag ls                         # List all DAG instances
-  langdag show <id>                  # Show DAG with its nodes
-  langdag chat new                   # Start new chat → creates a DAG
-  langdag chat continue <id>         # Continue any DAG interactively
-  langdag workflow create <file>     # Create workflow template from YAML
-  langdag workflow ls                # List all workflow templates
-  langdag workflow run <name>        # Execute workflow → creates a DAG`,
+  langdag prompt "What is LangDAG?"   # Start new conversation
+  langdag prompt <node-id> "More"    # Continue from a node
+  langdag ls                         # List all conversations
+  langdag show <id>                  # Show node tree
+  langdag rm <id>                    # Delete node + subtree
+  langdag workflow create <file>     # Create workflow template
+  langdag workflow ls                # List all workflows`,
 }
 
 // Execute runs the root command.
@@ -52,7 +52,7 @@ func init() {
 	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(rmCmd)
-	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(promptCmd)
 	rootCmd.AddCommand(workflowCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)

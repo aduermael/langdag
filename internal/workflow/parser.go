@@ -106,7 +106,7 @@ func convertYAMLWorkflow(yamlWorkflow *YAMLWorkflow) (*types.Workflow, error) {
 
 	// Convert nodes
 	for _, node := range yamlWorkflow.Nodes {
-		workflow.Nodes = append(workflow.Nodes, types.Node{
+		workflow.Nodes = append(workflow.Nodes, types.WorkflowNode{
 			ID:        node.ID,
 			Type:      types.NodeType(node.Type),
 			Model:     node.Model,

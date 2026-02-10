@@ -455,7 +455,7 @@ func runWorkflowRun(cmd *cobra.Command, args []string) {
 			if event.Output != nil {
 				fmt.Printf("\nResult: %s\n", string(event.Output))
 			}
-			fmt.Printf("DAG ID: %s\n", event.DAG.ID)
+			fmt.Printf("Root Node ID: %s\n", event.RootNodeID)
 		}
 	}
 }

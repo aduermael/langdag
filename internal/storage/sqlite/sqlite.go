@@ -12,6 +12,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// nodeColumns is the column list for node queries (unqualified).
+const nodeColumns = `id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, title, system_prompt, created_at`
+
+// nodeColumnsQ returns the column list qualified with a table alias.
+func nodeColumnsQ(alias string) string {
+	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
+}
+
 // SQLiteStorage implements the Storage interface using SQLite.
 type SQLiteStorage struct {
 	db   *sql.DB
@@ -170,314 +178,182 @@ func (s *SQLiteStorage) DeleteWorkflow(ctx context.Context, id string) error {
 }
 
 // =============================================================================
-// DAG Operations (Instances)
+// Node Operations
 // =============================================================================
 
-// CreateDAG creates a new DAG instance.
-func (s *SQLiteStorage) CreateDAG(ctx context.Context, dag *types.DAG) error {
-	var toolsJSON []byte
-	var err error
-	if dag.Tools != nil {
-		toolsJSON, err = json.Marshal(dag.Tools)
-		if err != nil {
-			return fmt.Errorf("failed to marshal tools: %w", err)
-		}
+// scanNode scans a node from a SQL row.
+func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
+	var node types.Node
+	var parentID, model, status, title, systemPrompt sql.NullString
+	var tokensIn, tokensOut, latencyMs sql.NullInt64
+
+	err := scanner.Scan(
+		&node.ID, &parentID, &node.Sequence, &node.NodeType, &node.Content,
+		&model, &tokensIn, &tokensOut, &latencyMs, &status,
+		&title, &systemPrompt, &node.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO dags (id, title, workflow_id, model, system_prompt, tools, status, input, output, forked_from_dag, forked_from_node, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, dag.ID, dag.Title, nullString(dag.WorkflowID), dag.Model, dag.SystemPrompt, toolsJSON, dag.Status, dag.Input, dag.Output, nullString(dag.ForkedFromDAG), nullString(dag.ForkedFromNode), dag.CreatedAt, dag.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to create DAG: %w", err)
-	}
-	return nil
+	node.ParentID = parentID.String
+	node.Model = model.String
+	node.TokensIn = int(tokensIn.Int64)
+	node.TokensOut = int(tokensOut.Int64)
+	node.LatencyMs = int(latencyMs.Int64)
+	node.Status = status.String
+	node.Title = title.String
+	node.SystemPrompt = systemPrompt.String
+
+	return &node, nil
 }
 
-// GetDAG retrieves a DAG instance by ID.
-func (s *SQLiteStorage) GetDAG(ctx context.Context, id string) (*types.DAG, error) {
-	var dag types.DAG
-	var toolsJSON sql.NullString
-	var workflowID, forkedFromDAG, forkedFromNode sql.NullString
-	var input, output sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, title, workflow_id, model, system_prompt, tools, status, input, output, forked_from_dag, forked_from_node, created_at, updated_at
-		FROM dags WHERE id = ?
-	`, id).Scan(&dag.ID, &dag.Title, &workflowID, &dag.Model, &dag.SystemPrompt, &toolsJSON, &dag.Status, &input, &output, &forkedFromDAG, &forkedFromNode, &dag.CreatedAt, &dag.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DAG: %w", err)
-	}
-
-	if toolsJSON.Valid && toolsJSON.String != "" {
-		if err := json.Unmarshal([]byte(toolsJSON.String), &dag.Tools); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal tools: %w", err)
-		}
-	}
-	dag.WorkflowID = workflowID.String
-	dag.ForkedFromDAG = forkedFromDAG.String
-	dag.ForkedFromNode = forkedFromNode.String
-	if input.Valid {
-		dag.Input = json.RawMessage(input.String)
-	}
-	if output.Valid {
-		dag.Output = json.RawMessage(output.String)
-	}
-
-	return &dag, nil
-}
-
-// ListDAGs returns all DAG instances.
-func (s *SQLiteStorage) ListDAGs(ctx context.Context) ([]*types.DAG, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, workflow_id, model, system_prompt, tools, status, input, output, forked_from_dag, forked_from_node, created_at, updated_at
-		FROM dags ORDER BY updated_at DESC
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list DAGs: %w", err)
-	}
-	defer rows.Close()
-
-	var dags []*types.DAG
+// scanNodes scans multiple nodes from SQL rows.
+func scanNodes(rows *sql.Rows) ([]*types.Node, error) {
+	var nodes []*types.Node
 	for rows.Next() {
-		var dag types.DAG
-		var toolsJSON sql.NullString
-		var workflowID, forkedFromDAG, forkedFromNode sql.NullString
-		var input, output sql.NullString
-
-		if err := rows.Scan(&dag.ID, &dag.Title, &workflowID, &dag.Model, &dag.SystemPrompt, &toolsJSON, &dag.Status, &input, &output, &forkedFromDAG, &forkedFromNode, &dag.CreatedAt, &dag.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan DAG: %w", err)
-		}
-
-		if toolsJSON.Valid && toolsJSON.String != "" {
-			if err := json.Unmarshal([]byte(toolsJSON.String), &dag.Tools); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal tools: %w", err)
-			}
-		}
-		dag.WorkflowID = workflowID.String
-		dag.ForkedFromDAG = forkedFromDAG.String
-		dag.ForkedFromNode = forkedFromNode.String
-		if input.Valid {
-			dag.Input = json.RawMessage(input.String)
-		}
-		if output.Valid {
-			dag.Output = json.RawMessage(output.String)
-		}
-
-		dags = append(dags, &dag)
-	}
-	return dags, rows.Err()
-}
-
-// UpdateDAG updates an existing DAG instance.
-func (s *SQLiteStorage) UpdateDAG(ctx context.Context, dag *types.DAG) error {
-	var toolsJSON []byte
-	var err error
-	if dag.Tools != nil {
-		toolsJSON, err = json.Marshal(dag.Tools)
+		node, err := scanNode(rows)
 		if err != nil {
-			return fmt.Errorf("failed to marshal tools: %w", err)
+			return nil, fmt.Errorf("failed to scan node: %w", err)
 		}
-	}
-
-	dag.UpdatedAt = time.Now()
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE dags SET title = ?, model = ?, system_prompt = ?, tools = ?, status = ?, input = ?, output = ?, updated_at = ?
-		WHERE id = ?
-	`, dag.Title, dag.Model, dag.SystemPrompt, toolsJSON, dag.Status, dag.Input, dag.Output, dag.UpdatedAt, dag.ID)
-	if err != nil {
-		return fmt.Errorf("failed to update DAG: %w", err)
-	}
-	return nil
-}
-
-// DeleteDAG deletes a DAG instance and its nodes.
-func (s *SQLiteStorage) DeleteDAG(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM dags WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete DAG: %w", err)
-	}
-	return nil
-}
-
-// =============================================================================
-// DAG Node Operations
-// =============================================================================
-
-// AddDAGNode adds a node to a DAG.
-func (s *SQLiteStorage) AddDAGNode(ctx context.Context, node *types.DAGNode) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO dag_nodes (id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, node.ID, node.DAGID, nullString(node.ParentID), node.Sequence, node.NodeType, node.Content, nullString(node.Model), node.TokensIn, node.TokensOut, node.LatencyMs, node.Status, node.Input, node.Output, node.Error, node.CreatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to add DAG node: %w", err)
-	}
-	return nil
-}
-
-// GetDAGNodes retrieves all nodes in a DAG.
-func (s *SQLiteStorage) GetDAGNodes(ctx context.Context, dagID string) ([]*types.DAGNode, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at
-		FROM dag_nodes
-		WHERE dag_id = ?
-		ORDER BY sequence ASC
-	`, dagID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DAG nodes: %w", err)
-	}
-	defer rows.Close()
-
-	var nodes []*types.DAGNode
-	for rows.Next() {
-		var node types.DAGNode
-		var parentID, model, status, errStr sql.NullString
-		var tokensIn, tokensOut, latencyMs sql.NullInt64
-		var input, output sql.NullString
-
-		if err := rows.Scan(&node.ID, &node.DAGID, &parentID, &node.Sequence, &node.NodeType, &node.Content, &model, &tokensIn, &tokensOut, &latencyMs, &status, &input, &output, &errStr, &node.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan DAG node: %w", err)
-		}
-
-		node.ParentID = parentID.String
-		node.Model = model.String
-		node.TokensIn = int(tokensIn.Int64)
-		node.TokensOut = int(tokensOut.Int64)
-		node.LatencyMs = int(latencyMs.Int64)
-		node.Status = types.DAGStatus(status.String)
-		node.Error = errStr.String
-		if input.Valid {
-			node.Input = json.RawMessage(input.String)
-		}
-		if output.Valid {
-			node.Output = json.RawMessage(output.String)
-		}
-
-		nodes = append(nodes, &node)
+		nodes = append(nodes, node)
 	}
 	return nodes, rows.Err()
 }
 
-// GetDAGNode retrieves a single node by ID.
-func (s *SQLiteStorage) GetDAGNode(ctx context.Context, id string) (*types.DAGNode, error) {
-	var node types.DAGNode
-	var parentID, model, status, errStr sql.NullString
-	var tokensIn, tokensOut, latencyMs sql.NullInt64
-	var input, output sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at
-		FROM dag_nodes WHERE id = ?
-	`, id).Scan(&node.ID, &node.DAGID, &parentID, &node.Sequence, &node.NodeType, &node.Content, &model, &tokensIn, &tokensOut, &latencyMs, &status, &input, &output, &errStr, &node.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DAG node: %w", err)
-	}
-
-	node.ParentID = parentID.String
-	node.Model = model.String
-	node.TokensIn = int(tokensIn.Int64)
-	node.TokensOut = int(tokensOut.Int64)
-	node.LatencyMs = int(latencyMs.Int64)
-	node.Status = types.DAGStatus(status.String)
-	node.Error = errStr.String
-	if input.Valid {
-		node.Input = json.RawMessage(input.String)
-	}
-	if output.Valid {
-		node.Output = json.RawMessage(output.String)
-	}
-
-	return &node, nil
-}
-
-// GetDAGNodeByPrefix retrieves a node by ID prefix.
-func (s *SQLiteStorage) GetDAGNodeByPrefix(ctx context.Context, prefix string) (*types.DAGNode, error) {
-	var node types.DAGNode
-	var parentID, model, status, errStr sql.NullString
-	var tokensIn, tokensOut, latencyMs sql.NullInt64
-	var input, output sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at
-		FROM dag_nodes WHERE id LIKE ? || '%' LIMIT 1
-	`, prefix).Scan(&node.ID, &node.DAGID, &parentID, &node.Sequence, &node.NodeType, &node.Content, &model, &tokensIn, &tokensOut, &latencyMs, &status, &input, &output, &errStr, &node.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DAG node by prefix: %w", err)
-	}
-
-	node.ParentID = parentID.String
-	node.Model = model.String
-	node.TokensIn = int(tokensIn.Int64)
-	node.TokensOut = int(tokensOut.Int64)
-	node.LatencyMs = int(latencyMs.Int64)
-	node.Status = types.DAGStatus(status.String)
-	node.Error = errStr.String
-	if input.Valid {
-		node.Input = json.RawMessage(input.String)
-	}
-	if output.Valid {
-		node.Output = json.RawMessage(output.String)
-	}
-
-	return &node, nil
-}
-
-// GetLastDAGNode retrieves the last node in a DAG.
-func (s *SQLiteStorage) GetLastDAGNode(ctx context.Context, dagID string) (*types.DAGNode, error) {
-	var node types.DAGNode
-	var parentID, model, status, errStr sql.NullString
-	var tokensIn, tokensOut, latencyMs sql.NullInt64
-	var input, output sql.NullString
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, dag_id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, input, output, error, created_at
-		FROM dag_nodes
-		WHERE dag_id = ?
-		ORDER BY sequence DESC
-		LIMIT 1
-	`, dagID).Scan(&node.ID, &node.DAGID, &parentID, &node.Sequence, &node.NodeType, &node.Content, &model, &tokensIn, &tokensOut, &latencyMs, &status, &input, &output, &errStr, &node.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last DAG node: %w", err)
-	}
-
-	node.ParentID = parentID.String
-	node.Model = model.String
-	node.TokensIn = int(tokensIn.Int64)
-	node.TokensOut = int(tokensOut.Int64)
-	node.LatencyMs = int(latencyMs.Int64)
-	node.Status = types.DAGStatus(status.String)
-	node.Error = errStr.String
-	if input.Valid {
-		node.Input = json.RawMessage(input.String)
-	}
-	if output.Valid {
-		node.Output = json.RawMessage(output.String)
-	}
-
-	return &node, nil
-}
-
-// UpdateDAGNode updates an existing DAG node.
-func (s *SQLiteStorage) UpdateDAGNode(ctx context.Context, node *types.DAGNode) error {
+// CreateNode creates a new node.
+func (s *SQLiteStorage) CreateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE dag_nodes SET status = ?, output = ?, tokens_in = ?, tokens_out = ?, latency_ms = ?, error = ?
-		WHERE id = ?
-	`, node.Status, node.Output, node.TokensIn, node.TokensOut, node.LatencyMs, node.Error, node.ID)
+		INSERT INTO nodes (`+nodeColumns+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, node.ID, nullString(node.ParentID), node.Sequence, node.NodeType, node.Content,
+		nullString(node.Model), node.TokensIn, node.TokensOut, node.LatencyMs, nullString(node.Status),
+		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("failed to update DAG node: %w", err)
+		return fmt.Errorf("failed to create node: %w", err)
+	}
+	return nil
+}
+
+// GetNode retrieves a node by ID.
+func (s *SQLiteStorage) GetNode(ctx context.Context, id string) (*types.Node, error) {
+	node, err := scanNode(s.db.QueryRowContext(ctx, `
+		SELECT `+nodeColumns+` FROM nodes WHERE id = ?
+	`, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+	return node, nil
+}
+
+// GetNodeByPrefix retrieves a node by ID prefix.
+func (s *SQLiteStorage) GetNodeByPrefix(ctx context.Context, prefix string) (*types.Node, error) {
+	node, err := scanNode(s.db.QueryRowContext(ctx, `
+		SELECT `+nodeColumns+` FROM nodes WHERE id LIKE ? || '%' LIMIT 1
+	`, prefix))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node by prefix: %w", err)
+	}
+	return node, nil
+}
+
+// GetNodeChildren retrieves direct children of a node.
+func (s *SQLiteStorage) GetNodeChildren(ctx context.Context, parentID string) ([]*types.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+nodeColumns+` FROM nodes
+		WHERE parent_id = ?
+		ORDER BY sequence ASC
+	`, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node children: %w", err)
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// GetSubtree retrieves a node and all its descendants.
+func (s *SQLiteStorage) GetSubtree(ctx context.Context, nodeID string) ([]*types.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT `+nodeColumns+` FROM nodes WHERE id = ?
+			UNION ALL
+			SELECT `+nodeColumnsQ("n")+` FROM nodes n
+			JOIN subtree s ON n.parent_id = s.id
+		)
+		SELECT `+nodeColumns+` FROM subtree ORDER BY sequence ASC
+	`, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subtree: %w", err)
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// GetAncestors retrieves the path from root to the given node (inclusive), ordered root-first.
+func (s *SQLiteStorage) GetAncestors(ctx context.Context, nodeID string) ([]*types.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		WITH RECURSIVE ancestors AS (
+			SELECT `+nodeColumns+` FROM nodes WHERE id = ?
+			UNION ALL
+			SELECT `+nodeColumnsQ("n")+` FROM nodes n
+			JOIN ancestors a ON n.id = a.parent_id
+		)
+		SELECT `+nodeColumns+` FROM ancestors ORDER BY sequence ASC
+	`, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ancestors: %w", err)
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// ListRootNodes returns all root nodes (nodes with no parent), ordered by creation time.
+func (s *SQLiteStorage) ListRootNodes(ctx context.Context) ([]*types.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+nodeColumns+` FROM nodes
+		WHERE parent_id IS NULL
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list root nodes: %w", err)
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// UpdateNode updates an existing node.
+func (s *SQLiteStorage) UpdateNode(ctx context.Context, node *types.Node) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE nodes SET content = ?, model = ?, tokens_in = ?, tokens_out = ?,
+			latency_ms = ?, status = ?, title = ?, system_prompt = ?
+		WHERE id = ?
+	`, node.Content, nullString(node.Model), node.TokensIn, node.TokensOut,
+		node.LatencyMs, nullString(node.Status), nullString(node.Title), nullString(node.SystemPrompt),
+		node.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update node: %w", err)
+	}
+	return nil
+}
+
+// DeleteNode deletes a node and all its descendants.
+func (s *SQLiteStorage) DeleteNode(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM nodes WHERE id = ?
+			UNION ALL
+			SELECT n.id FROM nodes n JOIN subtree s ON n.parent_id = s.id
+		)
+		DELETE FROM nodes WHERE id IN (SELECT id FROM subtree)
+	`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete node: %w", err)
 	}
 	return nil
 }

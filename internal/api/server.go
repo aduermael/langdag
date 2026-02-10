@@ -21,11 +21,11 @@ import (
 
 // Server represents the HTTP API server.
 type Server struct {
-	httpServer   *http.Server
-	store        *sqlite.SQLiteStorage
-	convMgr      *conversation.Manager
-	workflowMgr  *workflow.Manager
-	apiKey       string
+	httpServer  *http.Server
+	store       *sqlite.SQLiteStorage
+	convMgr     *conversation.Manager
+	workflowMgr *workflow.Manager
+	apiKey      string
 }
 
 // Config holds server configuration.
@@ -82,15 +82,15 @@ func New(cfg *Config, appConfig *config.Config) (*Server, error) {
 	// Health check
 	mux.HandleFunc("GET /health", s.handleHealth)
 
-	// DAG endpoints
-	mux.HandleFunc("GET /dags", s.authMiddleware(s.handleListDAGs))
-	mux.HandleFunc("GET /dags/{id}", s.authMiddleware(s.handleGetDAG))
-	mux.HandleFunc("DELETE /dags/{id}", s.authMiddleware(s.handleDeleteDAG))
+	// Prompt endpoints
+	mux.HandleFunc("POST /prompt", s.authMiddleware(s.handlePrompt))
+	mux.HandleFunc("POST /nodes/{id}/prompt", s.authMiddleware(s.handleNodePrompt))
 
-	// Chat endpoints
-	mux.HandleFunc("POST /chat", s.authMiddleware(s.handleNewChat))
-	mux.HandleFunc("POST /chat/{id}", s.authMiddleware(s.handleContinueChat))
-	mux.HandleFunc("POST /chat/{id}/fork", s.authMiddleware(s.handleForkChat))
+	// Node endpoints
+	mux.HandleFunc("GET /nodes", s.authMiddleware(s.handleListNodes))
+	mux.HandleFunc("GET /nodes/{id}", s.authMiddleware(s.handleGetNode))
+	mux.HandleFunc("GET /nodes/{id}/tree", s.authMiddleware(s.handleGetTree))
+	mux.HandleFunc("DELETE /nodes/{id}", s.authMiddleware(s.handleDeleteNode))
 
 	// Workflow endpoints
 	mux.HandleFunc("GET /workflows", s.authMiddleware(s.handleListWorkflows))

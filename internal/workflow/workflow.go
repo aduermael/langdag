@@ -61,7 +61,7 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 }
 
 // GetNode returns a node by ID from a workflow.
-func GetNode(workflow *types.Workflow, nodeID string) *types.Node {
+func GetNode(workflow *types.Workflow, nodeID string) *types.WorkflowNode {
 	for i := range workflow.Nodes {
 		if workflow.Nodes[i].ID == nodeID {
 			return &workflow.Nodes[i]
@@ -71,7 +71,7 @@ func GetNode(workflow *types.Workflow, nodeID string) *types.Node {
 }
 
 // GetInputNode returns the input node of a workflow.
-func GetInputNode(workflow *types.Workflow) *types.Node {
+func GetInputNode(workflow *types.Workflow) *types.WorkflowNode {
 	for i := range workflow.Nodes {
 		if workflow.Nodes[i].Type == types.NodeTypeInput {
 			return &workflow.Nodes[i]
@@ -81,7 +81,7 @@ func GetInputNode(workflow *types.Workflow) *types.Node {
 }
 
 // GetOutputNode returns the output node of a workflow.
-func GetOutputNode(workflow *types.Workflow) *types.Node {
+func GetOutputNode(workflow *types.Workflow) *types.WorkflowNode {
 	for i := range workflow.Nodes {
 		if workflow.Nodes[i].Type == types.NodeTypeOutput {
 			return &workflow.Nodes[i]
@@ -91,8 +91,8 @@ func GetOutputNode(workflow *types.Workflow) *types.Node {
 }
 
 // GetChildNodes returns nodes that are children of the given node.
-func GetChildNodes(workflow *types.Workflow, nodeID string) []*types.Node {
-	var children []*types.Node
+func GetChildNodes(workflow *types.Workflow, nodeID string) []*types.WorkflowNode {
+	var children []*types.WorkflowNode
 	for _, edge := range workflow.Edges {
 		if edge.From == nodeID {
 			if node := GetNode(workflow, edge.To); node != nil {
@@ -104,8 +104,8 @@ func GetChildNodes(workflow *types.Workflow, nodeID string) []*types.Node {
 }
 
 // GetParentNodes returns nodes that are parents of the given node.
-func GetParentNodes(workflow *types.Workflow, nodeID string) []*types.Node {
-	var parents []*types.Node
+func GetParentNodes(workflow *types.Workflow, nodeID string) []*types.WorkflowNode {
+	var parents []*types.WorkflowNode
 	for _, edge := range workflow.Edges {
 		if edge.To == nodeID {
 			if node := GetNode(workflow, edge.From); node != nil {
