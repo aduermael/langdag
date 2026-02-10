@@ -6,30 +6,30 @@ Redesign the client SDK interface around **nodes** instead of chat verbs. The cu
 
 The DAG is the central concept. A conversation is just a DAG with user/assistant nodes. "Forking" and "continuing" are the same operation: **creating a new child node from any existing node**. The distinction between "continue" and "fork" is a server concern (continue = append to latest leaf, fork = branch from a specific node), but from the client's perspective it's always: "given this node, say something new."
 
+The single verb for this is **`Prompt`** — it means the same thing whether called on a `Client` (new DAG) or a `Node` (extend existing DAG).
+
 ## Proposed Go Client API
 
 ```go
-// Create client
 client := langdag.NewClient("http://localhost:8080")
 
-// Start a new conversation (returns a Node)
-node, err := client.Chat(ctx, "What is LangDAG?", langdag.WithSystem("You are helpful."))
-fmt.Println(node.Content) // assistant response
+// Start a new conversation (returns the assistant's response Node)
+node, err := client.Prompt(ctx, "What is LangDAG?", langdag.WithSystem("You are helpful."))
+fmt.Println(node.Content)
 
-// Continue from any node (this is the core operation)
-node2, err := node.Reply(ctx, "Tell me more")
-fmt.Println(node2.Content)
+// Continue from any node — same method
+node2, err := node.Prompt(ctx, "Tell me more")
 
-// "Fork" is just replying to an earlier node
-alt, err := node.Reply(ctx, "What about the architecture?")
+// "Fork" is just prompting an earlier node
+alt, err := node.Prompt(ctx, "What about the architecture?")
 // node now has two children: node2 and alt
 
 // Streaming variant
-stream, err := node.ReplyStream(ctx, "Tell me more")
+stream, err := node.PromptStream(ctx, "Tell me more")
 for event := range stream.Events() {
     fmt.Print(event.Content)
 }
-resultNode, err := stream.Node() // get final node after stream completes
+resultNode, err := stream.Node() // get final Node after stream completes
 
 // Get the full DAG
 dag, err := client.GetDAG(ctx, dagID)
@@ -37,9 +37,9 @@ for _, n := range dag.Nodes {
     fmt.Printf("[%s] %s: %s\n", n.ID[:8], n.Type, n.Content[:50])
 }
 
-// Any retrieved node can be replied to
-someNode := dag.Nodes[2]
-reply, err := someNode.Reply(ctx, "Expand on this point")
+// Get a specific node and prompt from it
+someNode, err := client.GetNode(ctx, nodeID)
+reply, err := someNode.Prompt(ctx, "Expand on this point")
 
 // List all DAGs
 dags, err := client.ListDAGs(ctx)
@@ -49,12 +49,16 @@ dags, err := client.ListDAGs(ctx)
 
 | Current | Proposed | Why |
 |---------|----------|-----|
-| `client.ChatStream(ctx, req, handler)` | `client.Chat(ctx, msg, opts...)` | Start a conversation, get a Node back |
-| `client.ContinueChatStream(ctx, dagID, req, handler)` | `node.Reply(ctx, msg)` | Continue from any node |
-| `client.ForkChatStream(ctx, dagID, req, handler)` | `node.Reply(ctx, msg)` | Same as continue - fork is just replying to a non-leaf |
-| SSE callback handler | `stream.Events()` channel or `range` | More idiomatic Go |
-| `NewChatRequest{Message, SystemPrompt}` | `client.Chat(ctx, msg, WithSystem(...))` | Functional options |
-| `ForkChatRequest{NodeID, Message}` | `node.Reply(ctx, msg)` | Node already knows its ID and DAG |
+| `client.Chat(ctx, req, handler)` | `client.Prompt(ctx, msg, opts...)` | Start a new DAG |
+| `client.ChatStream(ctx, req, handler)` | `client.PromptStream(ctx, msg, opts...)` | Start a new DAG, streaming |
+| `client.ContinueChat(ctx, dagID, req, handler)` | `node.Prompt(ctx, msg)` | Continue from any node |
+| `client.ContinueChatStream(ctx, dagID, req, handler)` | `node.PromptStream(ctx, msg)` | Continue from any node, streaming |
+| `client.ForkChat(ctx, dagID, req, handler)` | `node.Prompt(ctx, msg)` | Same as continue — fork is just prompting a non-leaf |
+| `client.ForkChatStream(ctx, dagID, req, handler)` | `node.PromptStream(ctx, msg)` | Same as continue, streaming |
+| SSE callback handler | `stream.Events()` channel | More idiomatic Go |
+| `NewChatRequest{Message, SystemPrompt}` | `client.Prompt(ctx, msg, WithSystem(...))` | Functional options |
+| `ForkChatRequest{NodeID, Message}` | `node.Prompt(ctx, msg)` | Node knows its ID and DAG |
+| _(no equivalent)_ | `client.GetNode(ctx, id)` | Fetch a single node, ready to prompt |
 
 ### Core Types
 
@@ -70,12 +74,12 @@ type Node struct {
     TokensOut int
     CreatedAt time.Time
 
-    client    *Client   // unexported, enables Reply()
+    client    *Client   // unexported — enables Prompt()
 }
 
 type Stream struct { /* ... */ }
 func (s *Stream) Events() <-chan SSEEvent  // channel-based iteration
-func (s *Stream) Node() (*Node, error)    // final node after stream ends
+func (s *Stream) Node() (*Node, error)    // final Node after stream ends
 
 type DAG struct {
     ID        string
@@ -90,43 +94,64 @@ type DAG struct {
 ### Client Methods
 
 ```go
-// Minimal top-level API
-func (c *Client) Chat(ctx, message, ...ChatOption) (*Node, error)
-func (c *Client) ChatStream(ctx, message, ...ChatOption) (*Stream, error)
+// Start new DAG
+func (c *Client) Prompt(ctx, message, ...PromptOption) (*Node, error)
+func (c *Client) PromptStream(ctx, message, ...PromptOption) (*Stream, error)
+
+// DAG operations
 func (c *Client) GetDAG(ctx, id) (*DAG, error)
 func (c *Client) ListDAGs(ctx) ([]DAG, error)
 func (c *Client) DeleteDAG(ctx, id) error
-func (c *Client) Health(ctx) error
 
-// Node methods
-func (n *Node) Reply(ctx, message) (*Node, error)
-func (n *Node) ReplyStream(ctx, message) (*Stream, error)
-func (n *Node) Children() []Node  // if DAG was fetched with nodes
+// Node operations
+func (c *Client) GetNode(ctx, id) (*Node, error)
+
+// Health
+func (c *Client) Health(ctx) error
+```
+
+### Node Methods
+
+```go
+// Continue the DAG from this node
+func (n *Node) Prompt(ctx, message) (*Node, error)
+func (n *Node) PromptStream(ctx, message) (*Stream, error)
+
+// Navigation (available when DAG was fetched with nodes)
+func (n *Node) Children() []Node
+```
+
+### Prompt Options (for client.Prompt / client.PromptStream only)
+
+```go
+func WithSystem(prompt string) PromptOption
+func WithModel(model string) PromptOption
 ```
 
 ---
 
-## Phase 1: Design & Validate Go SDK API
+## Phase 1: Implement Go SDK API
 
-Finalize types and method signatures in the Go SDK.
+Rewrite the Go SDK with the new node-centric interface.
 
-- [ ] 1a: Define new `Node`, `Stream`, `DAG` types and `Client` method signatures
-- [ ] 1b: Update Go SDK implementation (client.go, types, streaming)
-- [ ] 1c: Update Go SDK unit tests
+- [ ] 1a: Define new `Node`, `Stream`, `DAG` types and `Client`/`Node` method signatures
+- [ ] 1b: Implement `Client.Prompt`, `Client.PromptStream`, `Node.Prompt`, `Node.PromptStream`
+- [ ] 1c: Implement `Client.GetNode` (may require a new server endpoint or use GetDAG + filter)
+- [ ] 1d: Update Go SDK unit tests
 
 ---
 
 ## Phase 2: Update Go Example
 
-- [ ] 2a: Rewrite `examples/go/main.go` to use the new node-centric API
+- [ ] 2a: Rewrite `examples/go/main.go` to use `Prompt`/`PromptStream` API
 
 ---
 
 ## Phase 3: Align Python SDK
 
-Port the same node-centric pattern to Python.
+Port the same pattern to Python: `client.prompt()` / `node.prompt()` / `node.prompt_stream()`.
 
-- [ ] 3a: Redesign Python SDK with `Node.reply()` / `Node.reply_stream()` pattern
+- [ ] 3a: Redesign Python SDK with `Node.prompt()` / `Node.prompt_stream()` pattern
 - [ ] 3b: Update Python SDK unit tests
 - [ ] 3c: Rewrite `examples/python/example.py`
 
@@ -134,9 +159,9 @@ Port the same node-centric pattern to Python.
 
 ## Phase 4: Align TypeScript SDK
 
-Port the same node-centric pattern to TypeScript.
+Port the same pattern to TypeScript: `client.prompt()` / `node.prompt()` / `node.promptStream()`.
 
-- [ ] 4a: Redesign TypeScript SDK with `node.reply()` / `node.replyStream()` pattern
+- [ ] 4a: Redesign TypeScript SDK with `node.prompt()` / `node.promptStream()` pattern
 - [ ] 4b: Update TypeScript SDK unit tests
 - [ ] 4c: Rewrite `examples/typescript/example.ts`
 
@@ -146,12 +171,13 @@ Port the same node-centric pattern to TypeScript.
 
 - [ ] 5a: Update website code examples to use new API
 - [ ] 5b: Update README SDK sections
-- [ ] 5c: Update OpenAPI spec if any endpoints changed
+- [ ] 5c: Update OpenAPI spec if any endpoints changed (e.g., GetNode)
 
 ---
 
 ## Notes
 
-- **No server API changes needed** - the existing REST endpoints (`POST /chat`, `POST /chat/{id}`, `POST /chat/{id}/fork`) stay the same. The simplification is purely client-side.
-- The `Node` struct holds an unexported `client` reference, enabling `node.Reply()` without the user having to pass the client around.
-- Workflow methods (`ListWorkflows`, `CreateWorkflow`, `RunWorkflow`) are kept as-is on the client for now since they're a separate concern.
+- **Server API**: Existing endpoints stay the same. `GetNode` may need a new `GET /dags/{id}/nodes/{nodeId}` endpoint, or can be implemented client-side by fetching the DAG and filtering.
+- The `Node` struct holds an unexported `client` reference, so `node.Prompt()` works without passing the client around. Nodes returned from `GetDAG()` also get this reference injected.
+- Workflow methods (`ListWorkflows`, `CreateWorkflow`, `RunWorkflow`) stay as-is on the client — separate concern.
+- Channel-based `stream.Events()` is for the current unidirectional streaming. Bi-directional streams (interrupts) may warrant a different pattern later.
