@@ -38,7 +38,7 @@ for _, n := range dag.Nodes {
 }
 
 // Get a specific node and prompt from it
-someNode, err := client.GetNode(ctx, nodeID)
+someNode, err := client.GetNode(ctx, dagID, nodeID)
 reply, err := someNode.Prompt(ctx, "Expand on this point")
 
 // List all DAGs
@@ -104,7 +104,7 @@ func (c *Client) ListDAGs(ctx) ([]DAG, error)
 func (c *Client) DeleteDAG(ctx, id) error
 
 // Node operations
-func (c *Client) GetNode(ctx, id) (*Node, error)
+func (c *Client) GetNode(ctx, dagID, nodeID) (*Node, error)
 
 // Health
 func (c *Client) Health(ctx) error
@@ -177,7 +177,7 @@ Port the same pattern to TypeScript: `client.prompt()` / `node.prompt()` / `node
 
 ## Notes
 
-- **Server API**: Existing endpoints stay the same. `GetNode` may need a new `GET /dags/{id}/nodes/{nodeId}` endpoint, or can be implemented client-side by fetching the DAG and filtering.
+- **Server API**: Existing endpoints stay the same. `GetNode` needs a new `GET /dags/{dagID}/nodes/{nodeID}` endpoint.
 - The `Node` struct holds an unexported `client` reference, so `node.Prompt()` works without passing the client around. Nodes returned from `GetDAG()` also get this reference injected.
 - Workflow methods (`ListWorkflows`, `CreateWorkflow`, `RunWorkflow`) stay as-is on the client — separate concern.
 - Channel-based `stream.Events()` is for the current unidirectional streaming. Bi-directional streams (interrupts) may warrant a different pattern later.
