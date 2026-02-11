@@ -133,7 +133,7 @@ func TestAPIError_404(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL)
-	_, err := c.GetDAG(context.Background(), "nonexistent")
+	_, err := c.GetNode(context.Background(), "nonexistent")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -163,43 +163,17 @@ func TestConnectionError(t *testing.T) {
 	}
 }
 
-func TestListDAGs(t *testing.T) {
+func TestPrompt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/dags" {
-			t.Errorf("expected GET /dags, got %s %s", r.Method, r.URL.Path)
+		if r.Method != "POST" || r.URL.Path != "/prompt" {
+			t.Errorf("expected POST /prompt, got %s %s", r.Method, r.URL.Path)
 		}
-		json.NewEncoder(w).Encode([]DAG{
-			{ID: "dag-1", Status: DAGStatusCompleted},
-			{ID: "dag-2", Status: DAGStatusRunning},
-		})
-	}))
-	defer server.Close()
-
-	c := NewClient(server.URL)
-	dags, err := c.ListDAGs(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(dags) != 2 {
-		t.Fatalf("expected 2 dags, got %d", len(dags))
-	}
-	if dags[0].ID != "dag-1" {
-		t.Errorf("expected dag-1, got %s", dags[0].ID)
-	}
-}
-
-func TestChat_NonStreaming(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/chat" {
-			t.Errorf("expected POST /chat, got %s %s", r.Method, r.URL.Path)
-		}
-		var req NewChatRequest
+		var req promptRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.Message != "Hello" {
 			t.Errorf("expected message Hello, got %s", req.Message)
 		}
-		json.NewEncoder(w).Encode(ChatResponse{
-			DAGID:   "dag-123",
+		json.NewEncoder(w).Encode(promptResponse{
 			NodeID:  "node-456",
 			Content: "Hi there!",
 		})
@@ -207,36 +181,146 @@ func TestChat_NonStreaming(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL)
-	resp, err := c.Chat(context.Background(), &NewChatRequest{
-		Message: "Hello",
-		Model:   "test",
-	}, nil)
+	node, err := c.Prompt(context.Background(), "Hello")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.DAGID != "dag-123" {
-		t.Errorf("expected dag-123, got %s", resp.DAGID)
+	if node.ID != "node-456" {
+		t.Errorf("expected node-456, got %s", node.ID)
 	}
-	if resp.Content != "Hi there!" {
-		t.Errorf("expected content 'Hi there!', got %s", resp.Content)
+	if node.Content != "Hi there!" {
+		t.Errorf("expected content 'Hi there!', got %s", node.Content)
 	}
 }
 
-func TestDeleteDAG(t *testing.T) {
+func TestPromptWithOptions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "DELETE" {
-			t.Errorf("expected DELETE, got %s", r.Method)
+		var req promptRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Model != "mock-fast" {
+			t.Errorf("expected model mock-fast, got %s", req.Model)
 		}
-		json.NewEncoder(w).Encode(DeleteResponse{Status: "deleted", ID: "dag-1"})
+		if req.SystemPrompt != "Be helpful" {
+			t.Errorf("expected system_prompt 'Be helpful', got %s", req.SystemPrompt)
+		}
+		json.NewEncoder(w).Encode(promptResponse{NodeID: "n-1", Content: "ok"})
 	}))
 	defer server.Close()
 
 	c := NewClient(server.URL)
-	resp, err := c.DeleteDAG(context.Background(), "dag-1")
+	_, err := c.Prompt(context.Background(), "Hi", WithModel("mock-fast"), WithSystem("Be helpful"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Status != "deleted" {
-		t.Errorf("expected status deleted, got %s", resp.Status)
+}
+
+func TestNodePrompt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/nodes/node-1/prompt" {
+			t.Errorf("expected /nodes/node-1/prompt, got %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(promptResponse{NodeID: "node-2", Content: "continued"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	node := &Node{ID: "node-1", client: c}
+	result, err := node.Prompt(context.Background(), "more")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != "node-2" {
+		t.Errorf("expected node-2, got %s", result.ID)
+	}
+}
+
+func TestListRoots(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/nodes" {
+			t.Errorf("expected GET /nodes, got %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]Node{
+			{ID: "root-1", Title: "First"},
+			{ID: "root-2", Title: "Second"},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	roots, err := c.ListRoots(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(roots) != 2 {
+		t.Fatalf("expected 2 roots, got %d", len(roots))
+	}
+	if roots[0].ID != "root-1" {
+		t.Errorf("expected root-1, got %s", roots[0].ID)
+	}
+	if roots[0].client == nil {
+		t.Error("expected client to be set on returned nodes")
+	}
+}
+
+func TestGetNode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/nodes/abc123" {
+			t.Errorf("expected /nodes/abc123, got %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(Node{ID: "abc123", Type: NodeTypeAssistant, Content: "hello"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	node, err := c.GetNode(context.Background(), "abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.ID != "abc123" {
+		t.Errorf("expected abc123, got %s", node.ID)
+	}
+	if node.client == nil {
+		t.Error("expected client to be set")
+	}
+}
+
+func TestGetTree(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/nodes/root-1/tree" {
+			t.Errorf("expected /nodes/root-1/tree, got %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]Node{
+			{ID: "root-1", Type: NodeTypeUser, Content: "hi"},
+			{ID: "child-1", ParentID: "root-1", Type: NodeTypeAssistant, Content: "hello"},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	tree, err := c.GetTree(context.Background(), "root-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tree.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(tree.Nodes))
+	}
+	if tree.Nodes[0].client == nil {
+		t.Error("expected client to be set on tree nodes")
+	}
+}
+
+func TestDeleteNode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		json.NewEncoder(w).Encode(DeleteResponse{Status: "deleted", ID: "node-1"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	err := c.DeleteNode(context.Background(), "node-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

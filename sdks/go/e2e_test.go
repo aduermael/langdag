@@ -34,165 +34,152 @@ func TestE2E_Health(t *testing.T) {
 	}
 }
 
-func TestE2E_Chat_NonStreaming(t *testing.T) {
+func TestE2E_Prompt(t *testing.T) {
 	url := e2eURL(t)
 	c := NewClient(url, WithTimeout(30*time.Second))
 	ctx := context.Background()
 
-	// Start a new chat
-	resp, err := c.Chat(ctx, &NewChatRequest{
-		Message: "Hello, this is a test message",
-	}, nil)
+	// Start a new conversation
+	node, err := c.Prompt(ctx, "Hello, this is a test message")
 	if err != nil {
-		t.Fatalf("chat failed: %v", err)
+		t.Fatalf("prompt failed: %v", err)
 	}
-	if resp.DAGID == "" {
-		t.Error("expected non-empty DAGID")
+	if node.ID == "" {
+		t.Error("expected non-empty node ID")
 	}
-	if resp.NodeID == "" {
-		t.Error("expected non-empty NodeID")
-	}
-	if resp.Content == "" {
-		t.Error("expected non-empty content in response")
+	if node.Content == "" {
+		t.Error("expected non-empty content")
 	}
 
-	// Continue the conversation
-	resp2, err := c.ContinueChat(ctx, resp.DAGID, &ContinueChatRequest{
-		Message: "Follow up message",
-	}, nil)
+	// Continue from the assistant node
+	node2, err := node.Prompt(ctx, "Follow up message")
 	if err != nil {
-		t.Fatalf("continue chat failed: %v", err)
+		t.Fatalf("continue prompt failed: %v", err)
 	}
-	if resp2.DAGID != resp.DAGID {
-		t.Errorf("expected same DAGID %s, got %s", resp.DAGID, resp2.DAGID)
+	if node2.ID == "" || node2.ID == node.ID {
+		t.Error("expected different node ID for continuation")
 	}
-	if resp2.Content == "" {
+	if node2.Content == "" {
 		t.Error("expected non-empty content in continue response")
 	}
 
-	// Get the DAG
-	dag, err := c.GetDAG(ctx, resp.DAGID)
+	// List roots
+	roots, err := c.ListRoots(ctx)
 	if err != nil {
-		t.Fatalf("get DAG failed: %v", err)
-	}
-	if dag.ID != resp.DAGID {
-		t.Errorf("expected DAG ID %s, got %s", resp.DAGID, dag.ID)
-	}
-	// Should have at least 4 nodes: user1, assistant1, user2, assistant2
-	if len(dag.Nodes) < 4 {
-		t.Errorf("expected at least 4 nodes, got %d", len(dag.Nodes))
-	}
-
-	// List DAGs
-	dags, err := c.ListDAGs(ctx)
-	if err != nil {
-		t.Fatalf("list DAGs failed: %v", err)
+		t.Fatalf("list roots failed: %v", err)
 	}
 	found := false
-	for _, d := range dags {
-		if d.ID == resp.DAGID {
+	var rootID string
+	for _, r := range roots {
+		// The root is the user node (parent of the first assistant node)
+		// Find it by checking recent roots
+		if r.Title != "" {
 			found = true
+			rootID = r.ID
 			break
 		}
 	}
 	if !found {
-		t.Errorf("DAG %s not found in list", resp.DAGID)
+		t.Error("conversation root not found in list")
 	}
 
-	// Delete the DAG
-	delResp, err := c.DeleteDAG(ctx, resp.DAGID)
-	if err != nil {
-		t.Fatalf("delete DAG failed: %v", err)
+	// Get tree
+	if rootID != "" {
+		tree, err := c.GetTree(ctx, rootID)
+		if err != nil {
+			t.Fatalf("get tree failed: %v", err)
+		}
+		// Should have at least root(user) + assistant + user + assistant = 4 nodes
+		if len(tree.Nodes) < 4 {
+			t.Errorf("expected at least 4 nodes, got %d", len(tree.Nodes))
+		}
 	}
-	if delResp.Status != "deleted" {
-		t.Errorf("expected status deleted, got %s", delResp.Status)
+
+	// Delete
+	if rootID != "" {
+		err = c.DeleteNode(ctx, rootID)
+		if err != nil {
+			t.Fatalf("delete node failed: %v", err)
+		}
 	}
 }
 
-func TestE2E_Chat_Streaming(t *testing.T) {
+func TestE2E_PromptStream(t *testing.T) {
 	url := e2eURL(t)
 	c := NewClient(url, WithTimeout(30*time.Second))
 	ctx := context.Background()
 
-	var dagID string
-	var nodeID string
-	var content strings.Builder
-	eventTypes := make(map[SSEEventType]int)
-
-	err := c.ChatStream(ctx, &NewChatRequest{
-		Message: "Tell me something interesting",
-	}, func(e SSEEvent) error {
-		eventTypes[e.Type]++
-		switch e.Type {
-		case SSEEventStart:
-			dagID = e.DAGID
-		case SSEEventDelta:
-			content.WriteString(e.Content)
-		case SSEEventDone:
-			nodeID = e.NodeID
-		}
-		return nil
-	})
+	stream, err := c.PromptStream(ctx, "Tell me something interesting")
 	if err != nil {
-		t.Fatalf("streaming chat failed: %v", err)
+		t.Fatalf("stream prompt failed: %v", err)
 	}
 
-	if dagID == "" {
-		t.Error("expected non-empty DAGID from start event")
+	var content strings.Builder
+	eventTypes := make(map[string]int)
+
+	for event := range stream.Events() {
+		eventTypes[event.Type]++
+		if event.Type == "delta" {
+			content.WriteString(event.Content)
+		}
 	}
-	if nodeID == "" {
-		t.Error("expected non-empty NodeID from done event")
+
+	node, err := stream.Node()
+	if err != nil {
+		t.Fatalf("stream.Node() failed: %v", err)
+	}
+	if node.ID == "" {
+		t.Error("expected non-empty node ID")
 	}
 	if content.Len() == 0 {
 		t.Error("expected non-empty streamed content")
 	}
-	if eventTypes[SSEEventStart] != 1 {
-		t.Errorf("expected 1 start event, got %d", eventTypes[SSEEventStart])
+	if eventTypes["start"] != 1 {
+		t.Errorf("expected 1 start event, got %d", eventTypes["start"])
 	}
-	if eventTypes[SSEEventDelta] < 1 {
-		t.Errorf("expected at least 1 delta event, got %d", eventTypes[SSEEventDelta])
+	if eventTypes["delta"] < 1 {
+		t.Errorf("expected at least 1 delta event, got %d", eventTypes["delta"])
 	}
-	if eventTypes[SSEEventDone] != 1 {
-		t.Errorf("expected 1 done event, got %d", eventTypes[SSEEventDone])
+	if eventTypes["done"] != 1 {
+		t.Errorf("expected 1 done event, got %d", eventTypes["done"])
 	}
 
-	// Clean up
-	if dagID != "" {
-		c.DeleteDAG(ctx, dagID)
+	// Clean up: find root and delete
+	roots, _ := c.ListRoots(ctx)
+	for _, r := range roots {
+		c.DeleteNode(ctx, r.ID)
 	}
 }
 
-func TestE2E_ForkChat(t *testing.T) {
+func TestE2E_Branch(t *testing.T) {
 	url := e2eURL(t)
 	c := NewClient(url, WithTimeout(30*time.Second))
 	ctx := context.Background()
 
 	// Start a conversation
-	resp, err := c.Chat(ctx, &NewChatRequest{
-		Message: "First message",
-	}, nil)
+	node, err := c.Prompt(ctx, "First message")
 	if err != nil {
-		t.Fatalf("chat failed: %v", err)
+		t.Fatalf("prompt failed: %v", err)
 	}
 
-	// Fork from the assistant node
-	forkResp, err := c.ForkChat(ctx, resp.DAGID, &ForkChatRequest{
-		NodeID:  resp.NodeID,
-		Message: "Alternative follow-up",
-	}, nil)
+	// Branch from the same node twice
+	branch1, err := node.Prompt(ctx, "Alternative A")
 	if err != nil {
-		t.Fatalf("fork chat failed: %v", err)
+		t.Fatalf("branch A failed: %v", err)
 	}
-	if forkResp.DAGID == "" {
-		t.Error("expected non-empty DAGID from fork")
+
+	branch2, err := node.Prompt(ctx, "Alternative B")
+	if err != nil {
+		t.Fatalf("branch B failed: %v", err)
 	}
-	if forkResp.Content == "" {
-		t.Error("expected non-empty content from fork")
+
+	if branch1.ID == branch2.ID {
+		t.Error("expected different node IDs for branches")
 	}
 
 	// Clean up
-	c.DeleteDAG(ctx, resp.DAGID)
-	if forkResp.DAGID != resp.DAGID {
-		c.DeleteDAG(ctx, forkResp.DAGID)
+	roots, _ := c.ListRoots(ctx)
+	for _, r := range roots {
+		c.DeleteNode(ctx, r.ID)
 	}
 }

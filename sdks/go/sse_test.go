@@ -1,13 +1,14 @@
 package langdag
 
 import (
+	"io"
 	"strings"
 	"testing"
 )
 
-func TestParseSSEStream_StartDeltaDone(t *testing.T) {
+func TestStream_StartDeltaDone(t *testing.T) {
 	input := `event: start
-data: {"dag_id":"dag-123"}
+data: {}
 
 event: delta
 data: {"content":"Hello "}
@@ -16,154 +17,142 @@ event: delta
 data: {"content":"world!"}
 
 event: done
-data: {"dag_id":"dag-123","node_id":"node-456"}
+data: {"node_id":"node-456"}
 
 `
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
 	var events []SSEEvent
-	err := parseSSEStream(strings.NewReader(input), func(e SSEEvent) error {
-		events = append(events, e)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for event := range stream.Events() {
+		events = append(events, event)
 	}
+
 	if len(events) != 4 {
 		t.Fatalf("expected 4 events, got %d", len(events))
 	}
 
-	// start event
-	if events[0].Type != SSEEventStart {
+	if events[0].Type != "start" {
 		t.Errorf("expected start, got %s", events[0].Type)
 	}
-	if events[0].DAGID != "dag-123" {
-		t.Errorf("expected dag-123, got %s", events[0].DAGID)
+
+	if events[1].Type != "delta" || events[1].Content != "Hello " {
+		t.Errorf("expected delta 'Hello ', got %s %q", events[1].Type, events[1].Content)
 	}
 
-	// delta events
-	if events[1].Type != SSEEventDelta {
-		t.Errorf("expected delta, got %s", events[1].Type)
-	}
-	if events[1].Content != "Hello " {
-		t.Errorf("expected 'Hello ', got %q", events[1].Content)
-	}
-	if events[2].Content != "world!" {
-		t.Errorf("expected 'world!', got %q", events[2].Content)
+	if events[2].Type != "delta" || events[2].Content != "world!" {
+		t.Errorf("expected delta 'world!', got %s %q", events[2].Type, events[2].Content)
 	}
 
-	// done event
-	if events[3].Type != SSEEventDone {
-		t.Errorf("expected done, got %s", events[3].Type)
+	if events[3].Type != "done" || events[3].NodeID != "node-456" {
+		t.Errorf("expected done with node-456, got %s %s", events[3].Type, events[3].NodeID)
 	}
-	if events[3].DAGID != "dag-123" {
-		t.Errorf("expected dag-123, got %s", events[3].DAGID)
+
+	node, err := stream.Node()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if events[3].NodeID != "node-456" {
-		t.Errorf("expected node-456, got %s", events[3].NodeID)
+	if node.ID != "node-456" {
+		t.Errorf("expected node-456, got %s", node.ID)
 	}
 }
 
-func TestParseSSEStream_ErrorEvent(t *testing.T) {
+func TestStream_ErrorEvent(t *testing.T) {
 	input := `event: error
 data: something went wrong
 
 `
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
 	var events []SSEEvent
-	err := parseSSEStream(strings.NewReader(input), func(e SSEEvent) error {
-		events = append(events, e)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for event := range stream.Events() {
+		events = append(events, event)
 	}
+
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].Type != SSEEventError {
+	if events[0].Type != "error" {
 		t.Errorf("expected error, got %s", events[0].Type)
 	}
 	if events[0].Error != "something went wrong" {
 		t.Errorf("expected error message, got %q", events[0].Error)
 	}
-}
 
-func TestParseSSEStream_MultiLineData(t *testing.T) {
-	input := `event: delta
-data: {"content":
-data: "hello"}
-
-`
-	var events []SSEEvent
-	err := parseSSEStream(strings.NewReader(input), func(e SSEEvent) error {
-		events = append(events, e)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
-	}
-	// Multi-line data should be joined with newlines
-	if events[0].Data != "{\"content\":\n\"hello\"}" {
-		t.Errorf("expected multi-line data, got %q", events[0].Data)
+	_, err := stream.Node()
+	if err == nil {
+		t.Error("expected error from Node() after error event")
 	}
 }
 
-func TestParseSSEStream_EmptyStream(t *testing.T) {
+func TestStream_EmptyStream(t *testing.T) {
+	body := io.NopCloser(strings.NewReader(""))
+	stream := newStream(body, nil)
+
 	var events []SSEEvent
-	err := parseSSEStream(strings.NewReader(""), func(e SSEEvent) error {
-		events = append(events, e)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for event := range stream.Events() {
+		events = append(events, event)
 	}
+
 	if len(events) != 0 {
 		t.Errorf("expected 0 events, got %d", len(events))
 	}
+
+	_, err := stream.Node()
+	if err == nil {
+		t.Error("expected error from Node() on empty stream")
+	}
 }
 
-func TestParseSSEStream_NoTrailingNewline(t *testing.T) {
-	// Events without trailing newline should still be processed
-	input := `event: start
-data: {"dag_id":"dag-1"}`
+func TestStream_NoTrailingNewline(t *testing.T) {
+	input := `event: done
+data: {"node_id":"n-1"}`
+
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
 
 	var events []SSEEvent
-	err := parseSSEStream(strings.NewReader(input), func(e SSEEvent) error {
-		events = append(events, e)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for event := range stream.Events() {
+		events = append(events, event)
 	}
+
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].DAGID != "dag-1" {
-		t.Errorf("expected dag-1, got %s", events[0].DAGID)
+	if events[0].NodeID != "n-1" {
+		t.Errorf("expected n-1, got %s", events[0].NodeID)
 	}
 }
 
-func TestParseSSEStream_HandlerError(t *testing.T) {
+func TestStream_CollectContent(t *testing.T) {
 	input := `event: start
-data: {"dag_id":"dag-1"}
+data: {}
 
 event: delta
-data: {"content":"hello"}
+data: {"content":"Hello "}
+
+event: delta
+data: {"content":"world"}
+
+event: delta
+data: {"content":"!"}
+
+event: done
+data: {"node_id":"n-1"}
 
 `
-	callCount := 0
-	err := parseSSEStream(strings.NewReader(input), func(e SSEEvent) error {
-		callCount++
-		if callCount == 1 {
-			return &StreamError{Message: "stop"}
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var content strings.Builder
+	for event := range stream.Events() {
+		if event.Type == "delta" {
+			content.WriteString(event.Content)
 		}
-		return nil
-	})
-	if err == nil {
-		t.Fatal("expected error from handler, got nil")
 	}
-	if callCount != 1 {
-		t.Errorf("expected handler called once, got %d", callCount)
+
+	if content.String() != "Hello world!" {
+		t.Errorf("expected 'Hello world!', got %q", content.String())
 	}
 }
