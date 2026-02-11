@@ -187,16 +187,26 @@ func runNodeShow(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("Created: %s\n", node.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("Nodes: %d\n", len(nodes))
-	fmt.Println()
 
 	if len(nodes) > 0 {
-		fmt.Println("Node tree:")
-		printNodeTree(nodes)
+		// If showing a non-root node, show ancestors as "..." leading to it
+		if node.ParentID != "" {
+			ancestors, err := store.GetAncestors(ctx, node.ID)
+			if err == nil && len(ancestors) > 1 {
+				// ancestors is root-first and includes the node itself
+				// Show all ancestors except the target node as "..." lines
+				for _, a := range ancestors[:len(ancestors)-1] {
+					fmt.Printf("  ... %s [%s]\n", a.ID[:8], a.NodeType)
+				}
+			}
+		}
+		printNodeTree(nodes, node.ID)
 	}
 }
 
 // printNodeTree prints nodes as a tree structure.
-func printNodeTree(nodes []*types.Node) {
+// rootID is the ID of the node to treat as the tree root.
+func printNodeTree(nodes []*types.Node, rootID string) {
 	if len(nodes) == 0 {
 		return
 	}
@@ -205,7 +215,7 @@ func printNodeTree(nodes []*types.Node) {
 	var roots []*types.Node
 
 	for _, node := range nodes {
-		if node.ParentID == "" {
+		if node.ID == rootID {
 			roots = append(roots, node)
 		} else {
 			childrenMap[node.ParentID] = append(childrenMap[node.ParentID], node)
