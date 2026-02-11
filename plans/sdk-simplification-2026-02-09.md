@@ -218,7 +218,7 @@ Replace DAG-centric endpoints with node-centric endpoints.
 - [x] 2a: Implement `POST /prompt` and `POST /nodes/{id}/prompt`
 - [x] 2b: Implement `GET /nodes`, `GET /nodes/{id}`, `GET /nodes/{id}/tree`
 - [x] 2c: Implement `DELETE /nodes/{id}`
-- [ ] 2d: Update API tests
+- [x] 2d: Update API tests
 
 ---
 
@@ -259,11 +259,27 @@ Replace `chat new` / `chat continue` with unified `prompt` command.
 
 ---
 
-## Phase 7: Docs & Website
+## Phase 7: Server Cleanup
 
-- [ ] 7a: Update OpenAPI spec for new endpoints
-- [ ] 7b: Update website code examples
-- [ ] 7c: Update README
+Fix remaining server-side inconsistencies.
+
+- [ ] 7a: Fix `serve.go` startup message — still prints old `/dags`, `/chat` endpoint listing
+- [x] 7b: Update API tests (was 2d)
+
+---
+
+## Phase 8: Docs & Website
+
+Update all documentation to reflect the new node-centric API and unified `prompt` command.
+
+- [ ] 8a: Update `README.md` — CLI section (prompt replaces chat new/continue), API endpoints (/nodes, /prompt), SDK examples (Prompt/PromptStream pattern)
+- [ ] 8b: Update `docs/index.html` (website) — CLI demo section (replace `chat new`/`chat continue` with `prompt`), SDK code examples for all 3 languages (replace chat/fork_chat/list_dags with prompt/list_roots/get_tree)
+- [ ] 8c: Update `docs/llms.txt` — concise summary with correct API/CLI/SDK info
+- [ ] 8d: Update `docs/llms-full.txt` — full reference with correct API/CLI/SDK info
+- [ ] 8e: Update `docs/DESIGN.md` — update or add note that schema/API sections reflect new node-centric model
+- [ ] 8f: Update SDK READMEs (`sdks/go/README.md`, `sdks/python/README.md`, `sdks/typescript/README.md`)
+- [ ] 8g: Update example READMEs (`examples/go/README.md`, `examples/python/README.md`, `examples/typescript/README.md`)
+- [ ] 8h: Update or create OpenAPI spec for new endpoints
 
 ---
 
