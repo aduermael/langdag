@@ -179,9 +179,6 @@ func runNodeShow(cmd *cobra.Command, args []string) {
 	if node.Title != "" {
 		fmt.Printf("Title: %s\n", node.Title)
 	}
-	if node.Model != "" {
-		fmt.Printf("Model: %s\n", node.Model)
-	}
 	if node.SystemPrompt != "" {
 		fmt.Printf("System: %s\n", truncate(node.SystemPrompt, 60))
 	}
@@ -189,24 +186,32 @@ func runNodeShow(cmd *cobra.Command, args []string) {
 	fmt.Printf("Nodes: %d\n", len(nodes))
 
 	if len(nodes) > 0 {
-		// If showing a non-root node, show ancestors as "..." leading to it
+		// If showing a non-root node, show root and skipped ancestors
 		if node.ParentID != "" {
 			ancestors, err := store.GetAncestors(ctx, node.ID)
 			if err == nil && len(ancestors) > 1 {
 				// ancestors is root-first and includes the node itself
-				// Show all ancestors except the target node as "..." lines
-				for _, a := range ancestors[:len(ancestors)-1] {
-					fmt.Printf("  ... %s [%s]\n", a.ID[:8], a.NodeType)
+				root := ancestors[0]
+				fmt.Printf("├─ %s (root)\n", root.ID[:8])
+				// Skipped nodes = ancestors minus root and the target node
+				skipped := len(ancestors) - 2
+				if skipped > 0 {
+					if skipped == 1 {
+						fmt.Printf("├─ ... (1 node)\n")
+					} else {
+						fmt.Printf("├─ ... (%d nodes)\n", skipped)
+					}
 				}
 			}
 		}
-		printNodeTree(nodes, node.ID)
+		printNodeTree(nodes, node.ID, node.ID)
 	}
 }
 
 // printNodeTree prints nodes as a tree structure.
 // rootID is the ID of the node to treat as the tree root.
-func printNodeTree(nodes []*types.Node, rootID string) {
+// highlightID is the node whose ID should be displayed in bold.
+func printNodeTree(nodes []*types.Node, rootID, highlightID string) {
 	if len(nodes) == 0 {
 		return
 	}
@@ -244,7 +249,7 @@ func printNodeTree(nodes []*types.Node, rootID string) {
 		}
 
 		fmt.Printf("%s%s ", prefix, connector)
-		printNodeCompact(node)
+		printNodeCompact(node, node.ID == highlightID)
 
 		if isLeaf {
 			return
@@ -306,7 +311,7 @@ func runNodeDelete(cmd *cobra.Command, args []string) {
 	fmt.Printf("Deleted node: %s (%s)\n", node.ID[:8], title)
 }
 
-func printNodeCompact(node *types.Node) {
+func printNodeCompact(node *types.Node, bold bool) {
 	content := node.Content
 	role := string(node.NodeType)
 
@@ -331,7 +336,12 @@ func printNodeCompact(node *types.Node) {
 		infoStr = " (" + strings.Join(info, ", ") + ")"
 	}
 
-	fmt.Printf("%s [%s]: %s%s\n", node.ID[:8], role, content, infoStr)
+	id := node.ID[:8]
+	if bold {
+		id = "\033[1m" + id + "\033[0m"
+	}
+
+	fmt.Printf("%s [%s]: %s%s\n", id, role, content, infoStr)
 }
 
 func truncate(s string, max int) string {
