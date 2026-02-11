@@ -7,120 +7,135 @@ import (
 	"strings"
 )
 
-// SSEEventType represents the type of an SSE event.
-type SSEEventType string
-
-const (
-	SSEEventStart SSEEventType = "start"
-	SSEEventDelta SSEEventType = "delta"
-	SSEEventDone  SSEEventType = "done"
-	SSEEventError SSEEventType = "error"
-)
-
 // SSEEvent represents a Server-Sent Event.
 type SSEEvent struct {
-	Type SSEEventType
-	Data string
-
-	// Parsed fields (populated based on event type)
-	DAGID   string // For start and done events
-	NodeID  string // For done events
+	Type    string
 	Content string // For delta events
+	NodeID  string // For done events
 	Error   string // For error events
 }
 
-// SSEEventHandler is a callback function for handling SSE events.
-type SSEEventHandler func(event SSEEvent) error
+// Stream wraps an SSE response and provides a channel-based API.
+type Stream struct {
+	events chan SSEEvent
+	body   io.ReadCloser
+	client *Client
+	nodeID string
+	err    error
+}
 
-// parseSSEStream reads SSE events from a reader and calls the handler for each event.
-func parseSSEStream(reader io.Reader, handler SSEEventHandler) error {
-	scanner := bufio.NewScanner(reader)
-	var eventType SSEEventType
+// newStream creates a new Stream from an HTTP response body.
+func newStream(body io.ReadCloser, client *Client) *Stream {
+	s := &Stream{
+		events: make(chan SSEEvent, 64),
+		body:   body,
+		client: client,
+	}
+	go s.read()
+	return s
+}
+
+// Events returns a channel that yields SSE events.
+func (s *Stream) Events() <-chan SSEEvent {
+	return s.events
+}
+
+// Node waits for the stream to complete and returns the resulting node.
+// Must be called after draining Events().
+func (s *Stream) Node() (*Node, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.nodeID == "" {
+		return nil, &StreamError{Message: "stream completed without node_id"}
+	}
+	return &Node{
+		ID:     s.nodeID,
+		Type:   NodeTypeAssistant,
+		client: s.client,
+	}, nil
+}
+
+// read parses SSE events from the body and sends them on the channel.
+func (s *Stream) read() {
+	defer close(s.events)
+	defer s.body.Close()
+
+	scanner := bufio.NewScanner(s.body)
+	var eventType string
 	var dataLines []string
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Empty line signals end of event
 		if line == "" {
 			if eventType != "" && len(dataLines) > 0 {
-				event := SSEEvent{
-					Type: eventType,
-					Data: strings.Join(dataLines, "\n"),
+				event := s.parseEvent(eventType, strings.Join(dataLines, "\n"))
+				if event.Type == "done" {
+					s.nodeID = event.NodeID
 				}
-
-				// Parse the data based on event type
-				parseEventData(&event)
-
-				if err := handler(event); err != nil {
-					return err
+				if event.Type == "error" {
+					s.err = &StreamError{Message: event.Error}
 				}
+				s.events <- event
 			}
 			eventType = ""
 			dataLines = nil
 			continue
 		}
 
-		// Parse the field
 		if strings.HasPrefix(line, "event:") {
-			eventType = SSEEventType(strings.TrimSpace(strings.TrimPrefix(line, "event:")))
+			eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		} else if strings.HasPrefix(line, "data:") {
 			data := strings.TrimPrefix(line, "data:")
-			// SSE spec says to remove leading space if present
 			if len(data) > 0 && data[0] == ' ' {
 				data = data[1:]
 			}
 			dataLines = append(dataLines, data)
 		}
-		// Ignore other fields (id, retry, comments)
 	}
 
-	// Handle any remaining event
+	// Handle any remaining event without trailing newline
 	if eventType != "" && len(dataLines) > 0 {
-		event := SSEEvent{
-			Type: eventType,
-			Data: strings.Join(dataLines, "\n"),
+		event := s.parseEvent(eventType, strings.Join(dataLines, "\n"))
+		if event.Type == "done" {
+			s.nodeID = event.NodeID
 		}
-		parseEventData(&event)
-		if err := handler(event); err != nil {
-			return err
+		if event.Type == "error" {
+			s.err = &StreamError{Message: event.Error}
 		}
+		s.events <- event
 	}
 
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		s.err = err
+	}
 }
 
-// parseEventData parses the event data and populates the appropriate fields.
-func parseEventData(event *SSEEvent) {
-	switch event.Type {
-	case SSEEventStart:
-		var data struct {
-			DAGID string `json:"dag_id"`
-		}
-		if err := json.Unmarshal([]byte(event.Data), &data); err == nil {
-			event.DAGID = data.DAGID
-		}
+// parseEvent converts raw SSE data into a typed SSEEvent.
+func (s *Stream) parseEvent(eventType, data string) SSEEvent {
+	event := SSEEvent{Type: eventType}
 
-	case SSEEventDelta:
-		var data struct {
+	switch eventType {
+	case "start":
+		// Start event has no meaningful data
+	case "delta":
+		var d struct {
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal([]byte(event.Data), &data); err == nil {
-			event.Content = data.Content
+		if err := json.Unmarshal([]byte(data), &d); err == nil {
+			event.Content = d.Content
 		}
-
-	case SSEEventDone:
-		var data struct {
-			DAGID  string `json:"dag_id"`
+	case "done":
+		var d struct {
 			NodeID string `json:"node_id"`
 		}
-		if err := json.Unmarshal([]byte(event.Data), &data); err == nil {
-			event.DAGID = data.DAGID
-			event.NodeID = data.NodeID
+		if err := json.Unmarshal([]byte(data), &d); err == nil {
+			event.NodeID = d.NodeID
 		}
-
-	case SSEEventError:
-		// Error data is plain text
-		event.Error = event.Data
+	case "error":
+		event.Error = data
 	}
+
+	return event
 }

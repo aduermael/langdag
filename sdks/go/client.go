@@ -13,9 +13,9 @@ import (
 
 // Client is the LangDAG API client.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	apiKey     string
+	baseURL     string
+	httpClient  *http.Client
+	apiKey      string
 	bearerToken string
 }
 
@@ -24,7 +24,6 @@ type Option func(*Client)
 
 // NewClient creates a new LangDAG API client.
 func NewClient(baseURL string, opts ...Option) *Client {
-	// Remove trailing slash from baseURL
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	c := &Client{
@@ -78,6 +77,119 @@ func (c *Client) Health(ctx context.Context) (*HealthResponse, error) {
 	return &resp, nil
 }
 
+// Prompt starts a new conversation tree with the given message.
+func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOption) (*Node, error) {
+	o := &promptOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	req := promptRequest{
+		Message:      message,
+		Model:        o.model,
+		SystemPrompt: o.systemPrompt,
+	}
+
+	var resp promptResponse
+	if err := c.doRequest(ctx, http.MethodPost, "/prompt", req, &resp); err != nil {
+		return nil, err
+	}
+
+	return &Node{
+		ID:      resp.NodeID,
+		Content: resp.Content,
+		Type:    NodeTypeAssistant,
+		client:  c,
+	}, nil
+}
+
+// PromptStream starts a new conversation tree with streaming.
+func (c *Client) PromptStream(ctx context.Context, message string, opts ...PromptOption) (*Stream, error) {
+	o := &promptOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	req := promptRequest{
+		Message:      message,
+		Model:        o.model,
+		SystemPrompt: o.systemPrompt,
+		Stream:       true,
+	}
+
+	return c.doStreamRequest(ctx, http.MethodPost, "/prompt", req)
+}
+
+// promptFrom continues a conversation from an existing node (non-streaming).
+func (c *Client) promptFrom(ctx context.Context, nodeID, message string, o *promptOptions) (*Node, error) {
+	req := promptRequest{
+		Message: message,
+		Model:   o.model,
+	}
+
+	var resp promptResponse
+	if err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("/nodes/%s/prompt", nodeID), req, &resp); err != nil {
+		return nil, err
+	}
+
+	return &Node{
+		ID:      resp.NodeID,
+		Content: resp.Content,
+		Type:    NodeTypeAssistant,
+		client:  c,
+	}, nil
+}
+
+// promptStreamFrom continues a conversation from an existing node with streaming.
+func (c *Client) promptStreamFrom(ctx context.Context, nodeID, message string, o *promptOptions) (*Stream, error) {
+	req := promptRequest{
+		Message: message,
+		Model:   o.model,
+		Stream:  true,
+	}
+
+	return c.doStreamRequest(ctx, http.MethodPost, fmt.Sprintf("/nodes/%s/prompt", nodeID), req)
+}
+
+// GetNode retrieves a single node by ID.
+func (c *Client) GetNode(ctx context.Context, id string) (*Node, error) {
+	var node Node
+	if err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/nodes/%s", id), nil, &node); err != nil {
+		return nil, err
+	}
+	node.client = c
+	return &node, nil
+}
+
+// GetTree retrieves a node and its full subtree.
+func (c *Client) GetTree(ctx context.Context, id string) (*Tree, error) {
+	var nodes []Node
+	if err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/nodes/%s/tree", id), nil, &nodes); err != nil {
+		return nil, err
+	}
+	for i := range nodes {
+		nodes[i].client = c
+	}
+	return &Tree{Nodes: nodes}, nil
+}
+
+// ListRoots returns all root nodes (conversation trees).
+func (c *Client) ListRoots(ctx context.Context) ([]Node, error) {
+	var nodes []Node
+	if err := c.doRequest(ctx, http.MethodGet, "/nodes", nil, &nodes); err != nil {
+		return nil, err
+	}
+	for i := range nodes {
+		nodes[i].client = c
+	}
+	return nodes, nil
+}
+
+// DeleteNode deletes a node and its subtree.
+func (c *Client) DeleteNode(ctx context.Context, id string) error {
+	return c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/nodes/%s", id), nil, nil)
+}
+
 // doRequest performs an HTTP request and decodes the JSON response.
 func (c *Client) doRequest(ctx context.Context, method, path string, body, result interface{}) error {
 	var bodyReader io.Reader
@@ -118,20 +230,20 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body, resul
 	return nil
 }
 
-// doStreamRequest performs an HTTP request and handles SSE streaming.
-func (c *Client) doStreamRequest(ctx context.Context, method, path string, body interface{}, handler SSEEventHandler) error {
+// doStreamRequest performs an HTTP request and returns a Stream for SSE events.
+func (c *Client) doStreamRequest(ctx context.Context, method, path string, body interface{}) (*Stream, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("langdag: failed to marshal request body: %w", err)
+			return nil, fmt.Errorf("langdag: failed to marshal request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
-		return fmt.Errorf("langdag: failed to create request: %w", err)
+		return nil, fmt.Errorf("langdag: failed to create request: %w", err)
 	}
 
 	c.setHeaders(req)
@@ -147,33 +259,15 @@ func (c *Client) doStreamRequest(ctx context.Context, method, path string, body 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return &ConnectionError{Err: err}
+		return nil, &ConnectionError{Err: err}
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return c.parseError(resp)
+		defer resp.Body.Close()
+		return nil, c.parseError(resp)
 	}
 
-	// Check if response is SSE
-	contentType := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "text/event-stream") {
-		// Non-streaming response, parse as JSON
-		var chatResp ChatResponse
-		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-			return fmt.Errorf("langdag: failed to decode response: %w", err)
-		}
-		// Emit synthetic events
-		if err := handler(SSEEvent{Type: SSEEventStart, DAGID: chatResp.DAGID}); err != nil {
-			return err
-		}
-		if err := handler(SSEEvent{Type: SSEEventDelta, Content: chatResp.Content}); err != nil {
-			return err
-		}
-		return handler(SSEEvent{Type: SSEEventDone, DAGID: chatResp.DAGID, NodeID: chatResp.NodeID})
-	}
-
-	return parseSSEStream(resp.Body, handler)
+	return newStream(resp.Body, c), nil
 }
 
 // setHeaders sets common headers on a request.
@@ -195,7 +289,6 @@ func (c *Client) parseError(resp *http.Response) error {
 
 	body, _ := io.ReadAll(resp.Body)
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		// If we can't parse the error, use the raw body
 		errResp.Error = string(body)
 		if errResp.Error == "" {
 			errResp.Error = resp.Status

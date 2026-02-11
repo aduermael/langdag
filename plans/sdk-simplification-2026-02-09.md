@@ -235,7 +235,7 @@ Replace `chat new` / `chat continue` with unified `prompt` command.
 
 ## Phase 4: Go SDK
 
-- [ ] 4a: Rewrite Go SDK with `Prompt`/`PromptStream`, `GetNode`, `GetTree`, `ListRoots`
+- [x] 4a: Rewrite Go SDK with `Prompt`/`PromptStream`, `GetNode`, `GetTree`, `ListRoots`
 - [ ] 4b: Update Go SDK unit tests
 - [ ] 4c: Rewrite `examples/go/main.go`
 

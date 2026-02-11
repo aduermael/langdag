@@ -1,20 +1,12 @@
 // Package langdag provides a Go client for the LangDAG REST API.
 package langdag
 
-import "time"
-
-// DAGStatus represents the status of a DAG.
-type DAGStatus string
-
-const (
-	DAGStatusPending   DAGStatus = "pending"
-	DAGStatusRunning   DAGStatus = "running"
-	DAGStatusCompleted DAGStatus = "completed"
-	DAGStatusFailed    DAGStatus = "failed"
-	DAGStatusCancelled DAGStatus = "cancelled"
+import (
+	"context"
+	"time"
 )
 
-// NodeType represents the type of a node in a DAG.
+// NodeType represents the type of a node.
 type NodeType string
 
 const (
@@ -22,85 +14,98 @@ const (
 	NodeTypeAssistant  NodeType = "assistant"
 	NodeTypeToolCall   NodeType = "tool_call"
 	NodeTypeToolResult NodeType = "tool_result"
-	NodeTypeLLM        NodeType = "llm"
-	NodeTypeInput      NodeType = "input"
-	NodeTypeOutput     NodeType = "output"
 )
 
-// WorkflowNodeType represents the type of a workflow node.
-type WorkflowNodeType string
-
-const (
-	WorkflowNodeTypeLLM    WorkflowNodeType = "llm"
-	WorkflowNodeTypeTool   WorkflowNodeType = "tool"
-	WorkflowNodeTypeBranch WorkflowNodeType = "branch"
-	WorkflowNodeTypeMerge  WorkflowNodeType = "merge"
-	WorkflowNodeTypeInput  WorkflowNodeType = "input"
-	WorkflowNodeTypeOutput WorkflowNodeType = "output"
-)
-
-// DAG represents a conversation or workflow run DAG.
-type DAG struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title,omitempty"`
-	WorkflowID   string    `json:"workflow_id,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	SystemPrompt string    `json:"system_prompt,omitempty"`
-	Status       DAGStatus `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-}
-
-// DAGDetail represents a DAG with all its nodes.
-type DAGDetail struct {
-	DAG
-	NodeCount int    `json:"node_count,omitempty"`
-	Nodes     []Node `json:"nodes,omitempty"`
-}
-
-// Node represents a node in a DAG.
+// Node represents a node in a conversation tree.
+// Root nodes (ParentID == "") carry metadata like Title and SystemPrompt.
 type Node struct {
-	ID        string    `json:"id"`
-	ParentID  string    `json:"parent_id,omitempty"`
-	Sequence  int       `json:"sequence"`
-	NodeType  NodeType  `json:"node_type"`
-	Content   string    `json:"content"`
-	Model     string    `json:"model,omitempty"`
-	TokensIn  int       `json:"tokens_in,omitempty"`
-	TokensOut int       `json:"tokens_out,omitempty"`
-	LatencyMs int       `json:"latency_ms,omitempty"`
-	Status    string    `json:"status,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	ParentID     string    `json:"parent_id,omitempty"`
+	Sequence     int       `json:"sequence"`
+	Type         NodeType  `json:"node_type"`
+	Content      string    `json:"content"`
+	Model        string    `json:"model,omitempty"`
+	TokensIn     int       `json:"tokens_in,omitempty"`
+	TokensOut    int       `json:"tokens_out,omitempty"`
+	LatencyMs    int       `json:"latency_ms,omitempty"`
+	Status       string    `json:"status,omitempty"`
+	Title        string    `json:"title,omitempty"`
+	SystemPrompt string    `json:"system_prompt,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+
+	client *Client // unexported — enables Prompt()
 }
 
-// NewChatRequest represents a request to start a new conversation.
-type NewChatRequest struct {
+// Prompt continues the conversation from this node.
+func (n *Node) Prompt(ctx context.Context, message string, opts ...PromptOption) (*Node, error) {
+	o := &promptOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return n.client.promptFrom(ctx, n.ID, message, o)
+}
+
+// PromptStream continues the conversation from this node with streaming.
+func (n *Node) PromptStream(ctx context.Context, message string, opts ...PromptOption) (*Stream, error) {
+	o := &promptOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return n.client.promptStreamFrom(ctx, n.ID, message, o)
+}
+
+// Tree represents a tree of nodes.
+type Tree struct {
+	Nodes []Node `json:"nodes"`
+}
+
+// PromptOption configures a prompt request.
+type PromptOption func(*promptOptions)
+
+type promptOptions struct {
+	model        string
+	systemPrompt string
+}
+
+// WithSystem sets the system prompt (only for new trees via client.Prompt).
+func WithSystem(prompt string) PromptOption {
+	return func(o *promptOptions) {
+		o.systemPrompt = prompt
+	}
+}
+
+// WithModel sets the model for the prompt.
+func WithModel(model string) PromptOption {
+	return func(o *promptOptions) {
+		o.model = model
+	}
+}
+
+// promptRequest is the JSON body sent to /prompt and /nodes/{id}/prompt.
+type promptRequest struct {
+	Message      string `json:"message"`
 	Model        string `json:"model,omitempty"`
 	SystemPrompt string `json:"system_prompt,omitempty"`
-	Message      string `json:"message"`
 	Stream       bool   `json:"stream,omitempty"`
 }
 
-// ContinueChatRequest represents a request to continue an existing conversation.
-type ContinueChatRequest struct {
-	Message string `json:"message"`
-	Stream  bool   `json:"stream,omitempty"`
-}
-
-// ForkChatRequest represents a request to fork a conversation from a specific node.
-type ForkChatRequest struct {
-	NodeID  string `json:"node_id"`
-	Message string `json:"message"`
-	Stream  bool   `json:"stream,omitempty"`
-}
-
-// ChatResponse represents a chat response.
-type ChatResponse struct {
-	DAGID     string `json:"dag_id"`
+// promptResponse is the JSON body returned from /prompt and /nodes/{id}/prompt.
+type promptResponse struct {
 	NodeID    string `json:"node_id"`
 	Content   string `json:"content"`
 	TokensIn  int    `json:"tokens_in,omitempty"`
 	TokensOut int    `json:"tokens_out,omitempty"`
+}
+
+// HealthResponse represents the health check response.
+type HealthResponse struct {
+	Status string `json:"status"`
+}
+
+// DeleteResponse represents a delete response.
+type DeleteResponse struct {
+	Status string `json:"status"`
+	ID     string `json:"id"`
 }
 
 // Workflow represents a workflow template.
@@ -127,6 +132,18 @@ type ToolDefinition struct {
 	Description string                 `json:"description"`
 	InputSchema map[string]interface{} `json:"input_schema"`
 }
+
+// WorkflowNodeType represents the type of a workflow node.
+type WorkflowNodeType string
+
+const (
+	WorkflowNodeTypeLLM    WorkflowNodeType = "llm"
+	WorkflowNodeTypeTool   WorkflowNodeType = "tool"
+	WorkflowNodeTypeBranch WorkflowNodeType = "branch"
+	WorkflowNodeTypeMerge  WorkflowNodeType = "merge"
+	WorkflowNodeTypeInput  WorkflowNodeType = "input"
+	WorkflowNodeTypeOutput WorkflowNodeType = "output"
+)
 
 // WorkflowNode represents a node in a workflow definition.
 type WorkflowNode struct {
@@ -167,18 +184,7 @@ type RunWorkflowRequest struct {
 
 // RunWorkflowResponse represents the response from running a workflow.
 type RunWorkflowResponse struct {
-	DAGID  string                 `json:"dag_id"`
-	Status DAGStatus              `json:"status"`
+	NodeID string                 `json:"node_id"`
+	Status string                 `json:"status"`
 	Output map[string]interface{} `json:"output,omitempty"`
-}
-
-// HealthResponse represents the health check response.
-type HealthResponse struct {
-	Status string `json:"status"`
-}
-
-// DeleteResponse represents the response from deleting a DAG.
-type DeleteResponse struct {
-	Status string `json:"status"`
-	ID     string `json:"id"`
 }
