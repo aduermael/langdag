@@ -2,6 +2,8 @@
 
 A high-performance Go tool for managing LLM conversations as directed acyclic graphs (DAGs).
 
+> **Note (v0.3):** The storage schema and REST API have been simplified to a node-centric model. There is no longer a separate `dags` table — everything is a node. Root nodes (parent_id = NULL) represent conversations. The REST API uses `/prompt`, `/nodes/{id}/prompt`, and `/nodes` endpoints instead of the `/dags` and `/chat` endpoints described in some sections below. The CLI uses `langdag prompt` instead of `langdag chat new`/`langdag chat continue`. See `llms-full.txt` for the current API reference.
+
 ## Overview
 
 LangDAG provides a simple yet powerful way to orchestrate LLM interactions by modeling conversations as DAGs. Each node represents an LLM call or tool execution, and edges define the flow of context between them.

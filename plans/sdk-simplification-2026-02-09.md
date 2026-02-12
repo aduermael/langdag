@@ -276,7 +276,7 @@ Update all documentation to reflect the new node-centric API and unified `prompt
 - [x] 8b: Update `docs/index.html` (website) — CLI demo section (replace `chat new`/`chat continue` with `prompt`), SDK code examples for all 3 languages (replace chat/fork_chat/list_dags with prompt/list_roots/get_tree)
 - [x] 8c: Update `docs/llms.txt` — concise summary with correct API/CLI/SDK info
 - [x] 8d: Update `docs/llms-full.txt` — full reference with correct API/CLI/SDK info
-- [ ] 8e: Update `docs/DESIGN.md` — update or add note that schema/API sections reflect new node-centric model
+- [x] 8e: Update `docs/DESIGN.md` — update or add note that schema/API sections reflect new node-centric model
 - [ ] 8f: Update SDK READMEs (`sdks/go/README.md`, `sdks/python/README.md`, `sdks/typescript/README.md`)
 - [ ] 8g: Update example READMEs (`examples/go/README.md`, `examples/python/README.md`, `examples/typescript/README.md`)
 - [ ] 8h: Update or create OpenAPI spec for new endpoints
