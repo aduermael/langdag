@@ -2,15 +2,14 @@
 
 > LLM Conversations as Directed Acyclic Graphs
 
-LangDAG is a high-performance Go tool for orchestrating LLM interactions. It models conversations and workflows as directed acyclic graphs (DAGs), enabling branching, forking, and replaying of AI conversations.
+LangDAG is a high-performance Go tool for orchestrating LLM interactions. Everything is a node — a root node defines a conversation tree, and prompting from any node extends or branches the tree.
 
 ## Key Features
 
-- Two modes: Workflow (YAML pipelines) and Conversation (dynamic chat)
-- Native streaming via SSE and WebSocket
-- Conversation forking: branch from any node to explore alternatives
-- Tool integration with Auto, Interrupt, and WebSocket execution modes
-- Persistent storage: SQLite (default) or PostgreSQL
+- Node-centric API: one concept (nodes), one verb (prompt)
+- Native streaming via SSE
+- Branch from any node to explore alternative paths
+- Persistent storage: SQLite (default)
 - ~1ms overhead, single static binary, zero runtime dependencies
 
 ## SDKs
@@ -28,6 +27,29 @@ go run ./cmd/langdag serve
 
 # Or install directly
 go install github.com/aduermael/langdag/cmd/langdag@latest
+```
+
+## CLI
+
+```bash
+langdag prompt "What is LangDAG?"           # new conversation
+langdag prompt <node-id> "Tell me more"     # continue from node
+langdag prompt                              # interactive mode
+langdag ls                                  # list root nodes
+langdag show <id>                           # show node tree
+langdag rm <id>                             # delete node + subtree
+```
+
+## REST API
+
+```
+POST   /prompt                  Start new conversation tree
+POST   /nodes/{id}/prompt       Continue from existing node
+GET    /nodes                   List root nodes
+GET    /nodes/{id}              Get a single node
+GET    /nodes/{id}/tree         Get full tree from node
+DELETE /nodes/{id}              Delete node and subtree
+GET    /health                  Health check
 ```
 
 ## Links
