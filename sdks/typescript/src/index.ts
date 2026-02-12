@@ -2,36 +2,25 @@
  * LangDAG TypeScript SDK
  *
  * A TypeScript client for the LangDAG REST API, enabling management of
- * LLM conversations as directed acyclic graphs (DAGs).
+ * LLM conversations as node trees.
  *
  * @packageDocumentation
  */
 
-// Main client
-export { LangDAGClient } from './client.js';
+// Main client and core classes
+export { LangDAGClient, Node, Stream } from './client.js';
 
 // Types
 export type {
   // Client configuration
   LangDAGClientOptions,
-  ChatOptions,
-  ContinueChatOptions,
-  ForkChatOptions,
+  PromptOptions,
   CreateWorkflowOptions,
   RunWorkflowOptions,
 
   // Core models
-  DAG,
-  DAGDetail,
-  Node,
-  DAGStatus,
+  NodeData,
   NodeType,
-
-  // Chat types
-  NewChatRequest,
-  ContinueChatRequest,
-  ForkChatRequest,
-  ChatResponse,
 
   // SSE types
   SSEEvent,
@@ -54,7 +43,7 @@ export type {
   // Response types
   DeleteResponse,
   HealthResponse,
-  ApiError as ApiErrorResponse,
+  ApiErrorBody,
 } from './types.js';
 
 // Errors
@@ -73,5 +62,4 @@ export {
 export {
   parseSSEEvent,
   parseSSEStream,
-  collectStreamContent,
 } from './sse.js';

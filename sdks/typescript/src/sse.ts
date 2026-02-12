@@ -11,12 +11,7 @@ import { SSEParseError } from './errors.js';
 export function parseSSEEvent(eventType: string, data: string): SSEEvent {
   switch (eventType) {
     case 'start': {
-      try {
-        const parsed = JSON.parse(data) as { dag_id: string };
-        return { type: 'start', dag_id: parsed.dag_id };
-      } catch {
-        throw new SSEParseError(`Failed to parse 'start' event data`, data);
-      }
+      return { type: 'start' };
     }
 
     case 'delta': {
@@ -30,8 +25,8 @@ export function parseSSEEvent(eventType: string, data: string): SSEEvent {
 
     case 'done': {
       try {
-        const parsed = JSON.parse(data) as { node_id: string; dag_id: string };
-        return { type: 'done', node_id: parsed.node_id, dag_id: parsed.dag_id };
+        const parsed = JSON.parse(data) as { node_id: string };
+        return { type: 'done', node_id: parsed.node_id };
       } catch {
         throw new SSEParseError(`Failed to parse 'done' event data`, data);
       }
@@ -116,40 +111,16 @@ function parseEventBlock(block: string): SSEEvent | null {
     // Ignore other lines (comments, id, retry, etc.)
   }
 
-  if (!eventType || !data) {
+  if (!eventType) {
+    return null;
+  }
+
+  // start event may have empty data "{}" - that is fine
+  // but if there is no data at all and it is not a start event, skip
+  if (!data && eventType !== 'start') {
     return null;
   }
 
   return parseSSEEvent(eventType, data);
 }
 
-/**
- * Collect all content from a streaming response
- * Useful for when you want streaming internally but a simple string result
- */
-export async function collectStreamContent(
-  stream: AsyncGenerator<SSEEvent, void, undefined>
-): Promise<{ dagId: string; nodeId: string; content: string }> {
-  let dagId = '';
-  let nodeId = '';
-  let content = '';
-
-  for await (const event of stream) {
-    switch (event.type) {
-      case 'start':
-        dagId = event.dag_id;
-        break;
-      case 'delta':
-        content += event.content;
-        break;
-      case 'done':
-        nodeId = event.node_id;
-        dagId = event.dag_id;
-        break;
-      case 'error':
-        throw new SSEParseError(`Stream error: ${event.error}`);
-    }
-  }
-
-  return { dagId, nodeId, content };
-}

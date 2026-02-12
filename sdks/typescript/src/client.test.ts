@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { LangDAGClient } from './client.js';
+import { LangDAGClient, Node, Stream } from './client.js';
 import { UnauthorizedError, NotFoundError, BadRequestError, ApiError, NetworkError } from './errors.js';
 
 function mockFetch(response: Partial<Response>): typeof fetch {
@@ -91,7 +91,7 @@ describe('LangDAGClient', () => {
         json: () => Promise.resolve({ error: 'not found' }),
       });
       const client = new LangDAGClient({ fetch: fetchFn });
-      await expect(client.getDag('nonexistent')).rejects.toThrow(NotFoundError);
+      await expect(client.getNode('nonexistent')).rejects.toThrow(NotFoundError);
     });
 
     it('throws BadRequestError on 400', async () => {
@@ -102,7 +102,7 @@ describe('LangDAGClient', () => {
         json: () => Promise.resolve({ error: 'invalid' }),
       });
       const client = new LangDAGClient({ fetch: fetchFn });
-      await expect(client.chat({ message: '' })).rejects.toThrow(BadRequestError);
+      await expect(client.prompt('')).rejects.toThrow(BadRequestError);
     });
 
     it('throws ApiError on 500', async () => {
@@ -123,55 +123,76 @@ describe('LangDAGClient', () => {
     });
   });
 
-  describe('listDags', () => {
-    it('returns list of DAGs', async () => {
-      const dags = [
-        { id: 'dag-1', status: 'completed', created_at: '2024-01-01', updated_at: '2024-01-01' },
-        { id: 'dag-2', status: 'running', created_at: '2024-01-02', updated_at: '2024-01-02' },
+  describe('listRoots', () => {
+    it('returns list of root nodes', async () => {
+      const nodes = [
+        { id: 'n-1', sequence: 0, node_type: 'user', content: 'Hello', created_at: '2024-01-01' },
+        { id: 'n-2', sequence: 0, node_type: 'user', content: 'Hi', created_at: '2024-01-02' },
       ];
-      const fetchFn = mockFetch({ json: () => Promise.resolve(dags) });
+      const fetchFn = mockFetch({ json: () => Promise.resolve(nodes) });
       const client = new LangDAGClient({ fetch: fetchFn });
-      const result = await client.listDags();
+      const result = await client.listRoots();
       expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('dag-1');
+      expect(result[0]).toBeInstanceOf(Node);
+      expect(result[0].id).toBe('n-1');
     });
   });
 
-  describe('getDag', () => {
-    it('returns DAG detail', async () => {
-      const dag = {
-        id: 'dag-1',
-        status: 'completed',
+  describe('getNode', () => {
+    it('returns a Node with prompt methods', async () => {
+      const node = {
+        id: 'n-1',
+        sequence: 0,
+        node_type: 'user',
+        content: 'Hello',
+        title: 'My Chat',
         created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-        nodes: [{ id: 'n1', sequence: 0, node_type: 'user', content: 'Hello', created_at: '2024-01-01' }],
       };
-      const fetchFn = mockFetch({ json: () => Promise.resolve(dag) });
+      const fetchFn = mockFetch({ json: () => Promise.resolve(node) });
       const client = new LangDAGClient({ fetch: fetchFn });
-      const result = await client.getDag('dag-1');
-      expect(result.id).toBe('dag-1');
-      expect(result.nodes).toHaveLength(1);
+      const result = await client.getNode('n-1');
+      expect(result).toBeInstanceOf(Node);
+      expect(result.id).toBe('n-1');
+      expect(result.title).toBe('My Chat');
+      expect(typeof result.prompt).toBe('function');
+      expect(typeof result.promptStream).toBe('function');
     });
   });
 
-  describe('chat', () => {
-    it('non-streaming returns ChatResponse', async () => {
-      const chatResp = { dag_id: 'dag-1', node_id: 'n-1', content: 'Hello back!' };
-      const fetchFn = mockFetch({ json: () => Promise.resolve(chatResp) });
+  describe('getTree', () => {
+    it('returns list of Node objects in tree', async () => {
+      const nodes = [
+        { id: 'n-1', sequence: 0, node_type: 'user', content: 'Hello', created_at: '2024-01-01' },
+        { id: 'n-2', parent_id: 'n-1', sequence: 1, node_type: 'assistant', content: 'Hi!', created_at: '2024-01-01' },
+      ];
+      const fetchFn = mockFetch({ json: () => Promise.resolve(nodes) });
       const client = new LangDAGClient({ fetch: fetchFn });
-      const result = await client.chat({ message: 'Hello' });
-      expect(result.dag_id).toBe('dag-1');
+      const result = await client.getTree('n-1');
+      expect(result).toHaveLength(2);
+      expect(result[0]).toBeInstanceOf(Node);
+      expect(result[1].parentId).toBe('n-1');
+    });
+  });
+
+  describe('prompt', () => {
+    it('returns a Node', async () => {
+      const promptResp = { node_id: 'n-1', content: 'Hello back!' };
+      const fetchFn = mockFetch({ json: () => Promise.resolve(promptResp) });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const result = await client.prompt('Hello');
+      expect(result).toBeInstanceOf(Node);
+      expect(result.id).toBe('n-1');
       expect(result.content).toBe('Hello back!');
     });
 
     it('sends correct request body', async () => {
       const fetchFn = mockFetch({
-        json: () => Promise.resolve({ dag_id: 'd', node_id: 'n', content: 'ok' }),
+        json: () => Promise.resolve({ node_id: 'n', content: 'ok' }),
       });
       const client = new LangDAGClient({ fetch: fetchFn });
-      await client.chat({ message: 'Hello', model: 'test-model', system_prompt: 'Be nice' });
+      await client.prompt('Hello', { model: 'test-model', systemPrompt: 'Be nice' });
       expect(fetchFn).toHaveBeenCalledWith(
-        'http://localhost:8080/chat',
+        'http://localhost:8080/prompt',
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('"message":"Hello"'),
@@ -180,24 +201,166 @@ describe('LangDAGClient', () => {
     });
   });
 
-  describe('continueChat', () => {
-    it('returns ChatResponse', async () => {
-      const chatResp = { dag_id: 'dag-1', node_id: 'n-2', content: 'Continued!' };
-      const fetchFn = mockFetch({ json: () => Promise.resolve(chatResp) });
+  describe('node.prompt (promptFrom)', () => {
+    it('returns a new Node', async () => {
+      // First call returns the initial node
+      const fetchFn = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true, status: 200, statusText: 'OK',
+          json: () => Promise.resolve({ node_id: 'n-1', content: 'First' }),
+          headers: new Headers(),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true, status: 200, statusText: 'OK',
+          json: () => Promise.resolve({ node_id: 'n-2', content: 'Continued!' }),
+          headers: new Headers(),
+        } as Response);
+
       const client = new LangDAGClient({ fetch: fetchFn });
-      const result = await client.continueChat('dag-1', { message: 'Follow up' });
-      expect(result.content).toBe('Continued!');
+      const node1 = await client.prompt('Hello');
+      const node2 = await node1.prompt('Follow up');
+
+      expect(node2).toBeInstanceOf(Node);
+      expect(node2.content).toBe('Continued!');
+    });
+
+    it('sends to correct URL', async () => {
+      const fetchFn = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true, status: 200, statusText: 'OK',
+          json: () => Promise.resolve({ node_id: 'n-1', content: 'First' }),
+          headers: new Headers(),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true, status: 200, statusText: 'OK',
+          json: () => Promise.resolve({ node_id: 'n-2', content: 'ok' }),
+          headers: new Headers(),
+        } as Response);
+
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const node1 = await client.prompt('Hello');
+      await node1.prompt('Follow up');
+
+      expect(fetchFn).toHaveBeenLastCalledWith(
+        'http://localhost:8080/nodes/n-1/prompt',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
     });
   });
 
-  describe('deleteDag', () => {
-    it('returns delete confirmation', async () => {
+  describe('promptStream', () => {
+    function createSSEStream(text: string): ReadableStream<Uint8Array> {
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(text));
+          controller.close();
+        },
+      });
+    }
+
+    it('returns a Stream with events()', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"Hello "}',
+        '',
+        'event: delta',
+        'data: {"content":"world!"}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-1"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      expect(stream).toBeInstanceOf(Stream);
+
+      const events = [];
+      for await (const event of stream.events()) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(4);
+      expect(events[0]).toEqual({ type: 'start' });
+      expect(events[1]).toEqual({ type: 'delta', content: 'Hello ' });
+      expect(events[2]).toEqual({ type: 'delta', content: 'world!' });
+      expect(events[3]).toEqual({ type: 'done', node_id: 'n-1' });
+    });
+
+    it('stream.node() returns final Node', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"Hello "}',
+        '',
+        'event: delta',
+        'data: {"content":"world!"}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-1"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      // Consume events first
+      for await (const _ of stream.events()) { /* drain */ }
+
+      const node = await stream.node();
+      expect(node).toBeInstanceOf(Node);
+      expect(node.id).toBe('n-1');
+      expect(node.content).toBe('Hello world!');
+    });
+
+    it('stream.node() auto-consumes if not iterated', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"auto"}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-auto"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      // Call node() directly without iterating events()
+      const node = await stream.node();
+      expect(node.id).toBe('n-auto');
+      expect(node.content).toBe('auto');
+    });
+  });
+
+  describe('deleteNode', () => {
+    it('deletes without error', async () => {
       const fetchFn = mockFetch({
-        json: () => Promise.resolve({ status: 'deleted', id: 'dag-1' }),
+        json: () => Promise.resolve({ status: 'deleted', id: 'n-1' }),
       });
       const client = new LangDAGClient({ fetch: fetchFn });
-      const result = await client.deleteDag('dag-1');
-      expect(result.status).toBe('deleted');
+      await expect(client.deleteNode('n-1')).resolves.toBeUndefined();
     });
   });
 });

@@ -5,12 +5,9 @@
 
 import type {
   LangDAGClientOptions,
-  DAG,
-  DAGDetail,
-  ChatOptions,
-  ContinueChatOptions,
-  ForkChatOptions,
-  ChatResponse,
+  NodeData,
+  NodeType,
+  PromptOptions,
   SSEEvent,
   Workflow,
   CreateWorkflowOptions,
@@ -20,31 +17,160 @@ import type {
   HealthResponse,
 } from './types.js';
 
-import { createApiError, NetworkError } from './errors.js';
+import { createApiError, NetworkError, SSEParseError } from './errors.js';
 import { parseSSEStream } from './sse.js';
 
 const DEFAULT_BASE_URL = 'http://localhost:8080';
+
+/**
+ * A node in a conversation tree.
+ * Returned by client.prompt(), node.prompt(), stream.node(), etc.
+ * Call node.prompt() or node.promptStream() to continue the conversation.
+ */
+export class Node {
+  readonly id: string;
+  readonly parentId?: string;
+  readonly sequence: number;
+  readonly type: NodeType;
+  readonly content: string;
+  readonly model?: string;
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
+  readonly latencyMs?: number;
+  readonly status?: string;
+  readonly title?: string;
+  readonly systemPrompt?: string;
+  readonly createdAt: string;
+
+  /** @internal */
+  private readonly client: LangDAGClient;
+
+  /** @internal */
+  constructor(data: NodeData, client: LangDAGClient) {
+    this.id = data.id;
+    this.parentId = data.parent_id;
+    this.sequence = data.sequence;
+    this.type = data.node_type;
+    this.content = data.content;
+    this.model = data.model;
+    this.tokensIn = data.tokens_in;
+    this.tokensOut = data.tokens_out;
+    this.latencyMs = data.latency_ms;
+    this.status = data.status;
+    this.title = data.title;
+    this.systemPrompt = data.system_prompt;
+    this.createdAt = data.created_at;
+    this.client = client;
+  }
+
+  /**
+   * Continue the conversation from this node (non-streaming).
+   * @param message - The message to send
+   * @param options - Optional model override
+   * @returns The assistant's response node
+   */
+  async prompt(message: string, options?: { model?: string }): Promise<Node> {
+    return this.client.promptFrom(this.id, message, options);
+  }
+
+  /**
+   * Continue the conversation from this node (streaming).
+   * @param message - The message to send
+   * @param options - Optional model override
+   * @returns A Stream for consuming SSE events and getting the final node
+   */
+  async promptStream(message: string, options?: { model?: string }): Promise<Stream> {
+    return this.client.promptStreamFrom(this.id, message, options);
+  }
+}
+
+/**
+ * A streaming response. Consume events via the async iterator,
+ * then call node() to get the final Node.
+ */
+export class Stream {
+  private readonly rawStream: ReadableStream<Uint8Array>;
+  private readonly client: LangDAGClient;
+  private nodeId: string = '';
+  private collectedContent: string = '';
+  private consumed: boolean = false;
+
+  /** @internal */
+  constructor(rawStream: ReadableStream<Uint8Array>, client: LangDAGClient) {
+    this.rawStream = rawStream;
+    this.client = client;
+  }
+
+  /**
+   * Async iterator over SSE events.
+   * Must be consumed before calling node().
+   */
+  async *events(): AsyncGenerator<SSEEvent, void, undefined> {
+    if (this.consumed) {
+      throw new SSEParseError('Stream has already been consumed');
+    }
+    this.consumed = true;
+
+    for await (const event of parseSSEStream(this.rawStream)) {
+      if (event.type === 'delta') {
+        this.collectedContent += event.content;
+      } else if (event.type === 'done') {
+        this.nodeId = event.node_id;
+      }
+      yield event;
+    }
+  }
+
+  /**
+   * Get the final Node after the stream has been consumed.
+   * The stream must be fully consumed via events() first.
+   */
+  async node(): Promise<Node> {
+    if (!this.consumed) {
+      // Auto-consume the stream
+      for await (const event of this.events()) {
+        // consume
+        void event;
+      }
+    }
+
+    if (!this.nodeId) {
+      throw new SSEParseError('Stream did not produce a done event with node_id');
+    }
+
+    return new Node(
+      {
+        id: this.nodeId,
+        content: this.collectedContent,
+        node_type: 'assistant',
+        sequence: 0,
+        created_at: '',
+      },
+      this.client,
+    );
+  }
+}
 
 /**
  * LangDAG API Client
  *
  * @example
  * ```typescript
- * const client = new LangDAGClient({
- *   baseUrl: 'http://localhost:8080',
- *   apiKey: 'your-api-key'
- * });
+ * const client = new LangDAGClient({ baseUrl: 'http://localhost:8080' });
  *
- * // Start a new chat
- * const response = await client.chat({ message: 'Hello!' });
- * console.log(response.content);
+ * // Start a new conversation
+ * const node = await client.prompt('Hello!');
+ * console.log(node.content);
  *
- * // Stream a response
- * for await (const event of client.chat({ message: 'Hello!', stream: true })) {
- *   if (event.type === 'delta') {
- *     process.stdout.write(event.content);
- *   }
+ * // Continue from any node
+ * const node2 = await node.prompt('Tell me more');
+ *
+ * // Streaming
+ * const stream = await client.promptStream('Hello!');
+ * for await (const event of stream.events()) {
+ *   if (event.type === 'delta') process.stdout.write(event.content);
  * }
+ * const result = await stream.node();
  * ```
  */
 export class LangDAGClient {
@@ -158,151 +284,147 @@ export class LangDAGClient {
   // Health
   // ===========================================================================
 
-  /**
-   * Check server health
-   * @returns Health status
-   */
   async health(): Promise<HealthResponse> {
     return this.request<HealthResponse>('GET', '/health');
   }
 
   // ===========================================================================
-  // DAG Methods
+  // Prompt Methods
   // ===========================================================================
 
   /**
-   * List all DAGs
-   * @returns Array of DAG instances
+   * Start a new conversation (non-streaming).
+   * @param message - The message to send
+   * @param options - Optional model and system prompt
+   * @returns The assistant's response node
    */
-  async listDags(): Promise<DAG[]> {
-    return this.request<DAG[]>('GET', '/dags');
+  async prompt(message: string, options?: PromptOptions): Promise<Node> {
+    const resp = await this.request<{ node_id: string; content: string }>('POST', '/prompt', {
+      message,
+      model: options?.model,
+      system_prompt: options?.systemPrompt,
+      stream: false,
+    });
+
+    return new Node(
+      {
+        id: resp.node_id,
+        content: resp.content,
+        node_type: 'assistant',
+        sequence: 0,
+        created_at: '',
+      },
+      this,
+    );
   }
 
   /**
-   * Get a DAG by ID with full node details
-   * @param id - DAG ID (full or prefix)
-   * @returns DAG with nodes
+   * Start a new conversation (streaming).
+   * @param message - The message to send
+   * @param options - Optional model and system prompt
+   * @returns A Stream for consuming SSE events and getting the final node
    */
-  async getDag(id: string): Promise<DAGDetail> {
-    return this.request<DAGDetail>('GET', `/dags/${encodeURIComponent(id)}`);
+  async promptStream(message: string, options?: PromptOptions): Promise<Stream> {
+    const rawStream = await this.requestStream('POST', '/prompt', {
+      message,
+      model: options?.model,
+      system_prompt: options?.systemPrompt,
+      stream: true,
+    });
+
+    return new Stream(rawStream, this);
   }
 
   /**
-   * Delete a DAG
-   * @param id - DAG ID (full or prefix)
-   * @returns Delete confirmation
+   * Continue a conversation from an existing node (non-streaming).
+   * Prefer using node.prompt() instead.
+   * @internal
    */
-  async deleteDag(id: string): Promise<DeleteResponse> {
-    return this.request<DeleteResponse>('DELETE', `/dags/${encodeURIComponent(id)}`);
+  async promptFrom(nodeId: string, message: string, options?: { model?: string }): Promise<Node> {
+    const resp = await this.request<{ node_id: string; content: string }>(
+      'POST',
+      `/nodes/${encodeURIComponent(nodeId)}/prompt`,
+      {
+        message,
+        model: options?.model,
+        stream: false,
+      },
+    );
+
+    return new Node(
+      {
+        id: resp.node_id,
+        content: resp.content,
+        node_type: 'assistant',
+        sequence: 0,
+        created_at: '',
+      },
+      this,
+    );
+  }
+
+  /**
+   * Continue a conversation from an existing node (streaming).
+   * Prefer using node.promptStream() instead.
+   * @internal
+   */
+  async promptStreamFrom(nodeId: string, message: string, options?: { model?: string }): Promise<Stream> {
+    const rawStream = await this.requestStream(
+      'POST',
+      `/nodes/${encodeURIComponent(nodeId)}/prompt`,
+      {
+        message,
+        model: options?.model,
+        stream: true,
+      },
+    );
+
+    return new Stream(rawStream, this);
   }
 
   // ===========================================================================
-  // Chat Methods
+  // Node Methods
   // ===========================================================================
 
   /**
-   * Start a new chat conversation
-   * @param options - Chat options
-   * @returns Chat response or async generator of SSE events
+   * List all root nodes (conversation roots)
    */
-  chat(options: ChatOptions & { stream: true }): AsyncGenerator<SSEEvent, void, undefined>;
-  chat(options: ChatOptions & { stream?: false }): Promise<ChatResponse>;
-  chat(options: ChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined>;
-  chat(options: ChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined> {
-    if (options.stream) {
-      return this.chatStream(options);
-    }
-    return this.request<ChatResponse>('POST', '/chat', {
-      message: options.message,
-      model: options.model,
-      system_prompt: options.system_prompt,
-      stream: false,
-    });
-  }
-
-  private async *chatStream(options: ChatOptions): AsyncGenerator<SSEEvent, void, undefined> {
-    const stream = await this.requestStream('POST', '/chat', {
-      message: options.message,
-      model: options.model,
-      system_prompt: options.system_prompt,
-      stream: true,
-    });
-    yield* parseSSEStream(stream);
+  async listRoots(): Promise<Node[]> {
+    const data = await this.request<NodeData[]>('GET', '/nodes');
+    return data.map(d => new Node(d, this));
   }
 
   /**
-   * Continue an existing chat conversation
-   * @param dagId - DAG ID (full or prefix)
-   * @param options - Continue chat options
-   * @returns Chat response or async generator of SSE events
+   * Get a single node by ID
    */
-  continueChat(dagId: string, options: ContinueChatOptions & { stream: true }): AsyncGenerator<SSEEvent, void, undefined>;
-  continueChat(dagId: string, options: ContinueChatOptions & { stream?: false }): Promise<ChatResponse>;
-  continueChat(dagId: string, options: ContinueChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined>;
-  continueChat(dagId: string, options: ContinueChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined> {
-    if (options.stream) {
-      return this.continueChatStream(dagId, options);
-    }
-    return this.request<ChatResponse>('POST', `/chat/${encodeURIComponent(dagId)}`, {
-      message: options.message,
-      stream: false,
-    });
-  }
-
-  private async *continueChatStream(dagId: string, options: ContinueChatOptions): AsyncGenerator<SSEEvent, void, undefined> {
-    const stream = await this.requestStream('POST', `/chat/${encodeURIComponent(dagId)}`, {
-      message: options.message,
-      stream: true,
-    });
-    yield* parseSSEStream(stream);
+  async getNode(id: string): Promise<Node> {
+    const data = await this.request<NodeData>('GET', `/nodes/${encodeURIComponent(id)}`);
+    return new Node(data, this);
   }
 
   /**
-   * Fork a chat from a specific node
-   * @param dagId - DAG ID (full or prefix)
-   * @param options - Fork chat options
-   * @returns Chat response or async generator of SSE events
+   * Get the full tree of nodes for a conversation
    */
-  forkChat(dagId: string, options: ForkChatOptions & { stream: true }): AsyncGenerator<SSEEvent, void, undefined>;
-  forkChat(dagId: string, options: ForkChatOptions & { stream?: false }): Promise<ChatResponse>;
-  forkChat(dagId: string, options: ForkChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined>;
-  forkChat(dagId: string, options: ForkChatOptions): Promise<ChatResponse> | AsyncGenerator<SSEEvent, void, undefined> {
-    if (options.stream) {
-      return this.forkChatStream(dagId, options);
-    }
-    return this.request<ChatResponse>('POST', `/chat/${encodeURIComponent(dagId)}/fork`, {
-      node_id: options.node_id,
-      message: options.message,
-      stream: false,
-    });
+  async getTree(id: string): Promise<Node[]> {
+    const data = await this.request<NodeData[]>('GET', `/nodes/${encodeURIComponent(id)}/tree`);
+    return data.map(d => new Node(d, this));
   }
 
-  private async *forkChatStream(dagId: string, options: ForkChatOptions): AsyncGenerator<SSEEvent, void, undefined> {
-    const stream = await this.requestStream('POST', `/chat/${encodeURIComponent(dagId)}/fork`, {
-      node_id: options.node_id,
-      message: options.message,
-      stream: true,
-    });
-    yield* parseSSEStream(stream);
+  /**
+   * Delete a node and its descendants
+   */
+  async deleteNode(id: string): Promise<void> {
+    await this.request<DeleteResponse>('DELETE', `/nodes/${encodeURIComponent(id)}`);
   }
 
   // ===========================================================================
   // Workflow Methods
   // ===========================================================================
 
-  /**
-   * List all workflows
-   * @returns Array of workflow templates
-   */
   async listWorkflows(): Promise<Workflow[]> {
     return this.request<Workflow[]>('GET', '/workflows');
   }
 
-  /**
-   * Create a new workflow
-   * @param options - Workflow definition
-   * @returns Created workflow
-   */
   async createWorkflow(options: CreateWorkflowOptions): Promise<Workflow> {
     return this.request<Workflow>('POST', '/workflows', {
       name: options.name,
@@ -314,12 +436,6 @@ export class LangDAGClient {
     });
   }
 
-  /**
-   * Run a workflow
-   * @param workflowId - Workflow ID or name
-   * @param options - Run options
-   * @returns Run response or async generator of SSE events
-   */
   runWorkflow(workflowId: string, options: RunWorkflowOptions & { stream: true }): AsyncGenerator<SSEEvent, void, undefined>;
   runWorkflow(workflowId: string, options?: RunWorkflowOptions & { stream?: false }): Promise<RunWorkflowResponse>;
   runWorkflow(workflowId: string, options?: RunWorkflowOptions): Promise<RunWorkflowResponse> | AsyncGenerator<SSEEvent, void, undefined>;

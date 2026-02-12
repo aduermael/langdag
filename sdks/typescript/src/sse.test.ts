@@ -5,8 +5,13 @@ import type { SSEEvent } from './types.js';
 
 describe('parseSSEEvent', () => {
   it('parses start event', () => {
-    const event = parseSSEEvent('start', '{"dag_id":"dag-1"}');
-    expect(event).toEqual({ type: 'start', dag_id: 'dag-1' });
+    const event = parseSSEEvent('start', '{}');
+    expect(event).toEqual({ type: 'start' });
+  });
+
+  it('parses start event with empty data', () => {
+    const event = parseSSEEvent('start', '');
+    expect(event).toEqual({ type: 'start' });
   });
 
   it('parses delta event', () => {
@@ -15,8 +20,8 @@ describe('parseSSEEvent', () => {
   });
 
   it('parses done event', () => {
-    const event = parseSSEEvent('done', '{"dag_id":"dag-1","node_id":"n-1"}');
-    expect(event).toEqual({ type: 'done', dag_id: 'dag-1', node_id: 'n-1' });
+    const event = parseSSEEvent('done', '{"node_id":"n-1"}');
+    expect(event).toEqual({ type: 'done', node_id: 'n-1' });
   });
 
   it('parses error event', () => {
@@ -26,10 +31,6 @@ describe('parseSSEEvent', () => {
 
   it('throws on unknown event type', () => {
     expect(() => parseSSEEvent('unknown', '{}')).toThrow(SSEParseError);
-  });
-
-  it('throws on malformed start event data', () => {
-    expect(() => parseSSEEvent('start', 'not json')).toThrow(SSEParseError);
   });
 
   it('throws on malformed delta event data', () => {
@@ -63,7 +64,7 @@ describe('parseSSEStream', () => {
   it('parses complete SSE stream', async () => {
     const text = [
       'event: start',
-      'data: {"dag_id":"dag-1"}',
+      'data: {}',
       '',
       'event: delta',
       'data: {"content":"Hello "}',
@@ -72,16 +73,16 @@ describe('parseSSEStream', () => {
       'data: {"content":"world!"}',
       '',
       'event: done',
-      'data: {"dag_id":"dag-1","node_id":"n-1"}',
+      'data: {"node_id":"n-1"}',
       '',
     ].join('\n');
 
     const events = await collectEvents(parseSSEStream(createStream(text)));
     expect(events).toHaveLength(4);
-    expect(events[0]).toEqual({ type: 'start', dag_id: 'dag-1' });
+    expect(events[0]).toEqual({ type: 'start' });
     expect(events[1]).toEqual({ type: 'delta', content: 'Hello ' });
     expect(events[2]).toEqual({ type: 'delta', content: 'world!' });
-    expect(events[3]).toEqual({ type: 'done', dag_id: 'dag-1', node_id: 'n-1' });
+    expect(events[3]).toEqual({ type: 'done', node_id: 'n-1' });
   });
 
   it('handles empty stream', async () => {
@@ -104,9 +105,9 @@ describe('parseSSEStream', () => {
   it('handles chunked delivery', async () => {
     const encoder = new TextEncoder();
     const chunks = [
-      'event: start\ndata: {"dag_',
-      'id":"dag-1"}\n\nevent: done\n',
-      'data: {"dag_id":"dag-1","node_id":"n-1"}\n\n',
+      'event: start\ndata: {',
+      '}\n\nevent: done\n',
+      'data: {"node_id":"n-1"}\n\n',
     ];
 
     const stream = new ReadableStream({

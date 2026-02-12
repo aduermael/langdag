@@ -1,13 +1,10 @@
 /**
  * LangDAG TypeScript SDK Types
- * Generated from OpenAPI specification
  */
 
 // ============================================================================
 // Enums
 // ============================================================================
-
-export type DAGStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type NodeType = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'llm' | 'input' | 'output';
 
@@ -22,28 +19,14 @@ export type RunStatus = 'pending' | 'running' | 'completed' | 'failed';
 /**
  * Error response from the API
  */
-export interface ApiError {
+export interface ApiErrorBody {
   error: string;
 }
 
 /**
- * DAG (Directed Acyclic Graph) representing a conversation or workflow run
+ * Raw node data from the API
  */
-export interface DAG {
-  id: string;
-  title?: string;
-  workflow_id?: string;
-  model?: string;
-  system_prompt?: string;
-  status: DAGStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
- * Node within a DAG
- */
-export interface Node {
+export interface NodeData {
   id: string;
   parent_id?: string;
   sequence: number;
@@ -54,57 +37,21 @@ export interface Node {
   tokens_out?: number;
   latency_ms?: number;
   status?: string;
+  title?: string;
+  system_prompt?: string;
   created_at: string;
 }
 
-/**
- * DAG with full node details
- */
-export interface DAGDetail extends DAG {
-  node_count?: number;
-  nodes?: Node[];
-}
-
 // ============================================================================
-// Chat Types
+// Prompt Types
 // ============================================================================
 
 /**
- * Request to start a new chat conversation
+ * Options for starting a new conversation (client.prompt / client.promptStream)
  */
-export interface NewChatRequest {
-  message: string;
+export interface PromptOptions {
   model?: string;
-  system_prompt?: string;
-  stream?: boolean;
-}
-
-/**
- * Request to continue an existing chat conversation
- */
-export interface ContinueChatRequest {
-  message: string;
-  stream?: boolean;
-}
-
-/**
- * Request to fork a chat from a specific node
- */
-export interface ForkChatRequest {
-  node_id: string;
-  message: string;
-  stream?: boolean;
-}
-
-/**
- * Response from chat endpoints (non-streaming)
- */
-export interface ChatResponse {
-  dag_id: string;
-  node_id: string;
-  content: string;
-  tokens_in?: number;
-  tokens_out?: number;
+  systemPrompt?: string;
 }
 
 // ============================================================================
@@ -116,7 +63,6 @@ export interface ChatResponse {
  */
 export interface SSEStartEvent {
   type: 'start';
-  dag_id: string;
 }
 
 /**
@@ -133,7 +79,6 @@ export interface SSEDeltaEvent {
 export interface SSEDoneEvent {
   type: 'done';
   node_id: string;
-  dag_id: string;
 }
 
 /**
@@ -266,33 +211,6 @@ export interface LangDAGClientOptions {
    * Custom fetch function (defaults to global fetch)
    */
   fetch?: typeof fetch;
-}
-
-/**
- * Options for starting a new chat
- */
-export interface ChatOptions {
-  message: string;
-  model?: string;
-  system_prompt?: string;
-  stream?: boolean;
-}
-
-/**
- * Options for continuing a chat
- */
-export interface ContinueChatOptions {
-  message: string;
-  stream?: boolean;
-}
-
-/**
- * Options for forking a chat
- */
-export interface ForkChatOptions {
-  node_id: string;
-  message: string;
-  stream?: boolean;
 }
 
 /**
