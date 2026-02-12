@@ -2,11 +2,11 @@
 
 > LLM Conversations as Directed Acyclic Graphs
 
-LangDAG is a high-performance Go tool for orchestrating LLM interactions. It models conversations and workflows as directed acyclic graphs (DAGs), enabling branching, forking, and replaying of AI conversations.
+LangDAG is a high-performance Go tool for orchestrating LLM interactions. It models conversations as trees of nodes — each message is a node, and prompting from any node extends or branches the tree.
 
 ## Core Concept
 
-A conversation is a DAG — it grows incrementally as users and LLMs exchange messages. Each message is a node, and edges represent the flow of conversation. Forking creates new branches from any existing node, preserving full history.
+Everything is a **node**. There is no separate DAG entity. A root node (parent_id = NULL) defines a conversation tree. Prompting from any node creates a child node, enabling natural branching and exploration.
 
 ```
 ┌─────────┐     ┌─────────┐     ┌─────────┐     ┌─────────┐
@@ -14,17 +14,17 @@ A conversation is a DAG — it grows incrementally as users and LLMs exchange me
 └─────────┘     └─────────┘     └─────────┘     └─────────┘
                     │                               │
                     └──────── conversation ─────────┘
-                                 = DAG
+                                 = node tree
 ```
 
 ## Features
 
-- **Two Modes**: Workflow (YAML pipelines) and Conversation (dynamic chat) — same engine
+- **One concept**: nodes. A root node defines a conversation tree.
+- **One verb**: `Prompt`. Same method on `Client` (new tree) and `Node` (extend tree).
 - **Performance**: Pure Go, ~1ms overhead, single static binary, zero runtime deps
-- **Native Streaming**: SSE + WebSocket support with tool call interruption
-- **Tool Integration**: Auto, Interrupt, or WebSocket execution modes
-- **Conversation Forking**: Branch from any node, explore alternative paths
-- **Persistent Storage**: SQLite (default) or PostgreSQL, full history replay
+- **Native Streaming**: SSE support for real-time token streaming
+- **Branching**: Prompt from any node to create alternative paths
+- **Persistent Storage**: SQLite (default), full history replay
 
 ## Architecture
 
@@ -32,7 +32,7 @@ A conversation is a DAG — it grows incrementally as users and LLMs exchange me
 ┌──────────────────────────────────────────────────────────┐
 │                      CLI / API                           │
 ├──────────────────────────────────────────────────────────┤
-│                    DAG Executor                          │
+│                   Node Executor                          │
 │   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
 │   │  Parser   │   │ Scheduler │   │  Runner   │         │
 │   └───────────┘   └───────────┘   └───────────┘         │
@@ -49,6 +49,36 @@ A conversation is a DAG — it grows incrementally as users and LLMs exchange me
 └──────────────────────────────────────────────────────────┘
 ```
 
+## Data Model
+
+Single `nodes` table. Root nodes (parent_id = NULL) carry conversation metadata.
+
+```sql
+CREATE TABLE nodes (
+    id TEXT PRIMARY KEY,
+    parent_id TEXT REFERENCES nodes(id),
+    sequence INTEGER NOT NULL,
+    node_type TEXT NOT NULL,           -- "user", "assistant", "system", "tool_call", "tool_result"
+    content TEXT NOT NULL DEFAULT '',
+
+    -- LLM execution metadata (on assistant nodes)
+    model TEXT,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    latency_ms INTEGER,
+    status TEXT,
+
+    -- Root node metadata (NULL on non-root nodes)
+    title TEXT,
+    system_prompt TEXT,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_nodes_parent ON nodes(parent_id);
+CREATE INDEX idx_nodes_root ON nodes(parent_id) WHERE parent_id IS NULL;
+```
+
 ## REST API
 
 Start the server:
@@ -59,16 +89,36 @@ langdag serve --port 8080
 
 ### Endpoints
 
-- `GET /dags` — List all DAGs
-- `GET /dags/{id}` — Get DAG details with all nodes
-- `POST /chat` — Start a new conversation (supports SSE streaming)
-- `POST /chat/{id}` — Continue a conversation (supports SSE streaming)
-- `POST /chat/{id}/fork` — Fork from a specific node
-- `POST /workflows/{id}/run` — Execute a workflow
+```
+POST   /prompt                     Start new conversation tree
+POST   /nodes/{id}/prompt          Continue from existing node
+GET    /nodes                      List root nodes
+GET    /nodes/{id}                 Get a single node
+GET    /nodes/{id}/tree            Get full tree from node
+DELETE /nodes/{id}                 Delete node and subtree
+GET    /health                     Health check
+GET    /workflows                  List workflows
+POST   /workflows                  Create workflow
+POST   /workflows/{id}/run         Run workflow
+```
+
+### Prompt Request
+
+`POST /prompt` and `POST /nodes/{id}/prompt` accept:
+
+```json
+{
+    "message": "string",
+    "model": "string (optional)",
+    "system_prompt": "string (optional, only for /prompt)",
+    "stream": false
+}
+```
 
 ### SSE Event Types
 
-- `dag_info` — DAG metadata (id, title)
+When `stream: true`, responses are sent as Server-Sent Events:
+
 - `node_info` — Node metadata (node_id, node_type)
 - `delta` — Streaming content token
 - `done` — Stream complete
@@ -86,23 +136,24 @@ pip install langdag
 from langdag import LangDAGClient
 
 with LangDAGClient() as client:
-    # Start a streaming conversation
-    events = client.chat(message="What is LangDAG?", stream=True)
-    for event in events:
-        if event.event == SSEEventType.DELTA:
+    # Start a conversation
+    node = client.prompt("What is LangDAG?")
+    print(node.content)
+
+    # Continue from any node
+    node2 = node.prompt("Tell me more")
+
+    # Branch from earlier node
+    alt = node.prompt("Different angle")
+
+    # Stream from a node
+    for event in node.prompt_stream("Explain in detail"):
+        if event.content:
             print(event.content, end="")
 
-    # Fork from any node
-    events = client.fork_chat(
-        dag_id=dag_id,
-        node_id=node_id,
-        message="Tell me more",
-        stream=True
-    )
-
-    # List and explore DAGs
-    dags = client.list_dags()
-    dag = client.get_dag(dag_id)
+    # List root nodes and explore trees
+    roots = client.list_roots()
+    tree = client.get_tree(node.id)
 ```
 
 ### Go
@@ -114,28 +165,27 @@ go get github.com/langdag/langdag-go
 ```go
 client := langdag.NewClient("http://localhost:8080")
 
-// Stream a conversation
-err := client.ChatStream(ctx, &langdag.NewChatRequest{
-    Message: "What is LangDAG?",
-}, func(event langdag.SSEEvent) error {
-    if event.Type == langdag.SSEEventDelta {
-        fmt.Print(event.Content)
-    }
-    return nil
-})
+// Start a conversation
+node, err := client.Prompt(ctx, "What is LangDAG?",
+    langdag.WithSystem("You are helpful."))
+fmt.Println(node.Content)
 
-// Fork from any node
-err := client.ForkChatStream(ctx, dagID, &langdag.ForkChatRequest{
-    NodeID:  nodeID,
-    Message: "Tell me more",
-}, func(event langdag.SSEEvent) error {
-    // handle events
-    return nil
-})
+// Continue from any node
+node2, err := node.Prompt(ctx, "Tell me more")
 
-// List and explore DAGs
-dags, err := client.ListDAGs(ctx)
-dag, err := client.GetDAG(ctx, dagID)
+// Branch from earlier node
+alt, err := node.Prompt(ctx, "Different angle")
+
+// Stream
+stream, err := client.PromptStream(ctx, "Explain graphs")
+for event := range stream.Events() {
+    fmt.Print(event.Content)
+}
+result, err := stream.Node()
+
+// List root nodes and explore trees
+roots, err := client.ListRoots(ctx)
+tree, err := client.GetTree(ctx, nodeID)
 ```
 
 ### TypeScript
@@ -149,24 +199,26 @@ import { LangDAGClient } from 'langdag';
 
 const client = new LangDAGClient();
 
-// Stream a conversation
-const stream = client.chat({ message: "What is LangDAG?", stream: true });
-for await (const event of stream) {
-  if (event.type === 'delta') {
-    process.stdout.write(event.content);
-  }
+// Start a conversation
+const node = await client.prompt("What is LangDAG?");
+console.log(node.content);
+
+// Continue from any node
+const node2 = await node.prompt("Tell me more");
+
+// Branch from earlier node
+const alt = await node.prompt("Different angle");
+
+// Stream
+const stream = await client.promptStream("Explain graphs");
+for await (const event of stream.events()) {
+  process.stdout.write(event.content);
 }
+const result = await stream.node();
 
-// Fork from any node
-const forkStream = client.forkChat(dagId, {
-  node_id: nodeId,
-  message: "Tell me more",
-  stream: true,
-});
-
-// List and explore DAGs
-const dags = await client.listDags();
-const dag = await client.getDag(dagId);
+// List root nodes and explore trees
+const roots = await client.listRoots();
+const tree = await client.getTree(nodeId);
 ```
 
 ## CLI Usage
@@ -176,23 +228,23 @@ const dag = await client.getDag(dagId);
 export ANTHROPIC_API_KEY="your-api-key"
 
 # Start a new conversation
-langdag chat new
+langdag prompt "What is LangDAG?"
 
-# List all conversations
-langdag ls
+# Continue from a node
+langdag prompt <node-id> "Tell me more"
 
-# View a conversation DAG
-langdag show <id>
+# Interactive mode
+langdag prompt
+langdag prompt <node-id>
 
-# Continue a conversation
-langdag chat continue <id>
+# Flags
+langdag prompt -m <model> "message"
+langdag prompt -s "system prompt" "message"
 
-# Fork from a specific node
-langdag chat continue --node <node-id>
-
-# Create and run a workflow
-langdag workflow create research.yaml
-langdag workflow run research --input '{"query": "quantum computing"}'
+# Node management
+langdag ls                              # List root nodes
+langdag show <id>                       # Show node tree
+langdag rm <id>                         # Delete node + subtree
 ```
 
 ## Workflow YAML Format
