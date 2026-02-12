@@ -245,9 +245,9 @@ Replace `chat new` / `chat continue` with unified `prompt` command.
 
 ## Phase 5: Python SDK
 
-- [ ] 5a: Rewrite Python SDK with `node.prompt()` / `node.prompt_stream()` pattern
-- [ ] 5b: Update Python SDK unit tests
-- [ ] 5c: Rewrite `examples/python/example.py`
+- [x] 5a: Rewrite Python SDK with `node.prompt()` / `node.prompt_stream()` pattern
+- [x] 5b: Update Python SDK unit tests
+- [x] 5c: Rewrite `examples/python/example.py`
 
 ---
 

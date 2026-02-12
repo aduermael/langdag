@@ -2,24 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
 
-class DAGStatus(str, Enum):
-    """Status of a DAG."""
-
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
 class NodeType(str, Enum):
-    """Type of a node in a DAG."""
+    """Type of a node."""
 
     USER = "user"
     ASSISTANT = "assistant"
@@ -58,11 +48,6 @@ class SSEEvent:
     data: dict[str, Any]
 
     @property
-    def dag_id(self) -> str | None:
-        """Get the DAG ID from start or done events."""
-        return self.data.get("dag_id")
-
-    @property
     def node_id(self) -> str | None:
         """Get the node ID from done events."""
         return self.data.get("node_id")
@@ -75,7 +60,7 @@ class SSEEvent:
 
 @dataclass
 class Node:
-    """A node in a DAG."""
+    """A node in a conversation tree."""
 
     id: str
     sequence: int
@@ -88,6 +73,8 @@ class Node:
     tokens_out: int | None = None
     latency_ms: int | None = None
     status: str | None = None
+    title: str | None = None
+    system_prompt: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Node:
@@ -104,77 +91,24 @@ class Node:
             tokens_out=data.get("tokens_out"),
             latency_ms=data.get("latency_ms"),
             status=data.get("status"),
-        )
-
-
-@dataclass
-class DAG:
-    """A DAG (conversation or workflow run)."""
-
-    id: str
-    status: DAGStatus
-    created_at: datetime
-    updated_at: datetime
-    title: str | None = None
-    workflow_id: str | None = None
-    model: str | None = None
-    system_prompt: str | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DAG:
-        """Create a DAG from a dictionary."""
-        return cls(
-            id=data["id"],
-            status=DAGStatus(data["status"]),
-            created_at=_parse_datetime(data["created_at"]),
-            updated_at=_parse_datetime(data["updated_at"]),
             title=data.get("title"),
-            workflow_id=data.get("workflow_id"),
-            model=data.get("model"),
             system_prompt=data.get("system_prompt"),
         )
 
 
 @dataclass
-class DAGDetail(DAG):
-    """A DAG with its nodes."""
+class PromptResponse:
+    """Response from a prompt request."""
 
-    node_count: int = 0
-    nodes: list[Node] = field(default_factory=list)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> DAGDetail:
-        """Create a DAGDetail from a dictionary."""
-        nodes = [Node.from_dict(n) for n in data.get("nodes", [])]
-        return cls(
-            id=data["id"],
-            status=DAGStatus(data["status"]),
-            created_at=_parse_datetime(data["created_at"]),
-            updated_at=_parse_datetime(data["updated_at"]),
-            title=data.get("title"),
-            workflow_id=data.get("workflow_id"),
-            model=data.get("model"),
-            system_prompt=data.get("system_prompt"),
-            node_count=data.get("node_count", len(nodes)),
-            nodes=nodes,
-        )
-
-
-@dataclass
-class ChatResponse:
-    """Response from a chat request."""
-
-    dag_id: str
     node_id: str
     content: str
     tokens_in: int | None = None
     tokens_out: int | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ChatResponse:
-        """Create a ChatResponse from a dictionary."""
+    def from_dict(cls, data: dict[str, Any]) -> PromptResponse:
+        """Create a PromptResponse from a dictionary."""
         return cls(
-            dag_id=data["dag_id"],
             node_id=data["node_id"],
             content=data["content"],
             tokens_in=data.get("tokens_in"),
@@ -293,7 +227,7 @@ class RunWorkflowResponse:
     """Response from running a workflow."""
 
     dag_id: str
-    status: DAGStatus
+    status: str
     output: dict[str, Any] | None = None
 
     @classmethod
@@ -301,7 +235,7 @@ class RunWorkflowResponse:
         """Create a RunWorkflowResponse from a dictionary."""
         return cls(
             dag_id=data["dag_id"],
-            status=DAGStatus(data["status"]),
+            status=data["status"],
             output=data.get("output"),
         )
 

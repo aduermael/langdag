@@ -16,9 +16,8 @@ from .exceptions import (
     StreamError,
 )
 from .models import (
-    ChatResponse,
-    DAG,
-    DAGDetail,
+    Node,
+    PromptResponse,
     RunWorkflowResponse,
     SSEEvent,
     SSEEventType,
@@ -35,11 +34,11 @@ class LangDAGClient:
 
     Example:
         >>> client = LangDAGClient()
-        >>> response = client.chat("Hello, world!")
+        >>> response = client.prompt("Hello, world!")
         >>> print(response.content)
 
         >>> # Streaming
-        >>> for event in client.chat("Tell me a story", stream=True):
+        >>> for event in client.prompt("Tell me a story", stream=True):
         ...     if event.content:
         ...         print(event.content, end="")
     """
@@ -171,73 +170,88 @@ class LangDAGClient:
         """
         return self._request("GET", "/health")
 
-    # --- DAG Methods ---
+    # --- Node Methods ---
 
-    def list_dags(self) -> list[DAG]:
-        """List all DAGs.
+    def list_roots(self) -> list[Node]:
+        """List all root nodes (conversation roots).
 
         Returns:
-            List of DAG objects.
+            List of root Node objects.
         """
-        data = self._request("GET", "/dags")
-        return [DAG.from_dict(d) for d in data]
+        data = self._request("GET", "/nodes")
+        return [Node.from_dict(n) for n in data]
 
-    def get_dag(self, dag_id: str) -> DAGDetail:
-        """Get a DAG with all its nodes.
+    def get_node(self, node_id: str) -> Node:
+        """Get a single node by ID.
 
         Args:
-            dag_id: DAG ID (full or prefix).
+            node_id: Node ID (full or prefix).
 
         Returns:
-            DAGDetail with nodes.
+            Node object.
 
         Raises:
-            NotFoundError: If the DAG is not found.
+            NotFoundError: If the node is not found.
         """
-        data = self._request("GET", f"/dags/{dag_id}")
-        return DAGDetail.from_dict(data)
+        data = self._request("GET", f"/nodes/{node_id}")
+        return Node.from_dict(data)
 
-    def delete_dag(self, dag_id: str) -> dict[str, str]:
-        """Delete a DAG.
+    def get_tree(self, node_id: str) -> list[Node]:
+        """Get the full tree of nodes rooted at the given node.
 
         Args:
-            dag_id: DAG ID (full or prefix).
+            node_id: Node ID (full or prefix).
+
+        Returns:
+            List of Node objects in the tree.
+
+        Raises:
+            NotFoundError: If the node is not found.
+        """
+        data = self._request("GET", f"/nodes/{node_id}/tree")
+        return [Node.from_dict(n) for n in data]
+
+    def delete_node(self, node_id: str) -> dict[str, str]:
+        """Delete a node and its descendants.
+
+        Args:
+            node_id: Node ID (full or prefix).
 
         Returns:
             Dictionary with 'status' and 'id' keys.
 
         Raises:
-            NotFoundError: If the DAG is not found.
+            NotFoundError: If the node is not found.
         """
-        return self._request("DELETE", f"/dags/{dag_id}")
+        return self._request("DELETE", f"/nodes/{node_id}")
 
-    # --- Chat Methods ---
+    # --- Prompt Methods ---
 
-    def chat(
+    def prompt(
         self,
         message: str,
         model: str | None = None,
         system_prompt: str | None = None,
         stream: bool = False,
-    ) -> ChatResponse | Iterator[SSEEvent]:
-        """Start a new conversation.
+    ) -> PromptResponse | Iterator[SSEEvent]:
+        """Send a prompt to start a new conversation.
 
         Args:
-            message: The initial message to send.
-            model: LLM model to use (default: claude-sonnet-4-20250514).
+            message: The message to send.
+            model: LLM model to use.
             system_prompt: Optional system prompt.
             stream: If True, return an iterator of SSE events.
 
         Returns:
-            ChatResponse if stream=False, otherwise an iterator of SSEEvent.
+            PromptResponse if stream=False, otherwise an iterator of SSEEvent.
 
         Example:
             >>> # Non-streaming
-            >>> response = client.chat("Hello!")
+            >>> response = client.prompt("Hello!")
             >>> print(response.content)
 
             >>> # Streaming
-            >>> for event in client.chat("Hello!", stream=True):
+            >>> for event in client.prompt("Hello!", stream=True):
             ...     if event.content:
             ...         print(event.content, end="")
         """
@@ -248,70 +262,41 @@ class LangDAGClient:
             body["system_prompt"] = system_prompt
 
         if stream:
-            return self._stream_request("POST", "/chat", body)
+            return self._stream_request("POST", "/prompt", body)
         else:
-            data = self._request("POST", "/chat", body)
-            return ChatResponse.from_dict(data)
+            data = self._request("POST", "/prompt", body)
+            return PromptResponse.from_dict(data)
 
-    def continue_chat(
+    def prompt_from(
         self,
-        dag_id: str,
-        message: str,
-        stream: bool = False,
-    ) -> ChatResponse | Iterator[SSEEvent]:
-        """Continue an existing conversation.
-
-        Args:
-            dag_id: DAG ID of the conversation.
-            message: Message to send.
-            stream: If True, return an iterator of SSE events.
-
-        Returns:
-            ChatResponse if stream=False, otherwise an iterator of SSEEvent.
-
-        Raises:
-            NotFoundError: If the DAG is not found.
-        """
-        body: dict[str, Any] = {"message": message, "stream": stream}
-
-        if stream:
-            return self._stream_request("POST", f"/chat/{dag_id}", body)
-        else:
-            data = self._request("POST", f"/chat/{dag_id}", body)
-            return ChatResponse.from_dict(data)
-
-    def fork_chat(
-        self,
-        dag_id: str,
         node_id: str,
         message: str,
+        model: str | None = None,
         stream: bool = False,
-    ) -> ChatResponse | Iterator[SSEEvent]:
-        """Fork a conversation from a specific node.
+    ) -> PromptResponse | Iterator[SSEEvent]:
+        """Send a prompt continuing from an existing node.
 
         Args:
-            dag_id: DAG ID of the conversation.
-            node_id: Node ID to fork from.
-            message: Message to send.
+            node_id: Node ID to continue from.
+            message: The message to send.
+            model: LLM model to use.
             stream: If True, return an iterator of SSE events.
 
         Returns:
-            ChatResponse if stream=False, otherwise an iterator of SSEEvent.
+            PromptResponse if stream=False, otherwise an iterator of SSEEvent.
 
         Raises:
-            NotFoundError: If the DAG or node is not found.
+            NotFoundError: If the node is not found.
         """
-        body: dict[str, Any] = {
-            "node_id": node_id,
-            "message": message,
-            "stream": stream,
-        }
+        body: dict[str, Any] = {"message": message, "stream": stream}
+        if model is not None:
+            body["model"] = model
 
         if stream:
-            return self._stream_request("POST", f"/chat/{dag_id}/fork", body)
+            return self._stream_request("POST", f"/nodes/{node_id}/prompt", body)
         else:
-            data = self._request("POST", f"/chat/{dag_id}/fork", body)
-            return ChatResponse.from_dict(data)
+            data = self._request("POST", f"/nodes/{node_id}/prompt", body)
+            return PromptResponse.from_dict(data)
 
     # --- Workflow Methods ---
 

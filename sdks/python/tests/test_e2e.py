@@ -10,7 +10,7 @@ import pytest
 
 from langdag.client import LangDAGClient
 from langdag.async_client import AsyncLangDAGClient
-from langdag.models import ChatResponse, SSEEventType
+from langdag.models import PromptResponse, SSEEventType
 
 
 E2E_URL = os.environ.get("LANGDAG_E2E_URL")
@@ -30,37 +30,44 @@ class TestE2ESync:
             result = client.health()
             assert result["status"] == "ok"
 
-    def test_chat_non_streaming(self):
+    def test_prompt_non_streaming(self):
         with self.get_client() as client:
-            resp = client.chat("Hello, this is a test")
-            assert isinstance(resp, ChatResponse)
-            assert resp.dag_id
+            # Start a new conversation
+            resp = client.prompt("Hello, this is a test")
+            assert isinstance(resp, PromptResponse)
             assert resp.node_id
             assert resp.content
 
-            # Continue
-            resp2 = client.continue_chat(resp.dag_id, "Follow up")
-            assert isinstance(resp2, ChatResponse)
-            assert resp2.dag_id == resp.dag_id
+            # Continue from the response node
+            resp2 = client.prompt_from(resp.node_id, "Follow up")
+            assert isinstance(resp2, PromptResponse)
+            assert resp2.node_id
             assert resp2.content
 
-            # Get DAG
-            dag = client.get_dag(resp.dag_id)
-            assert dag.id == resp.dag_id
-            assert len(dag.nodes) >= 4
+            # Get the tree to see all nodes
+            tree = client.get_tree(resp.node_id)
+            assert len(tree) >= 2
 
-            # List DAGs
-            dags = client.list_dags()
-            dag_ids = [d.id for d in dags]
-            assert resp.dag_id in dag_ids
+            # List root nodes
+            roots = client.list_roots()
+            root_ids = [n.id for n in roots]
+            # The root should be in the list (it's the first user node)
+            # Find the root of our conversation
+            root_node = None
+            for node in tree:
+                if node.parent_id is None:
+                    root_node = node
+                    break
+            assert root_node is not None
+            assert root_node.id in root_ids
 
-            # Delete
-            del_resp = client.delete_dag(resp.dag_id)
+            # Delete the root node (cleans up entire tree)
+            del_resp = client.delete_node(root_node.id)
             assert del_resp["status"] == "deleted"
 
-    def test_chat_streaming(self):
+    def test_prompt_streaming(self):
         with self.get_client() as client:
-            events = list(client.chat("Tell me something", stream=True))
+            events = list(client.prompt("Tell me something", stream=True))
             assert len(events) > 0
 
             event_types = [e.event for e in events]
@@ -72,28 +79,37 @@ class TestE2ESync:
             content_parts = [e.content for e in events if e.content]
             assert len(content_parts) > 0
 
-            # Get dag_id from done event and clean up
+            # Get node_id from done event and clean up
             done_events = [e for e in events if e.event == SSEEventType.DONE]
-            if done_events and done_events[0].dag_id:
-                client.delete_dag(done_events[0].dag_id)
+            if done_events and done_events[0].node_id:
+                # Find the root and delete it
+                node_id = done_events[0].node_id
+                tree = client.get_tree(node_id)
+                for node in tree:
+                    if node.parent_id is None:
+                        client.delete_node(node.id)
+                        break
 
-    def test_fork_chat(self):
+    def test_prompt_from_branching(self):
         with self.get_client() as client:
-            resp = client.chat("First message")
-            assert isinstance(resp, ChatResponse)
+            # Start conversation
+            resp = client.prompt("First message")
+            assert isinstance(resp, PromptResponse)
 
-            fork_resp = client.fork_chat(
-                resp.dag_id,
+            # Branch from the response node with a different question
+            branch_resp = client.prompt_from(
                 resp.node_id,
                 "Alternative path",
             )
-            assert isinstance(fork_resp, ChatResponse)
-            assert fork_resp.content
+            assert isinstance(branch_resp, PromptResponse)
+            assert branch_resp.content
 
-            # Clean up
-            client.delete_dag(resp.dag_id)
-            if fork_resp.dag_id != resp.dag_id:
-                client.delete_dag(fork_resp.dag_id)
+            # Clean up - find and delete the root
+            tree = client.get_tree(resp.node_id)
+            for node in tree:
+                if node.parent_id is None:
+                    client.delete_node(node.id)
+                    break
 
 
 class TestE2EAsync:
@@ -105,25 +121,29 @@ class TestE2EAsync:
             result = await client.health()
             assert result["status"] == "ok"
 
-    async def test_chat_non_streaming(self):
+    async def test_prompt_non_streaming(self):
         async with self.get_client() as client:
-            resp = await client.chat("Hello from async")
-            assert isinstance(resp, ChatResponse)
-            assert resp.dag_id
+            resp = await client.prompt("Hello from async")
+            assert isinstance(resp, PromptResponse)
+            assert resp.node_id
             assert resp.content
 
-            # Continue
-            resp2 = await client.continue_chat(resp.dag_id, "Async follow up")
-            assert isinstance(resp2, ChatResponse)
+            # Continue from the response node
+            resp2 = await client.prompt_from(resp.node_id, "Async follow up")
+            assert isinstance(resp2, PromptResponse)
             assert resp2.content
 
-            # Clean up
-            await client.delete_dag(resp.dag_id)
+            # Clean up - find and delete the root
+            tree = await client.get_tree(resp.node_id)
+            for node in tree:
+                if node.parent_id is None:
+                    await client.delete_node(node.id)
+                    break
 
-    async def test_chat_streaming(self):
+    async def test_prompt_streaming(self):
         async with self.get_client() as client:
             events = []
-            async for event in await client.chat("Stream test", stream=True):
+            async for event in client.prompt("Stream test", stream=True):
                 events.append(event)
 
             assert len(events) > 0
@@ -134,5 +154,10 @@ class TestE2EAsync:
 
             # Clean up
             done_events = [e for e in events if e.event == SSEEventType.DONE]
-            if done_events and done_events[0].dag_id:
-                await client.delete_dag(done_events[0].dag_id)
+            if done_events and done_events[0].node_id:
+                node_id = done_events[0].node_id
+                tree = await client.get_tree(node_id)
+                for node in tree:
+                    if node.parent_id is None:
+                        await client.delete_node(node.id)
+                        break

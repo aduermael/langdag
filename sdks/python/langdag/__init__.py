@@ -7,12 +7,12 @@ Example:
     >>>
     >>> # Synchronous client
     >>> with LangDAGClient() as client:
-    ...     response = client.chat("Hello!")
+    ...     response = client.prompt("Hello!")
     ...     print(response.content)
     >>>
     >>> # Streaming
     >>> with LangDAGClient() as client:
-    ...     for event in client.chat("Tell me a story", stream=True):
+    ...     for event in client.prompt("Tell me a story", stream=True):
     ...         if event.content:
     ...             print(event.content, end="")
 
@@ -22,7 +22,7 @@ Async Example:
     >>>
     >>> async def main():
     ...     async with AsyncLangDAGClient() as client:
-    ...         response = await client.chat("Hello!")
+    ...         response = await client.prompt("Hello!")
     ...         print(response.content)
     >>>
     >>> asyncio.run(main())
@@ -40,12 +40,9 @@ from .exceptions import (
     StreamError,
 )
 from .models import (
-    ChatResponse,
-    DAG,
-    DAGDetail,
-    DAGStatus,
     Node,
     NodeType,
+    PromptResponse,
     RunWorkflowResponse,
     SSEEvent,
     SSEEventType,
@@ -64,12 +61,9 @@ __all__ = [
     "LangDAGClient",
     "AsyncLangDAGClient",
     # Models
-    "DAG",
-    "DAGDetail",
-    "DAGStatus",
     "Node",
     "NodeType",
-    "ChatResponse",
+    "PromptResponse",
     "SSEEvent",
     "SSEEventType",
     "Workflow",

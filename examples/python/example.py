@@ -3,9 +3,9 @@
 
 This example demonstrates the key features of the LangDAG SDK:
 1. Starting a conversation with streaming
-2. Continuing a conversation
-3. Forking from an earlier node to explore alternatives
-4. Listing DAGs and exploring the conversation structure
+2. Continuing a conversation from a node
+3. Branching from an earlier node to explore alternatives
+4. Listing root nodes and exploring the conversation tree
 
 Prerequisites:
 - LangDAG server running at http://localhost:8080
@@ -22,18 +22,15 @@ def print_separator(title: str) -> None:
     print("=" * 60 + "\n")
 
 
-def print_streaming_response(events) -> tuple[str, str, str]:
-    """Print streaming response and return dag_id, node_id, and full content."""
-    dag_id = ""
+def print_streaming_response(events) -> tuple[str, str]:
+    """Print streaming response and return node_id and full content."""
     node_id = ""
     content_parts = []
 
     print("Assistant: ", end="", flush=True)
 
     for event in events:
-        if event.event == SSEEventType.START:
-            dag_id = event.dag_id or ""
-        elif event.event == SSEEventType.DELTA:
+        if event.event == SSEEventType.DELTA:
             if event.content:
                 print(event.content, end="", flush=True)
                 content_parts.append(event.content)
@@ -43,23 +40,31 @@ def print_streaming_response(events) -> tuple[str, str, str]:
             print(f"\n[Error: {event.data}]")
 
     print("\n")  # End the response line
-    return dag_id, node_id, "".join(content_parts)
+    return node_id, "".join(content_parts)
 
 
-def print_dag_structure(client: LangDAGClient, dag_id: str) -> None:
-    """Print the structure of a DAG showing all nodes."""
-    dag = client.get_dag(dag_id)
-    print(f"DAG: {dag.id[:8]}...")
-    print(f"  Status: {dag.status.value}")
-    print(f"  Title: {dag.title or '(untitled)'}")
-    print(f"  Nodes: {dag.node_count}")
+def print_tree_structure(client: LangDAGClient, root_id: str) -> None:
+    """Print the tree structure of a conversation."""
+    tree = client.get_tree(root_id)
+
+    # Get root node info
+    root = None
+    for node in tree:
+        if node.parent_id is None:
+            root = node
+            break
+
+    if root:
+        print(f"Root: {root.id[:8]}...")
+        print(f"  Title: {root.title or '(untitled)'}")
+    print(f"  Nodes: {len(tree)}")
     print()
 
     # Build parent-child relationships for visualization
-    nodes_by_id = {node.id: node for node in dag.nodes}
+    nodes_by_id = {node.id: node for node in tree}
     children: dict[str | None, list[str]] = {}
 
-    for node in dag.nodes:
+    for node in tree:
         parent = node.parent_id
         if parent not in children:
             children[parent] = []
@@ -90,15 +95,15 @@ def print_dag_structure(client: LangDAGClient, dag_id: str) -> None:
 
     # Print all root nodes (nodes without parents)
     print("  Node structure:")
-    for root_id in children.get(None, []):
-        print_node(root_id, indent=2)
+    for root_id_key in children.get(None, []):
+        print_node(root_id_key, indent=2)
 
 
 def main() -> None:
     """Run the LangDAG SDK demonstration."""
     print("\n" + "#" * 60)
     print("#  LangDAG Python SDK Demo")
-    print("#  Demonstrating conversation branching and DAG exploration")
+    print("#  Demonstrating conversation branching and tree exploration")
     print("#" * 60)
 
     # Connect to the LangDAG server
@@ -116,83 +121,90 @@ def main() -> None:
         # ============================================================
         # Step 1: Start a new conversation about programming languages
         # ============================================================
-        print_separator("Step 1: Starting a new conversation")
+        print_separator("Step 1: Starting a new conversation (streaming)")
 
         print("User: What are the main differences between Python and Rust?\n")
 
-        events = client.chat(
+        events = client.prompt(
             message="What are the main differences between Python and Rust? Keep your answer brief.",
             stream=True,
         )
 
-        dag_id, first_response_node, _ = print_streaming_response(events)
+        first_response_node, _ = print_streaming_response(events)
 
-        print(f"[Conversation started - DAG ID: {dag_id[:8]}...]")
         print(f"[Response node: {first_response_node[:8]}...]")
 
         # ============================================================
-        # Step 2: Continue the conversation
+        # Step 2: Continue the conversation from the response node
         # ============================================================
         print_separator("Step 2: Continuing the conversation")
 
         print("User: Which one would you recommend for building a web server?\n")
 
-        events = client.continue_chat(
-            dag_id=dag_id,
+        events = client.prompt_from(
+            node_id=first_response_node,
             message="Which one would you recommend for building a web server?",
             stream=True,
         )
 
-        _, second_response_node, _ = print_streaming_response(events)
+        second_response_node, _ = print_streaming_response(events)
 
         print(f"[Continued conversation - Node: {second_response_node[:8]}...]")
 
         # ============================================================
-        # Step 3: Fork from the first response to explore an alternative
+        # Step 3: Branch from the first response to explore alternatives
         # ============================================================
-        print_separator("Step 3: Forking to explore an alternative path")
+        print_separator("Step 3: Branching to explore an alternative path")
 
-        print(f"[Forking from node {first_response_node[:8]}... to ask a different question]")
+        print(f"[Branching from node {first_response_node[:8]}... to ask a different question]")
         print()
         print("User: Which one would you recommend for data science work?\n")
 
-        events = client.fork_chat(
-            dag_id=dag_id,
+        events = client.prompt_from(
             node_id=first_response_node,
             message="Which one would you recommend for data science work?",
             stream=True,
         )
 
-        _, fork_response_node, _ = print_streaming_response(events)
+        branch_response_node, _ = print_streaming_response(events)
 
-        print(f"[Forked conversation - New branch node: {fork_response_node[:8]}...]")
-
-        # ============================================================
-        # Step 4: List all DAGs
-        # ============================================================
-        print_separator("Step 4: Listing all DAGs")
-
-        dags = client.list_dags()
-        print(f"Found {len(dags)} DAG(s):\n")
-
-        for dag in dags[:5]:  # Show first 5
-            print(f"  - {dag.id[:8]}... | {dag.status.value:10} | {dag.title or '(untitled)'}")
-
-        if len(dags) > 5:
-            print(f"  ... and {len(dags) - 5} more")
+        print(f"[Branched conversation - New node: {branch_response_node[:8]}...]")
 
         # ============================================================
-        # Step 5: Show the branching structure
+        # Step 4: List all root nodes
         # ============================================================
-        print_separator("Step 5: Examining the DAG structure")
+        print_separator("Step 4: Listing all root nodes")
+
+        roots = client.list_roots()
+        print(f"Found {len(roots)} conversation(s):\n")
+
+        for root in roots[:5]:  # Show first 5
+            print(f"  - {root.id[:8]}... | {root.title or '(untitled)'}")
+
+        if len(roots) > 5:
+            print(f"  ... and {len(roots) - 5} more")
+
+        # ============================================================
+        # Step 5: Show the branching tree structure
+        # ============================================================
+        print_separator("Step 5: Examining the tree structure")
 
         print("The conversation now has a branching structure:")
         print("- First question about Python vs Rust")
         print("- Branch 1: Web server recommendation")
-        print("- Branch 2: Data science recommendation (forked)")
+        print("- Branch 2: Data science recommendation (branched)")
         print()
 
-        print_dag_structure(client, dag_id)
+        # Find the root of our conversation by traversing up
+        tree = client.get_tree(first_response_node)
+        root_id = None
+        for node in tree:
+            if node.parent_id is None:
+                root_id = node.id
+                break
+
+        if root_id:
+            print_tree_structure(client, root_id)
 
         # ============================================================
         # Summary
@@ -200,14 +212,14 @@ def main() -> None:
         print_separator("Demo Complete")
 
         print("This example demonstrated:")
-        print("  1. Starting a streaming conversation")
-        print("  2. Continuing an existing conversation")
-        print("  3. Forking from an earlier node to explore alternatives")
-        print("  4. Listing all DAGs")
-        print("  5. Examining the branching structure of a conversation")
+        print("  1. Starting a streaming conversation with prompt()")
+        print("  2. Continuing from a node with prompt_from()")
+        print("  3. Branching from an earlier node to explore alternatives")
+        print("  4. Listing all root nodes with list_roots()")
+        print("  5. Examining the tree structure with get_tree()")
         print()
-        print("The DAG structure allows you to:")
-        print("  - Track conversation history")
+        print("The node-centric API allows you to:")
+        print("  - Track conversation history as a tree")
         print("  - Branch at any point to explore alternatives")
         print("  - Maintain multiple conversation paths")
         print("  - Resume from any node")

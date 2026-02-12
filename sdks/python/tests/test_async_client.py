@@ -12,7 +12,7 @@ from langdag.exceptions import (
     ConnectionError,
     NotFoundError,
 )
-from langdag.models import ChatResponse
+from langdag.models import PromptResponse
 
 
 class TestAsyncClientInit:
@@ -55,7 +55,7 @@ class TestAsyncErrorHandling:
         )
         async with AsyncLangDAGClient() as client:
             with pytest.raises(NotFoundError):
-                await client.get_dag("nonexistent")
+                await client.get_node("nonexistent")
 
     async def test_generic_api_error(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
@@ -72,75 +72,123 @@ class TestAsyncErrorHandling:
                 await client.health()
 
 
-class TestAsyncListDAGs:
-    async def test_list_dags(self, httpx_mock: HTTPXMock):
+class TestAsyncListRoots:
+    async def test_list_roots(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json=[
                 {
-                    "id": "dag-1",
-                    "status": "completed",
+                    "id": "node-1",
+                    "sequence": 0,
+                    "node_type": "user",
+                    "content": "Hello",
                     "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T00:00:00Z",
+                    "title": "First conversation",
                 },
             ]
         )
         async with AsyncLangDAGClient() as client:
-            dags = await client.list_dags()
-            assert len(dags) == 1
-            assert dags[0].id == "dag-1"
+            roots = await client.list_roots()
+            assert len(roots) == 1
+            assert roots[0].id == "node-1"
+            assert roots[0].title == "First conversation"
 
 
-class TestAsyncChat:
-    async def test_chat_non_streaming(self, httpx_mock: HTTPXMock):
+class TestAsyncGetNode:
+    async def test_get_node(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-123",
-                "node_id": "node-456",
-                "content": "Hello back!",
+                "id": "node-1",
+                "sequence": 0,
+                "node_type": "user",
+                "content": "Hello",
+                "created_at": "2024-01-01T00:00:00Z",
+                "title": "My conversation",
             }
         )
         async with AsyncLangDAGClient() as client:
-            resp = await client.chat("Hello")
-            assert isinstance(resp, ChatResponse)
-            assert resp.dag_id == "dag-123"
-            assert resp.content == "Hello back!"
+            node = await client.get_node("node-1")
+            assert node.id == "node-1"
+            assert node.content == "Hello"
+            assert node.title == "My conversation"
 
-    async def test_chat_sends_correct_body(self, httpx_mock: HTTPXMock):
+
+class TestAsyncGetTree:
+    async def test_get_tree(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            json=[
+                {
+                    "id": "node-1",
+                    "sequence": 0,
+                    "node_type": "user",
+                    "content": "Hello",
+                    "created_at": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "id": "node-2",
+                    "parent_id": "node-1",
+                    "sequence": 1,
+                    "node_type": "assistant",
+                    "content": "Hi there!",
+                    "created_at": "2024-01-01T00:00:01Z",
+                },
+            ]
+        )
+        async with AsyncLangDAGClient() as client:
+            tree = await client.get_tree("node-1")
+            assert len(tree) == 2
+            assert tree[1].parent_id == "node-1"
+
+
+class TestAsyncPrompt:
+    async def test_prompt_non_streaming(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-1",
+                "node_id": "node-456",
+                "content": "Hello back!",
+                "tokens_in": 5,
+                "tokens_out": 3,
+            }
+        )
+        async with AsyncLangDAGClient() as client:
+            resp = await client.prompt("Hello")
+            assert isinstance(resp, PromptResponse)
+            assert resp.node_id == "node-456"
+            assert resp.content == "Hello back!"
+
+    async def test_prompt_sends_correct_body(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            json={
                 "node_id": "node-1",
                 "content": "ok",
             }
         )
         async with AsyncLangDAGClient() as client:
-            await client.chat("Hello", model="test-model")
+            await client.prompt("Hello", model="test-model")
         request = httpx_mock.get_request()
         body = json.loads(request.content)
         assert body["message"] == "Hello"
         assert body["model"] == "test-model"
 
 
-class TestAsyncContinueChat:
-    async def test_continue_chat(self, httpx_mock: HTTPXMock):
+class TestAsyncPromptFrom:
+    async def test_prompt_from(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-123",
                 "node_id": "node-789",
                 "content": "Continued!",
             }
         )
         async with AsyncLangDAGClient() as client:
-            resp = await client.continue_chat("dag-123", "Follow up")
-            assert isinstance(resp, ChatResponse)
+            resp = await client.prompt_from("node-123", "Follow up")
+            assert isinstance(resp, PromptResponse)
             assert resp.content == "Continued!"
 
 
-class TestAsyncDeleteDAG:
-    async def test_delete_dag(self, httpx_mock: HTTPXMock):
-        httpx_mock.add_response(json={"status": "deleted", "id": "dag-1"})
+class TestAsyncDeleteNode:
+    async def test_delete_node(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(json={"status": "deleted", "id": "node-1"})
         async with AsyncLangDAGClient() as client:
-            resp = await client.delete_dag("dag-1")
+            resp = await client.delete_node("node-1")
             assert resp["status"] == "deleted"
 
 

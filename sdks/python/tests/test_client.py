@@ -13,7 +13,7 @@ from langdag.exceptions import (
     ConnectionError,
     NotFoundError,
 )
-from langdag.models import ChatResponse, SSEEventType
+from langdag.models import PromptResponse, SSEEventType
 
 
 class TestClientInit:
@@ -65,7 +65,7 @@ class TestErrorHandling:
         )
         client = LangDAGClient()
         with pytest.raises(NotFoundError) as exc_info:
-            client.get_dag("nonexistent")
+            client.get_node("nonexistent")
         assert exc_info.value.status_code == 404
 
     def test_bad_request_error(self, httpx_mock: HTTPXMock):
@@ -75,7 +75,7 @@ class TestErrorHandling:
         )
         client = LangDAGClient()
         with pytest.raises(BadRequestError) as exc_info:
-            client.chat("test")
+            client.prompt("test")
         assert exc_info.value.status_code == 400
 
     def test_generic_api_error(self, httpx_mock: HTTPXMock):
@@ -94,62 +94,90 @@ class TestErrorHandling:
             client.health()
 
 
-class TestListDAGs:
-    def test_list_dags(self, httpx_mock: HTTPXMock):
+class TestListRoots:
+    def test_list_roots(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json=[
                 {
-                    "id": "dag-1",
-                    "status": "completed",
+                    "id": "node-1",
+                    "sequence": 0,
+                    "node_type": "user",
+                    "content": "Hello",
                     "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T00:00:00Z",
+                    "title": "First conversation",
                 },
                 {
-                    "id": "dag-2",
-                    "status": "running",
+                    "id": "node-2",
+                    "sequence": 0,
+                    "node_type": "user",
+                    "content": "Hi there",
                     "created_at": "2024-01-02T00:00:00Z",
-                    "updated_at": "2024-01-02T00:00:00Z",
+                    "title": "Second conversation",
                 },
             ]
         )
         client = LangDAGClient()
-        dags = client.list_dags()
-        assert len(dags) == 2
-        assert dags[0].id == "dag-1"
-        assert dags[1].id == "dag-2"
+        roots = client.list_roots()
+        assert len(roots) == 2
+        assert roots[0].id == "node-1"
+        assert roots[0].title == "First conversation"
+        assert roots[1].id == "node-2"
 
 
-class TestGetDAG:
-    def test_get_dag(self, httpx_mock: HTTPXMock):
+class TestGetNode:
+    def test_get_node(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "id": "dag-1",
-                "status": "completed",
+                "id": "node-1",
+                "sequence": 0,
+                "node_type": "user",
+                "content": "Hello",
                 "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-                "nodes": [
-                    {
-                        "id": "node-1",
-                        "sequence": 0,
-                        "node_type": "user",
-                        "content": "Hello",
-                        "created_at": "2024-01-01T00:00:00Z",
-                    }
-                ],
+                "title": "My conversation",
+                "system_prompt": "Be helpful",
             }
         )
         client = LangDAGClient()
-        dag = client.get_dag("dag-1")
-        assert dag.id == "dag-1"
-        assert len(dag.nodes) == 1
-        assert dag.nodes[0].content == "Hello"
+        node = client.get_node("node-1")
+        assert node.id == "node-1"
+        assert node.content == "Hello"
+        assert node.title == "My conversation"
+        assert node.system_prompt == "Be helpful"
 
 
-class TestChat:
-    def test_chat_non_streaming(self, httpx_mock: HTTPXMock):
+class TestGetTree:
+    def test_get_tree(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            json=[
+                {
+                    "id": "node-1",
+                    "sequence": 0,
+                    "node_type": "user",
+                    "content": "Hello",
+                    "created_at": "2024-01-01T00:00:00Z",
+                },
+                {
+                    "id": "node-2",
+                    "parent_id": "node-1",
+                    "sequence": 1,
+                    "node_type": "assistant",
+                    "content": "Hi there!",
+                    "created_at": "2024-01-01T00:00:01Z",
+                },
+            ]
+        )
+        client = LangDAGClient()
+        tree = client.get_tree("node-1")
+        assert len(tree) == 2
+        assert tree[0].id == "node-1"
+        assert tree[1].id == "node-2"
+        assert tree[1].parent_id == "node-1"
+
+
+class TestPrompt:
+    def test_prompt_non_streaming(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-123",
                 "node_id": "node-456",
                 "content": "Hello back!",
                 "tokens_in": 5,
@@ -157,21 +185,22 @@ class TestChat:
             }
         )
         client = LangDAGClient()
-        resp = client.chat("Hello")
-        assert isinstance(resp, ChatResponse)
-        assert resp.dag_id == "dag-123"
+        resp = client.prompt("Hello")
+        assert isinstance(resp, PromptResponse)
+        assert resp.node_id == "node-456"
         assert resp.content == "Hello back!"
+        assert resp.tokens_in == 5
+        assert resp.tokens_out == 3
 
-    def test_chat_sends_correct_body(self, httpx_mock: HTTPXMock):
+    def test_prompt_sends_correct_body(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-1",
                 "node_id": "node-1",
                 "content": "ok",
             }
         )
         client = LangDAGClient()
-        client.chat("Hello", model="test-model", system_prompt="Be nice")
+        client.prompt("Hello", model="test-model", system_prompt="Be nice")
         request = httpx_mock.get_request()
         body = json.loads(request.content)
         assert body["message"] == "Hello"
@@ -180,27 +209,46 @@ class TestChat:
         assert body["stream"] is False
 
 
-class TestContinueChat:
-    def test_continue_chat(self, httpx_mock: HTTPXMock):
+class TestPromptFrom:
+    def test_prompt_from(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
             json={
-                "dag_id": "dag-123",
                 "node_id": "node-789",
                 "content": "Continued!",
+                "tokens_in": 10,
+                "tokens_out": 5,
             }
         )
         client = LangDAGClient()
-        resp = client.continue_chat("dag-123", "Follow up")
-        assert isinstance(resp, ChatResponse)
+        resp = client.prompt_from("node-123", "Follow up")
+        assert isinstance(resp, PromptResponse)
+        assert resp.node_id == "node-789"
         assert resp.content == "Continued!"
 
-
-class TestDeleteDAG:
-    def test_delete_dag(self, httpx_mock: HTTPXMock):
-        httpx_mock.add_response(json={"status": "deleted", "id": "dag-1"})
+    def test_prompt_from_sends_correct_body(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            json={
+                "node_id": "node-1",
+                "content": "ok",
+            }
+        )
         client = LangDAGClient()
-        resp = client.delete_dag("dag-1")
+        client.prompt_from("node-123", "Follow up", model="test-model")
+        request = httpx_mock.get_request()
+        body = json.loads(request.content)
+        assert body["message"] == "Follow up"
+        assert body["model"] == "test-model"
+        assert body["stream"] is False
+        assert request.url.path == "/nodes/node-123/prompt"
+
+
+class TestDeleteNode:
+    def test_delete_node(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(json={"status": "deleted", "id": "node-1"})
+        client = LangDAGClient()
+        resp = client.delete_node("node-1")
         assert resp["status"] == "deleted"
+        assert resp["id"] == "node-1"
 
 
 class TestAPIKeyHeader:
@@ -216,7 +264,7 @@ class TestSSEParsing:
     def test_parse_start_delta_done(self):
         lines = iter([
             "event: start",
-            'data: {"dag_id":"dag-1"}',
+            "data: {}",
             "",
             "event: delta",
             'data: {"content":"Hello "}',
@@ -225,13 +273,12 @@ class TestSSEParsing:
             'data: {"content":"world!"}',
             "",
             "event: done",
-            'data: {"dag_id":"dag-1","node_id":"node-1"}',
+            'data: {"node_id":"node-1"}',
             "",
         ])
         events = list(_parse_sse_stream(lines))
         assert len(events) == 4
         assert events[0].event == SSEEventType.START
-        assert events[0].dag_id == "dag-1"
         assert events[1].event == SSEEventType.DELTA
         assert events[1].content == "Hello "
         assert events[2].content == "world!"
@@ -254,7 +301,7 @@ class TestSSEParsing:
             "data: {}",
             "",
             "event: start",
-            'data: {"dag_id":"dag-1"}',
+            "data: {}",
             "",
         ])
         events = list(_parse_sse_stream(lines))
