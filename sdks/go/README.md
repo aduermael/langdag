@@ -22,31 +22,22 @@ import (
 )
 
 func main() {
-    // Create a client
-    client := langdag.NewClient("http://localhost:8080",
-        langdag.WithAPIKey("your-api-key"),
-    )
-
+    client := langdag.NewClient("http://localhost:8080")
     ctx := context.Background()
 
-    // Start a new chat
-    resp, err := client.Chat(ctx, &langdag.NewChatRequest{
-        Message: "Hello, how are you?",
-        Model:   "claude-sonnet-4-20250514",
-    }, nil)
+    // Start a new conversation
+    node, err := client.Prompt(ctx, "Hello, how are you?")
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Printf("Response: %s\n", resp.Content)
+    fmt.Printf("Response: %s\n", node.Content)
 
-    // Continue the conversation
-    resp, err = client.ContinueChat(ctx, resp.DAGID, &langdag.ContinueChatRequest{
-        Message: "Tell me a joke",
-    }, nil)
+    // Continue from any node
+    node2, err := node.Prompt(ctx, "Tell me a joke")
     if err != nil {
         log.Fatal(err)
     }
-    fmt.Printf("Response: %s\n", resp.Content)
+    fmt.Printf("Response: %s\n", node2.Content)
 }
 ```
 
@@ -55,21 +46,18 @@ func main() {
 The SDK supports Server-Sent Events (SSE) for real-time streaming responses:
 
 ```go
-err := client.ChatStream(ctx, &langdag.NewChatRequest{
-    Message: "Write a poem about coding",
-}, func(event langdag.SSEEvent) error {
-    switch event.Type {
-    case langdag.SSEEventStart:
-        fmt.Printf("Started conversation: %s\n", event.DAGID)
-    case langdag.SSEEventDelta:
-        fmt.Print(event.Content)
-    case langdag.SSEEventDone:
-        fmt.Printf("\nCompleted: node %s\n", event.NodeID)
-    case langdag.SSEEventError:
-        return fmt.Errorf("stream error: %s", event.Error)
-    }
-    return nil
-})
+stream, err := client.PromptStream(ctx, "Write a poem about coding")
+if err != nil {
+    log.Fatal(err)
+}
+
+for event := range stream.Events() {
+    fmt.Print(event.Content)
+}
+
+// Get the final node after streaming completes
+result, err := stream.Node()
+fmt.Printf("\nNode ID: %s\n", result.ID)
 ```
 
 ## API Reference
@@ -101,39 +89,50 @@ client := langdag.NewClient("http://localhost:8080",
 )
 ```
 
-### DAG Operations
+### Prompt Operations
 
 ```go
-// List all DAGs
-dags, err := client.ListDAGs(ctx)
+// Start a new conversation (creates root node)
+node, err := client.Prompt(ctx, "Hello!")
+node, err := client.Prompt(ctx, "Hello!",
+    langdag.WithSystem("You are helpful."),
+    langdag.WithModel("claude-sonnet-4-20250514"),
+)
 
-// Get a specific DAG (supports UUID prefix)
-dag, err := client.GetDAG(ctx, "abc123")
+// Continue from any node
+node2, err := node.Prompt(ctx, "Tell me more")
 
-// Delete a DAG
-resp, err := client.DeleteDAG(ctx, "abc123")
+// Branch from an earlier node
+alt, err := node.Prompt(ctx, "Different angle")
+
+// Stream a new conversation
+stream, err := client.PromptStream(ctx, "Tell me a story")
+for event := range stream.Events() {
+    fmt.Print(event.Content)
+}
+result, err := stream.Node()
+
+// Stream from an existing node
+stream, err := node.PromptStream(ctx, "Explain in detail")
 ```
 
-### Chat Operations
+### Node Operations
 
 ```go
-// Start a new conversation
-resp, err := client.Chat(ctx, &langdag.NewChatRequest{
-    Message:      "Hello!",
-    Model:        "claude-sonnet-4-20250514",
-    SystemPrompt: "You are a helpful assistant.",
-}, nil)
+// Get a node by ID
+node, err := client.GetNode(ctx, "abc123")
 
-// Continue a conversation
-resp, err := client.ContinueChat(ctx, dagID, &langdag.ContinueChatRequest{
-    Message: "Tell me more",
-}, nil)
+// Get a full tree from a node
+tree, err := client.GetTree(ctx, "abc123")
+for _, n := range tree.Nodes {
+    fmt.Printf("[%s] %s\n", n.Type, n.Content)
+}
 
-// Fork a conversation from a specific node
-resp, err := client.ForkChat(ctx, dagID, &langdag.ForkChatRequest{
-    NodeID:  nodeID,
-    Message: "What if we tried a different approach?",
-}, nil)
+// List root nodes (conversations)
+roots, err := client.ListRoots(ctx)
+
+// Delete a node and its subtree
+err := client.DeleteNode(ctx, "abc123")
 ```
 
 ### Workflow Operations
@@ -143,26 +142,10 @@ resp, err := client.ForkChat(ctx, dagID, &langdag.ForkChatRequest{
 workflows, err := client.ListWorkflows(ctx)
 
 // Create a workflow
-workflow, err := client.CreateWorkflow(ctx, &langdag.CreateWorkflowRequest{
-    Name:        "my-workflow",
-    Description: "A sample workflow",
-    Nodes: []langdag.WorkflowNode{
-        {ID: "input", Type: langdag.WorkflowNodeTypeInput},
-        {ID: "llm", Type: langdag.WorkflowNodeTypeLLM, Prompt: "Process: {{input}}"},
-        {ID: "output", Type: langdag.WorkflowNodeTypeOutput},
-    },
-    Edges: []langdag.WorkflowEdge{
-        {From: "input", To: "llm"},
-        {From: "llm", To: "output"},
-    },
-})
+workflow, err := client.CreateWorkflow(ctx, &langdag.CreateWorkflowRequest{...})
 
 // Run a workflow
-result, err := client.RunWorkflow(ctx, "my-workflow", &langdag.RunWorkflowRequest{
-    Input: map[string]interface{}{
-        "text": "Hello, world!",
-    },
-})
+result, err := client.RunWorkflow(ctx, "my-workflow", &langdag.RunWorkflowRequest{...})
 ```
 
 ## Error Handling
@@ -170,12 +153,12 @@ result, err := client.RunWorkflow(ctx, "my-workflow", &langdag.RunWorkflowReques
 The SDK provides typed errors for better error handling:
 
 ```go
-resp, err := client.GetDAG(ctx, "nonexistent")
+node, err := client.GetNode(ctx, "nonexistent")
 if err != nil {
     var apiErr *langdag.APIError
     if errors.As(err, &apiErr) {
         if apiErr.IsNotFound() {
-            fmt.Println("DAG not found")
+            fmt.Println("Node not found")
         } else if apiErr.IsUnauthorized() {
             fmt.Println("Invalid API key")
         }

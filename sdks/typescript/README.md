@@ -2,7 +2,7 @@
 
 TypeScript client for the [LangDAG](https://github.com/aduermael/langdag) REST API.
 
-LangDAG manages LLM conversations as directed acyclic graphs (DAGs), enabling branching, forking, and workflow execution.
+LangDAG manages LLM conversations as node trees, enabling branching and workflow execution.
 
 ## Installation
 
@@ -17,43 +17,32 @@ import { LangDAGClient } from 'langdag';
 
 const client = new LangDAGClient({
   baseUrl: 'http://localhost:8080',
-  apiKey: 'your-api-key',
 });
 
-// Start a new chat
-const response = await client.chat({
-  message: 'Hello, how are you?',
-  model: 'claude-sonnet-4-20250514',
-});
+// Start a new conversation
+const node = await client.prompt('Hello, how are you?');
+console.log(node.content);
 
-console.log(response.content);
-console.log(`DAG ID: ${response.dag_id}`);
+// Continue from any node
+const node2 = await node.prompt('Tell me more');
+console.log(node2.content);
 ```
 
 ## Streaming
 
-All chat methods support streaming via Server-Sent Events (SSE):
-
 ```typescript
-// Stream a response
-for await (const event of client.chat({
-  message: 'Tell me a story',
-  stream: true
-})) {
-  switch (event.type) {
-    case 'start':
-      console.log(`Started DAG: ${event.dag_id}`);
-      break;
-    case 'delta':
-      process.stdout.write(event.content);
-      break;
-    case 'done':
-      console.log(`\nCompleted node: ${event.node_id}`);
-      break;
-    case 'error':
-      console.error(`Error: ${event.error}`);
-      break;
-  }
+// Stream a new conversation
+const stream = await client.promptStream('Tell me a story');
+for await (const event of stream.events()) {
+  process.stdout.write(event.content);
+}
+const result = await stream.node();
+console.log(`\nNode ID: ${result.id}`);
+
+// Stream from an existing node
+const stream2 = await node.promptStream('Explain in detail');
+for await (const event of stream2.events()) {
+  process.stdout.write(event.content);
 }
 ```
 
@@ -70,42 +59,48 @@ const client = new LangDAGClient({
 });
 ```
 
-### DAG Methods
+### Prompt Methods
 
 ```typescript
-// List all DAGs
-const dags = await client.listDags();
+// Start a new conversation (returns Node)
+const node = await client.prompt('Hello!');
+const node = await client.prompt('Hello!', {
+  model: 'claude-sonnet-4-20250514',
+  systemPrompt: 'You are helpful.',
+});
 
-// Get a specific DAG with all nodes
-const dag = await client.getDag('dag-id-or-prefix');
+// Continue from any node
+const node2 = await node.prompt('Tell me more');
 
-// Delete a DAG
-await client.deleteDag('dag-id');
+// Branch from an earlier node
+const alt = await node.prompt('Different angle');
+
+// Stream a new conversation
+const stream = await client.promptStream('Tell me a story');
+for await (const event of stream.events()) { ... }
+const result = await stream.node();
+
+// Stream from a node
+const stream = await node.promptStream('Explain');
 ```
 
-### Chat Methods
+### Node Operations
 
 ```typescript
-// Start a new conversation
-const response = await client.chat({
-  message: 'Hello!',
-  model?: 'claude-sonnet-4-20250514',
-  system_prompt?: 'You are a helpful assistant.',
-  stream?: false,
-});
+// Get a node by ID
+const node = await client.getNode('node-id');
 
-// Continue an existing conversation
-const response = await client.continueChat('dag-id', {
-  message: 'Tell me more',
-  stream?: false,
-});
+// Get full tree from a node
+const tree = await client.getTree('node-id');
+for (const n of tree.nodes) {
+  console.log(`[${n.type}] ${n.content}`);
+}
 
-// Fork from a specific node (create alternative branch)
-const response = await client.forkChat('dag-id', {
-  node_id: 'node-id-to-fork-from',
-  message: 'What if instead...',
-  stream?: false,
-});
+// List root nodes (conversations)
+const roots = await client.listRoots();
+
+// Delete a node and its subtree
+await client.deleteNode('node-id');
 ```
 
 ### Workflow Methods
@@ -115,25 +110,10 @@ const response = await client.forkChat('dag-id', {
 const workflows = await client.listWorkflows();
 
 // Create a workflow
-const workflow = await client.createWorkflow({
-  name: 'my-workflow',
-  description: 'A sample workflow',
-  nodes: [
-    { id: 'input', type: 'input' },
-    { id: 'process', type: 'llm', prompt: 'Process: {{input}}' },
-    { id: 'output', type: 'output' },
-  ],
-  edges: [
-    { from: 'input', to: 'process' },
-    { from: 'process', to: 'output' },
-  ],
-});
+const workflow = await client.createWorkflow({...});
 
 // Run a workflow
-const result = await client.runWorkflow('workflow-id-or-name', {
-  input: { key: 'value' },
-  stream?: false,
-});
+const result = await client.runWorkflow('workflow-id', {...});
 ```
 
 ## Error Handling
@@ -146,34 +126,18 @@ import {
   NotFoundError,
   UnauthorizedError,
   BadRequestError,
-  NetworkError
+  NetworkError,
 } from 'langdag';
 
 try {
-  await client.getDag('non-existent');
+  await client.getNode('non-existent');
 } catch (error) {
   if (error instanceof NotFoundError) {
-    console.log('DAG not found');
+    console.log('Node not found');
   } else if (error instanceof UnauthorizedError) {
     console.log('Invalid API key');
-  } else if (error instanceof BadRequestError) {
-    console.log('Invalid request:', error.message);
-  } else if (error instanceof NetworkError) {
-    console.log('Network error:', error.message);
   }
 }
-```
-
-## SSE Utilities
-
-For advanced use cases, you can use the SSE parsing utilities directly:
-
-```typescript
-import { parseSSEStream, collectStreamContent } from 'langdag';
-
-// Collect all streamed content into a single result
-const stream = client.chat({ message: 'Hello', stream: true });
-const { dagId, nodeId, content } = await collectStreamContent(stream);
 ```
 
 ## Types
@@ -182,10 +146,8 @@ All request and response types are exported:
 
 ```typescript
 import type {
-  DAG,
-  DAGDetail,
   Node,
-  ChatResponse,
+  NodeData,
   SSEEvent,
   Workflow,
   // ... and more

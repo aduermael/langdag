@@ -1,6 +1,6 @@
 # LangDAG Python SDK
 
-Python client library for the [LangDAG](https://langdag.com) API - manage LLM conversations as directed acyclic graphs (DAGs).
+Python client library for the [LangDAG](https://langdag.com) API - manage LLM conversations as node trees.
 
 ## Installation
 
@@ -15,17 +15,15 @@ pip install langdag
 ```python
 from langdag import LangDAGClient
 
-# Create a client
-client = LangDAGClient(base_url="http://localhost:8080", api_key="your-api-key")
+client = LangDAGClient(base_url="http://localhost:8080")
 
 # Start a conversation
-response = client.chat("Hello, how are you?")
-print(response.content)
-print(f"DAG ID: {response.dag_id}")
+node = client.prompt("Hello, how are you?")
+print(node.content)
 
-# Continue the conversation
-response = client.continue_chat(response.dag_id, "Tell me more")
-print(response.content)
+# Continue from any node
+node2 = node.prompt("Tell me more")
+print(node2.content)
 
 # Close the client when done
 client.close()
@@ -37,8 +35,8 @@ client.close()
 from langdag import LangDAGClient
 
 with LangDAGClient() as client:
-    response = client.chat("Hello!")
-    print(response.content)
+    node = client.prompt("Hello!")
+    print(node.content)
 ```
 
 ### Async Client
@@ -49,8 +47,8 @@ from langdag import AsyncLangDAGClient
 
 async def main():
     async with AsyncLangDAGClient() as client:
-        response = await client.chat("Hello!")
-        print(response.content)
+        node = await client.prompt("Hello!")
+        print(node.content)
 
 asyncio.run(main())
 ```
@@ -61,27 +59,15 @@ asyncio.run(main())
 from langdag import LangDAGClient, SSEEventType
 
 with LangDAGClient() as client:
-    # Stream chat response
-    for event in client.chat("Tell me a story", stream=True):
-        if event.event == SSEEventType.DELTA:
+    # Stream a new conversation
+    for event in client.prompt("Tell me a story", stream=True):
+        if event.content:
             print(event.content, end="", flush=True)
-        elif event.event == SSEEventType.DONE:
-            print(f"\n\nDAG ID: {event.dag_id}")
-```
 
-### Async Streaming
-
-```python
-import asyncio
-from langdag import AsyncLangDAGClient, SSEEventType
-
-async def main():
-    async with AsyncLangDAGClient() as client:
-        async for event in await client.chat("Tell me a story", stream=True):
-            if event.event == SSEEventType.DELTA:
-                print(event.content, end="", flush=True)
-
-asyncio.run(main())
+    # Stream from an existing node
+    for event in node.prompt_stream("Explain in detail"):
+        if event.content:
+            print(event.content, end="", flush=True)
 ```
 
 ## API Reference
@@ -98,39 +84,38 @@ LangDAGClient(
 )
 ```
 
-#### DAG Methods
+#### Prompt Methods
 
-- `list_dags()` - List all DAGs
-- `get_dag(dag_id)` - Get a DAG with all its nodes
-- `delete_dag(dag_id)` - Delete a DAG
+- `prompt(message, model=None, system_prompt=None, stream=False)` - Start a new conversation (returns `Node` or event iterator)
+- `node.prompt(message)` - Continue from any node (returns `Node`)
+- `node.prompt_stream(message)` - Stream from any node (returns event iterator)
 
-#### Chat Methods
+#### Node Methods
 
-- `chat(message, model=None, system_prompt=None, stream=False)` - Start a new conversation
-- `continue_chat(dag_id, message, stream=False)` - Continue an existing conversation
-- `fork_chat(dag_id, node_id, message, stream=False)` - Fork a conversation from a specific node
+- `list_roots()` - List root nodes (conversations)
+- `get_node(node_id)` - Get a node by ID
+- `get_tree(node_id)` - Get full tree from a node
+- `delete_node(node_id)` - Delete a node and its subtree
 
 #### Workflow Methods
 
 - `list_workflows()` - List all workflow templates
-- `create_workflow(name, nodes, description=None, defaults=None, tools=None, edges=None)` - Create a workflow
+- `create_workflow(name, nodes, ...)` - Create a workflow
 - `run_workflow(workflow_id, input=None, stream=False)` - Run a workflow
 
 ### Streaming Events
 
 When `stream=True`, methods return an iterator of `SSEEvent` objects:
 
-- `SSEEventType.START` - Stream started, contains `dag_id`
+- `SSEEventType.NODE_INFO` - Node metadata
 - `SSEEventType.DELTA` - Content chunk, access via `event.content`
-- `SSEEventType.DONE` - Stream complete, contains `dag_id` and `node_id`
+- `SSEEventType.DONE` - Stream complete
 - `SSEEventType.ERROR` - Error occurred
 
 ### Models
 
-- `DAG` - A conversation or workflow run
-- `DAGDetail` - DAG with its nodes
-- `Node` - A node in a DAG (message, tool call, etc.)
-- `ChatResponse` - Response from chat endpoints
+- `Node` - A node in a conversation tree (has `.prompt()` and `.prompt_stream()` methods)
+- `Tree` - A tree of nodes
 - `Workflow` - A workflow template
 - `RunWorkflowResponse` - Response from running a workflow
 
