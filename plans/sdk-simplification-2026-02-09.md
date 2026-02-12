@@ -279,7 +279,7 @@ Update all documentation to reflect the new node-centric API and unified `prompt
 - [x] 8e: Update `docs/DESIGN.md` — update or add note that schema/API sections reflect new node-centric model
 - [x] 8f: Update SDK READMEs (`sdks/go/README.md`, `sdks/python/README.md`, `sdks/typescript/README.md`)
 - [x] 8g: Update example READMEs (`examples/go/README.md`, `examples/python/README.md`, `examples/typescript/README.md`)
-- [ ] 8h: Update or create OpenAPI spec for new endpoints
+- [x] 8h: Update or create OpenAPI spec for new endpoints
 
 ---
 

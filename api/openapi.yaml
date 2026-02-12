@@ -2,20 +2,18 @@ openapi: 3.1.0
 info:
   title: LangDAG API
   description: |
-    REST API for managing LLM conversations as directed acyclic graphs (DAGs).
+    REST API for managing LLM conversations as node trees.
 
-    LangDAG provides:
-    - DAG management for conversations and workflow runs
-    - Chat with streaming support via Server-Sent Events (SSE)
-    - Workflow creation and execution
+    Everything is a node. A root node (parent_id = null) defines a conversation tree.
+    Prompting from any node creates a child, enabling natural branching and exploration.
 
     ## Streaming
 
-    Chat endpoints support real-time streaming via SSE. Set `stream: true` in the request body
+    Prompt endpoints support real-time streaming via SSE. Set `stream: true` in the request body
     to receive incremental responses as they're generated.
 
     SSE events:
-    - `start` - Stream started, includes `dag_id`
+    - `start` - Stream started
     - `delta` - Incremental content chunk
     - `done` - Stream complete, includes `node_id`
     - `error` - Error occurred
@@ -23,7 +21,7 @@ info:
     ## IDs
 
     All IDs are UUIDs. For convenience, partial ID prefixes are accepted (minimum 4 characters).
-  version: 1.0.0
+  version: 2.0.0
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -39,10 +37,10 @@ security:
 tags:
   - name: health
     description: Health check endpoints
-  - name: dags
-    description: DAG management
-  - name: chat
-    description: Chat conversations
+  - name: prompt
+    description: Prompt endpoints for starting and continuing conversations
+  - name: nodes
+    description: Node management
   - name: workflows
     description: Workflow templates
 
@@ -65,60 +63,126 @@ paths:
                     type: string
                     example: ok
 
-  /dags:
-    get:
-      tags: [dags]
-      summary: List all DAGs
-      description: Returns all DAG instances (conversations and workflow runs)
+  /prompt:
+    post:
+      tags: [prompt]
+      summary: Start new conversation tree
+      description: |
+        Creates a new conversation tree by sending a message. Returns the assistant's response node.
+
+        Set `stream: true` to receive the response as SSE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptRequest'
       responses:
         '200':
-          description: List of DAGs
+          description: Prompt response (non-streaming) or SSE stream
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEStream'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /nodes/{id}/prompt:
+    post:
+      tags: [prompt]
+      summary: Continue from existing node
+      description: |
+        Continues a conversation from an existing node by adding a new message.
+        This creates a child branch from the specified node.
+
+        Set `stream: true` to receive the response as SSE.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Node ID (full or prefix)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePromptRequest'
+      responses:
+        '200':
+          description: Prompt response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptResponse'
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SSEStream'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /nodes:
+    get:
+      tags: [nodes]
+      summary: List root nodes
+      description: Returns all root nodes (conversations). Root nodes have no parent.
+      responses:
+        '200':
+          description: List of root nodes
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/DAG'
+                  $ref: '#/components/schemas/Node'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /dags/{id}:
+  /nodes/{id}:
     get:
-      tags: [dags]
-      summary: Get DAG details
-      description: Returns a DAG with all its nodes
+      tags: [nodes]
+      summary: Get a single node
+      description: Returns a single node by ID
       parameters:
         - name: id
           in: path
           required: true
-          description: DAG ID (full or prefix)
+          description: Node ID (full or prefix)
           schema:
             type: string
       responses:
         '200':
-          description: DAG details with nodes
+          description: Node details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DAGDetail'
+                $ref: '#/components/schemas/Node'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
     delete:
-      tags: [dags]
-      summary: Delete a DAG
-      description: Deletes a DAG and all its nodes
+      tags: [nodes]
+      summary: Delete node and subtree
+      description: Deletes a node and all its descendants
       parameters:
         - name: id
           in: path
           required: true
-          description: DAG ID (full or prefix)
+          description: Node ID (full or prefix)
           schema:
             type: string
       responses:
         '200':
-          description: DAG deleted
+          description: Node deleted
           content:
             application/json:
               schema:
@@ -134,103 +198,27 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  /chat:
-    post:
-      tags: [chat]
-      summary: Start new conversation
-      description: |
-        Creates a new conversation DAG and sends the first message.
-
-        Set `stream: true` to receive the response as SSE.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/NewChatRequest'
-      responses:
-        '200':
-          description: Chat response (non-streaming)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatResponse'
-            text/event-stream:
-              schema:
-                $ref: '#/components/schemas/SSEStream'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /chat/{id}:
-    post:
-      tags: [chat]
-      summary: Continue conversation
-      description: |
-        Continues an existing conversation by appending a new message.
-
-        Set `stream: true` to receive the response as SSE.
+  /nodes/{id}/tree:
+    get:
+      tags: [nodes]
+      summary: Get full tree from node
+      description: Returns the node and all its descendants as a flat array
       parameters:
         - name: id
           in: path
           required: true
-          description: DAG ID (full or prefix)
+          description: Node ID (full or prefix)
           schema:
             type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ContinueChatRequest'
       responses:
         '200':
-          description: Chat response
+          description: Array of nodes in the subtree
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ChatResponse'
-            text/event-stream:
-              schema:
-                $ref: '#/components/schemas/SSEStream'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /chat/{id}/fork:
-    post:
-      tags: [chat]
-      summary: Fork conversation
-      description: |
-        Forks a conversation from a specific node, creating a new branch.
-        This allows exploring alternative conversation paths.
-
-        Set `stream: true` to receive the response as SSE.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: DAG ID (full or prefix)
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ForkChatRequest'
-      responses:
-        '200':
-          description: Chat response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatResponse'
-            text/event-stream:
-              schema:
-                $ref: '#/components/schemas/SSEStream'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Node'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -278,7 +266,7 @@ paths:
     post:
       tags: [workflows]
       summary: Run workflow
-      description: Executes a workflow template, creating a new DAG instance
+      description: Executes a workflow template
       parameters:
         - name: id
           in: path
@@ -346,49 +334,6 @@ components:
       required:
         - error
 
-    DAG:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        title:
-          type: string
-        workflow_id:
-          type: string
-          format: uuid
-          description: Set if created from a workflow
-        model:
-          type: string
-        system_prompt:
-          type: string
-        status:
-          type: string
-          enum: [pending, running, completed, failed, cancelled]
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - id
-        - status
-        - created_at
-        - updated_at
-
-    DAGDetail:
-      allOf:
-        - $ref: '#/components/schemas/DAG'
-        - type: object
-          properties:
-            node_count:
-              type: integer
-            nodes:
-              type: array
-              items:
-                $ref: '#/components/schemas/Node'
-
     Node:
       type: object
       properties:
@@ -398,18 +343,19 @@ components:
         parent_id:
           type: string
           format: uuid
-          description: Parent node ID (for tree structure)
+          description: Parent node ID (null for root nodes)
         sequence:
           type: integer
           description: Node sequence number
         node_type:
           type: string
-          enum: [user, assistant, tool_call, tool_result, llm, input, output]
+          enum: [user, assistant, system, tool_call, tool_result]
         content:
           type: string
-          description: Node content (message text or JSON)
+          description: Node content (message text)
         model:
           type: string
+          description: LLM model used (on assistant nodes)
         tokens_in:
           type: integer
         tokens_out:
@@ -418,6 +364,12 @@ components:
           type: integer
         status:
           type: string
+        title:
+          type: string
+          description: Conversation title (on root nodes only)
+        system_prompt:
+          type: string
+          description: System prompt (on root nodes only)
         created_at:
           type: string
           format: date-time
@@ -428,19 +380,19 @@ components:
         - content
         - created_at
 
-    NewChatRequest:
+    PromptRequest:
       type: object
       properties:
+        message:
+          type: string
+          description: Message to send
         model:
           type: string
           default: claude-sonnet-4-20250514
           description: LLM model to use
         system_prompt:
           type: string
-          description: Optional system prompt
-        message:
-          type: string
-          description: Initial message to send
+          description: Optional system prompt (only for new conversations)
         stream:
           type: boolean
           default: false
@@ -448,12 +400,15 @@ components:
       required:
         - message
 
-    ContinueChatRequest:
+    NodePromptRequest:
       type: object
       properties:
         message:
           type: string
           description: Message to send
+        model:
+          type: string
+          description: LLM model to use (optional override)
         stream:
           type: boolean
           default: false
@@ -461,29 +416,9 @@ components:
       required:
         - message
 
-    ForkChatRequest:
+    PromptResponse:
       type: object
       properties:
-        node_id:
-          type: string
-          description: Node ID to fork from (full or prefix)
-        message:
-          type: string
-          description: Message to send
-        stream:
-          type: boolean
-          default: false
-          description: Enable SSE streaming
-      required:
-        - node_id
-        - message
-
-    ChatResponse:
-      type: object
-      properties:
-        dag_id:
-          type: string
-          format: uuid
         node_id:
           type: string
           format: uuid
@@ -503,13 +438,13 @@ components:
 
         ```
         event: start
-        data: {"dag_id": "..."}
+        data: {}
 
         event: delta
         data: {"content": "..."}
 
         event: done
-        data: {"node_id": "...", "dag_id": "..."}
+        data: {"node_id": "..."}
 
         event: error
         data: error message
@@ -656,7 +591,7 @@ components:
         dag_id:
           type: string
           format: uuid
-          description: ID of the created DAG instance
+          description: ID of the created root node
         status:
           type: string
           enum: [pending, running, completed, failed]
