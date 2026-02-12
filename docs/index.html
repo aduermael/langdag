@@ -769,22 +769,19 @@
               <span class="code-dot green"></span>
               <span class="code-title">terminal</span>
             </div>
-            <pre class="code-content"><span class="prompt">$</span> langdag chat new --model claude-sonnet-4-20250514
-
-<span class="string">🟢 New conversation started</span> (ID: dag_k7x2m9)
-
-<span class="prompt">You:</span> What is LangDAG?
+            <pre class="code-content"><span class="prompt">$</span> langdag prompt -m claude-sonnet-4-20250514 <span class="string">"What is LangDAG?"</span>
 
 <span class="comment"># LangDAG responds with streaming output...</span>
+<span class="keyword">Assistant:</span> LangDAG is a high-performance tool that...
 
-<span class="prompt">$</span> langdag print dag_k7x2m9
+<span class="prompt">$</span> langdag show k7x2
 
-<span class="keyword">dag_k7x2m9</span> (conversation)
+<span class="keyword">k7x2m9</span>
 └── [1] user: "What is LangDAG?"
     └── [2] assistant: "LangDAG is..."
 
-<span class="prompt">$</span> langdag chat continue dag_k7x2m9 --node 1
-<span class="comment"># Fork from node 1 to explore alternatives</span></pre>
+<span class="prompt">$</span> langdag prompt k7x2 <span class="string">"Tell me more"</span>
+<span class="comment"># Continue from any node to branch the tree</span></pre>
           </div>
         </div>
       </div>
@@ -812,20 +809,19 @@
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">chat.py — Start a conversation</span>
+                <span class="code-title">prompt.py — Start a conversation</span>
               </div>
               <pre class="code-content"><span class="keyword">from</span> langdag <span class="keyword">import</span> LangDAGClient
 
 <span class="keyword">with</span> LangDAGClient() <span class="keyword">as</span> client:
-    <span class="comment"># Start a streaming conversation</span>
-    events = client.chat(
-        message=<span class="string">"What is LangDAG?"</span>,
-        stream=<span class="keyword">True</span>
+    <span class="comment"># Start a conversation</span>
+    node = client.prompt(
+        message=<span class="string">"What is LangDAG?"</span>
     )
+    print(node.content)
 
-    <span class="keyword">for</span> event <span class="keyword">in</span> events:
-        <span class="keyword">if</span> event.event == SSEEventType.DELTA:
-            print(event.content, end=<span class="string">""</span>)</pre>
+    <span class="comment"># Continue from any node</span>
+    node2 = node.prompt(<span class="string">"Tell me more"</span>)</pre>
             </div>
 
             <!-- Fork Example -->
@@ -834,18 +830,19 @@
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">fork.py — Branch conversations</span>
+                <span class="code-title">branch.py — Branch conversations</span>
               </div>
-              <pre class="code-content"><span class="comment"># Fork from any node to explore alternatives</span>
-events = client.fork_chat(
-    dag_id=dag_id,
-    node_id=first_response_node,
-    message=<span class="string">"Tell me more about forking"</span>,
-    stream=<span class="keyword">True</span>
+              <pre class="code-content"><span class="comment"># Branch from any node to explore alternatives</span>
+alt = node.prompt(
+    <span class="string">"Tell me more about branching"</span>
 )
 
-<span class="comment"># Continue on the new branch</span>
-dag_id, node_id, _ = print_streaming_response(events)</pre>
+<span class="comment"># Stream from a node</span>
+<span class="keyword">for</span> event <span class="keyword">in</span> node.prompt_stream(
+    <span class="string">"Explain in detail"</span>
+):
+    <span class="keyword">if</span> event.content:
+        print(event.content, end=<span class="string">""</span>)</pre>
             </div>
 
             <!-- DAG Exploration -->
@@ -854,17 +851,17 @@ dag_id, node_id, _ = print_streaming_response(events)</pre>
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">explore.py — View conversation structure</span>
+                <span class="code-title">explore.py — View tree structure</span>
               </div>
-              <pre class="code-content"><span class="comment"># List all conversations</span>
-dags = client.list_dags()
-<span class="keyword">for</span> dag <span class="keyword">in</span> dags:
-    print(f<span class="string">"{dag.id}: {dag.title}"</span>)
+              <pre class="code-content"><span class="comment"># List all conversations (root nodes)</span>
+roots = client.list_roots()
+<span class="keyword">for</span> node <span class="keyword">in</span> roots:
+    print(f<span class="string">"{node.id}: {node.title}"</span>)
 
-<span class="comment"># Get full DAG with all nodes</span>
-dag = client.get_dag(dag_id)
-<span class="keyword">for</span> node <span class="keyword">in</span> dag.nodes:
-    print(f<span class="string">"[{node.node_type}] {node.content}"</span>)</pre>
+<span class="comment"># Get full tree from any node</span>
+tree = client.get_tree(node_id)
+<span class="keyword">for</span> n <span class="keyword">in</span> tree.nodes:
+    print(f<span class="string">"[{n.type}] {n.content}"</span>)</pre>
             </div>
           </div>
         </div>
@@ -878,19 +875,16 @@ dag = client.get_dag(dag_id)
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">chat.go — Start a conversation</span>
+                <span class="code-title">prompt.go — Start a conversation</span>
               </div>
               <pre class="code-content">client := langdag.NewClient(<span class="string">"http://localhost:8080"</span>)
 
-<span class="comment">// Start streaming chat</span>
-err := client.ChatStream(ctx, &amp;langdag.NewChatRequest{
-    Message: <span class="string">"What is LangDAG?"</span>,
-}, <span class="keyword">func</span>(event langdag.SSEEvent) error {
-    <span class="keyword">if</span> event.Type == langdag.SSEEventDelta {
-        fmt.Print(event.Content)
-    }
-    <span class="keyword">return</span> <span class="keyword">nil</span>
-})</pre>
+<span class="comment">// Start a conversation</span>
+node, err := client.Prompt(ctx, <span class="string">"What is LangDAG?"</span>)
+fmt.Println(node.Content)
+
+<span class="comment">// Continue from any node</span>
+node2, err := node.Prompt(ctx, <span class="string">"Tell me more"</span>)</pre>
             </div>
 
             <!-- Fork Example -->
@@ -899,19 +893,17 @@ err := client.ChatStream(ctx, &amp;langdag.NewChatRequest{
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">fork.go — Branch conversations</span>
+                <span class="code-title">branch.go — Branch conversations</span>
               </div>
-              <pre class="code-content"><span class="comment">// Fork from any node to explore alternatives</span>
-err := client.ForkChatStream(ctx, dagID, &amp;langdag.ForkChatRequest{
-    NodeID:  firstNodeID,
-    Message: <span class="string">"Tell me more about forking"</span>,
-}, <span class="keyword">func</span>(event langdag.SSEEvent) error {
-    <span class="keyword">switch</span> event.Type {
-    <span class="keyword">case</span> langdag.SSEEventDelta:
-        fmt.Print(event.Content)
-    }
-    <span class="keyword">return</span> <span class="keyword">nil</span>
-})</pre>
+              <pre class="code-content"><span class="comment">// Branch from any node</span>
+alt, err := node.Prompt(ctx, <span class="string">"Different angle"</span>)
+
+<span class="comment">// Stream from a node</span>
+stream, err := node.PromptStream(ctx, <span class="string">"Explain in detail"</span>)
+<span class="keyword">for</span> event := <span class="keyword">range</span> stream.Events() {
+    fmt.Print(event.Content)
+}
+result, err := stream.Node()</pre>
             </div>
 
             <!-- DAG Exploration -->
@@ -920,18 +912,18 @@ err := client.ForkChatStream(ctx, dagID, &amp;langdag.ForkChatRequest{
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">explore.go — View conversation structure</span>
+                <span class="code-title">explore.go — View tree structure</span>
               </div>
-              <pre class="code-content"><span class="comment">// List all conversations</span>
-dags, err := client.ListDAGs(ctx)
-<span class="keyword">for</span> _, dag := <span class="keyword">range</span> dags {
-    fmt.Printf(<span class="string">"%s: %s\n"</span>, dag.ID, dag.Title)
+              <pre class="code-content"><span class="comment">// List all conversations (root nodes)</span>
+roots, err := client.ListRoots(ctx)
+<span class="keyword">for</span> _, node := <span class="keyword">range</span> roots {
+    fmt.Printf(<span class="string">"%s: %s\n"</span>, node.ID, node.Title)
 }
 
-<span class="comment">// Get full DAG with all nodes</span>
-dag, err := client.GetDAG(ctx, dagID)
-<span class="keyword">for</span> _, node := <span class="keyword">range</span> dag.Nodes {
-    fmt.Printf(<span class="string">"[%s] %s\n"</span>, node.NodeType, node.Content)
+<span class="comment">// Get full tree from any node</span>
+tree, err := client.GetTree(ctx, nodeID)
+<span class="keyword">for</span> _, n := <span class="keyword">range</span> tree.Nodes {
+    fmt.Printf(<span class="string">"[%s] %s\n"</span>, n.Type, n.Content)
 }</pre>
             </div>
           </div>
@@ -946,23 +938,18 @@ dag, err := client.GetDAG(ctx, dagID)
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">chat.ts — Start a conversation</span>
+                <span class="code-title">prompt.ts — Start a conversation</span>
               </div>
               <pre class="code-content"><span class="keyword">import</span> { LangDAGClient } <span class="keyword">from</span> <span class="string">'langdag'</span>;
 
 <span class="keyword">const</span> client = <span class="keyword">new</span> LangDAGClient();
 
-<span class="comment">// Start streaming chat</span>
-<span class="keyword">const</span> stream = client.chat({
-  message: <span class="string">"What is LangDAG?"</span>,
-  stream: <span class="keyword">true</span>,
-});
+<span class="comment">// Start a conversation</span>
+<span class="keyword">const</span> node = <span class="keyword">await</span> client.prompt(<span class="string">"What is LangDAG?"</span>);
+console.log(node.content);
 
-<span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> stream) {
-  <span class="keyword">if</span> (event.type === <span class="string">'delta'</span>) {
-    process.stdout.write(event.content);
-  }
-}</pre>
+<span class="comment">// Continue from any node</span>
+<span class="keyword">const</span> node2 = <span class="keyword">await</span> node.prompt(<span class="string">"Tell me more"</span>);</pre>
             </div>
 
             <!-- Fork Example -->
@@ -971,20 +958,19 @@ dag, err := client.GetDAG(ctx, dagID)
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">fork.ts — Branch conversations</span>
+                <span class="code-title">branch.ts — Branch conversations</span>
               </div>
-              <pre class="code-content"><span class="comment">// Fork from any node to explore alternatives</span>
-<span class="keyword">const</span> stream = client.forkChat(dagId, {
-  node_id: firstNodeId,
-  message: <span class="string">"Tell me more about forking"</span>,
-  stream: <span class="keyword">true</span>,
-});
+              <pre class="code-content"><span class="comment">// Branch from any node</span>
+<span class="keyword">const</span> alt = <span class="keyword">await</span> node.prompt(<span class="string">"Different angle"</span>);
 
-<span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> stream) {
-  <span class="keyword">if</span> (event.type === <span class="string">'delta'</span>) {
-    process.stdout.write(event.content);
-  }
-}</pre>
+<span class="comment">// Stream from a node</span>
+<span class="keyword">const</span> stream = <span class="keyword">await</span> node.promptStream(
+  <span class="string">"Explain in detail"</span>
+);
+<span class="keyword">for await</span> (<span class="keyword">const</span> event <span class="keyword">of</span> stream.events()) {
+  process.stdout.write(event.content);
+}
+<span class="keyword">const</span> result = <span class="keyword">await</span> stream.node();</pre>
             </div>
 
             <!-- DAG Exploration -->
@@ -993,18 +979,18 @@ dag, err := client.GetDAG(ctx, dagID)
                 <span class="code-dot red"></span>
                 <span class="code-dot yellow"></span>
                 <span class="code-dot green"></span>
-                <span class="code-title">explore.ts — View conversation structure</span>
+                <span class="code-title">explore.ts — View tree structure</span>
               </div>
-              <pre class="code-content"><span class="comment">// List all conversations</span>
-<span class="keyword">const</span> dags = <span class="keyword">await</span> client.listDags();
-<span class="keyword">for</span> (<span class="keyword">const</span> dag <span class="keyword">of</span> dags) {
-  console.log(<span class="string">`${dag.id}: ${dag.title}`</span>);
+              <pre class="code-content"><span class="comment">// List all conversations (root nodes)</span>
+<span class="keyword">const</span> roots = <span class="keyword">await</span> client.listRoots();
+<span class="keyword">for</span> (<span class="keyword">const</span> node <span class="keyword">of</span> roots) {
+  console.log(<span class="string">`${node.id}: ${node.title}`</span>);
 }
 
-<span class="comment">// Get full DAG with all nodes</span>
-<span class="keyword">const</span> dag = <span class="keyword">await</span> client.getDag(dagId);
-<span class="keyword">for</span> (<span class="keyword">const</span> node <span class="keyword">of</span> dag.nodes) {
-  console.log(<span class="string">`[${node.node_type}] ${node.content}`</span>);
+<span class="comment">// Get full tree from any node</span>
+<span class="keyword">const</span> tree = <span class="keyword">await</span> client.getTree(nodeId);
+<span class="keyword">for</span> (<span class="keyword">const</span> n <span class="keyword">of</span> tree.nodes) {
+  console.log(<span class="string">`[${n.type}] ${n.content}`</span>);
 }</pre>
             </div>
           </div>
