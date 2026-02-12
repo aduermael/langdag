@@ -2,10 +2,11 @@
 
 This example demonstrates the LangDAG Go SDK with a coherent conversation workflow:
 
-1. Start a chat asking about Go vs Rust
-2. Continue the conversation with a follow-up question
-3. Fork from an earlier node to explore an alternative direction
-4. List all DAGs and display the branching structure
+1. Start a conversation with `client.Prompt()`
+2. Stream a response with `client.PromptStream()`
+3. Continue from a node with `node.Prompt()`
+4. Branch from an earlier node to explore an alternative direction
+5. List root nodes and display the tree structure
 
 ## Prerequisites
 
@@ -41,7 +42,7 @@ export LANGDAG_API_KEY=your-api-key
 
 ## What the Example Shows
 
-- **Streaming responses**: Using `ChatStream`, `ContinueChatStream`, and `ForkChatStream`
-- **SSE event handling**: Processing `start`, `delta`, `done`, and `error` events
-- **DAG exploration**: Listing DAGs with `ListDAGs` and viewing details with `GetDAG`
-- **Branching**: Creating alternative conversation paths with `ForkChatStream`
+- **Prompt/PromptStream**: Starting conversations with `client.Prompt()` and `client.PromptStream()`
+- **Node continuation**: Extending conversations with `node.Prompt()`
+- **Branching**: Creating alternative paths by prompting from earlier nodes
+- **Tree exploration**: Listing root nodes with `client.ListRoots()` and viewing trees with `client.GetTree()`

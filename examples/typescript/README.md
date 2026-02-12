@@ -1,6 +1,6 @@
 # LangDAG TypeScript SDK Example
 
-This example demonstrates how to use the LangDAG TypeScript SDK to manage LLM conversations as directed acyclic graphs (DAGs).
+This example demonstrates how to use the LangDAG TypeScript SDK to manage LLM conversations as node trees.
 
 ## Prerequisites
 
@@ -57,48 +57,17 @@ export LANGDAG_API_KEY=your-api-key
 
 ## What the Example Demonstrates
 
-1. **Start a Chat (Streaming)** - Creates a new conversation with streaming response
-2. **Continue Conversation** - Adds follow-up messages to the same DAG
-3. **Fork from Node** - Branches from an earlier point to explore an alternative
-4. **List DAGs** - Shows all conversations in the system
-5. **Visualize Structure** - Displays the branching tree structure of a DAG
-
-## Example Output
-
-```
-LangDAG TypeScript SDK Example
-==============================
-
-Connecting to: http://localhost:8080
-API Key: (not set)
-
-============================================================
-  Step 1: Start a New Chat (Streaming)
-============================================================
-
-Topic: The history of programming languages
-
-User: Tell me briefly about the history of programming languages...
-------------------------------------------------------------
-[Assistant] Streaming response:
-
-  (DAG started: a1b2c3d4...)
-
-  Programming languages have evolved dramatically since the 1950s...
-
-  (Completed - Node ID: e5f6g7h8...)
-------------------------------------------------------------
-
-...
-```
+1. **Start a Conversation** - Creates a new tree with `client.prompt()`
+2. **Stream a Response** - Uses `client.promptStream()` with async iteration
+3. **Continue from a Node** - Extends a conversation with `node.prompt()`
+4. **Branch from a Node** - Creates an alternative path by prompting from an earlier node
+5. **List Roots** - Shows all conversations with `client.listRoots()`
+6. **View Tree** - Displays the branching tree structure with `client.getTree()`
 
 ## Key SDK Features Used
 
 - `LangDAGClient` - Main client for API interactions
-- `client.chat()` - Start new conversations
-- `client.continueChat()` - Continue existing conversations
-- `client.forkChat()` - Branch from any node
-- `client.listDags()` - List all conversations
-- `client.getDag()` - Get full DAG details with nodes
-- Streaming via `{ stream: true }` option
-- SSE event handling (`start`, `delta`, `done`, `error`)
+- `client.prompt()` / `client.promptStream()` - Start new conversations
+- `node.prompt()` / `node.promptStream()` - Continue from any node
+- `client.listRoots()` - List root nodes (conversations)
+- `client.getTree()` - Get full tree from a node
