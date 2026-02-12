@@ -1,125 +1,62 @@
 /**
  * LangDAG TypeScript SDK Example
  *
- * This example demonstrates the core features of the LangDAG SDK:
- * - Starting a chat with streaming
- * - Continuing a conversation
- * - Forking from an earlier node to explore alternatives
- * - Listing and inspecting DAGs
+ * Demonstrates:
+ * - Starting a conversation with client.prompt() / client.promptStream()
+ * - Continuing from a node with node.prompt() / node.promptStream()
+ * - Branching to explore alternatives
+ * - Listing roots and inspecting tree structure
  *
  * Prerequisites:
  * - LangDAG server running at http://localhost:8080
- * - API key configured (or run without authentication)
  */
 
 import {
   LangDAGClient,
-  type SSEEvent,
-  type DAGDetail,
-  type Node,
-  collectStreamContent,
-  NotFoundError,
+  Node,
   NetworkError,
 } from 'langdag';
 
-// Configuration
 const API_BASE_URL = process.env.LANGDAG_URL || 'http://localhost:8080';
 const API_KEY = process.env.LANGDAG_API_KEY;
 
-// Helper to print section headers
 function printHeader(title: string): void {
   console.log('\n' + '='.repeat(60));
   console.log(`  ${title}`);
   console.log('='.repeat(60) + '\n');
 }
 
-// Helper to print a separator line
 function printSeparator(): void {
   console.log('-'.repeat(60));
 }
 
-// Helper to stream and collect response content
-async function streamChat(
-  stream: AsyncGenerator<SSEEvent, void, undefined>,
-  label: string
-): Promise<{ dagId: string; nodeId: string; content: string }> {
-  console.log(`[${label}] Streaming response:`);
-  console.log();
-
-  let dagId = '';
-  let nodeId = '';
-  let content = '';
-
-  for await (const event of stream) {
-    switch (event.type) {
-      case 'start':
-        dagId = event.dag_id;
-        console.log(`  (DAG started: ${dagId.substring(0, 8)}...)`);
-        console.log();
-        process.stdout.write('  ');
-        break;
-      case 'delta':
-        content += event.content;
-        process.stdout.write(event.content);
-        break;
-      case 'done':
-        nodeId = event.node_id;
-        console.log('\n');
-        console.log(`  (Completed - Node ID: ${nodeId.substring(0, 8)}...)`);
-        break;
-      case 'error':
-        console.error(`\n  [ERROR] ${event.error}`);
-        break;
-    }
-  }
-
-  return { dagId, nodeId, content };
-}
-
-// Helper to display DAG structure with branching
-function displayDagStructure(dag: DAGDetail): void {
-  console.log(`DAG: ${dag.id.substring(0, 12)}...`);
-  console.log(`Title: ${dag.title || '(untitled)'}`);
-  console.log(`Status: ${dag.status}`);
-  console.log(`Node Count: ${dag.node_count || dag.nodes?.length || 0}`);
-  console.log(`Created: ${dag.created_at}`);
-  console.log();
-
-  if (!dag.nodes || dag.nodes.length === 0) {
+function displayTree(nodes: Node[]): void {
+  if (nodes.length === 0) {
     console.log('  (No nodes)');
     return;
   }
 
-  // Build a tree structure to visualize branching
-  const nodeMap = new Map<string, Node>();
   const children = new Map<string, Node[]>();
-
-  for (const node of dag.nodes) {
-    nodeMap.set(node.id, node);
-    const parentId = node.parent_id || 'root';
+  for (const node of nodes) {
+    const parentId = node.parentId || 'root';
     if (!children.has(parentId)) {
       children.set(parentId, []);
     }
     children.get(parentId)!.push(node);
   }
 
-  // Find root nodes (nodes without a parent_id in the map, or with parent_id = undefined)
-  const rootNodes = dag.nodes.filter((n) => !n.parent_id);
+  const rootNodes = nodes.filter((n) => !n.parentId);
 
-  // Recursive function to print the tree
   function printNode(node: Node, indent: string, isLast: boolean): void {
     const branch = isLast ? '`-- ' : '|-- ';
-    const contentPreview =
+    const preview =
       node.content.length > 40
         ? node.content.substring(0, 40) + '...'
         : node.content;
-
-    const nodeInfo = `[${node.node_type}] ${contentPreview.replace(/\n/g, ' ')}`;
-    console.log(`${indent}${branch}${node.id.substring(0, 8)}: ${nodeInfo}`);
+    console.log(`${indent}${branch}${node.id.substring(0, 8)}: [${node.type}] ${preview.replace(/\n/g, ' ')}`);
 
     const nodeChildren = children.get(node.id) || [];
     const childIndent = indent + (isLast ? '    ' : '|   ');
-
     nodeChildren.forEach((child, index) => {
       printNode(child, childIndent, index === nodeChildren.length - 1);
     });
@@ -131,21 +68,17 @@ function displayDagStructure(dag: DAGDetail): void {
   });
 }
 
-// Main example function
 async function main(): Promise<void> {
   console.log('LangDAG TypeScript SDK Example');
   console.log('==============================\n');
   console.log(`Connecting to: ${API_BASE_URL}`);
-  console.log(`API Key: ${API_KEY ? '(configured)' : '(not set)'}`);
 
-  // Initialize the client
   const client = new LangDAGClient({
     baseUrl: API_BASE_URL,
     apiKey: API_KEY,
   });
 
   try {
-    // Check server health
     printHeader('Step 0: Check Server Health');
     const health = await client.health();
     console.log(`Server status: ${health.status}`);
@@ -159,97 +92,89 @@ async function main(): Promise<void> {
   }
 
   // ============================================================================
-  // Step 1: Start a new chat about a topic (with streaming)
+  // Step 1: Start a new conversation with streaming
   // ============================================================================
-  printHeader('Step 1: Start a New Chat (Streaming)');
-  console.log('Topic: The history of programming languages\n');
+  printHeader('Step 1: New Conversation (Streaming)');
 
-  const firstMessage =
-    'Tell me briefly about the history of programming languages. Just 2-3 sentences.';
+  const firstMessage = 'Tell me briefly about the history of programming languages. Just 2-3 sentences.';
   console.log(`User: ${firstMessage}\n`);
   printSeparator();
 
-  const stream1 = client.chat({
-    message: firstMessage,
-    stream: true,
-  });
+  const stream1 = await client.promptStream(firstMessage);
 
-  const result1 = await streamChat(stream1, 'Assistant');
-  const dagId = result1.dagId;
-  const firstNodeId = result1.nodeId;
+  console.log('  (Stream started)\n  ');
+  for await (const event of stream1.events()) {
+    if (event.type === 'delta') {
+      process.stdout.write(event.content);
+    }
+  }
+  const node1 = await stream1.node();
+  console.log(`\n\n  (Completed - Node ID: ${node1.id.substring(0, 8)}...)`);
 
   printSeparator();
-  console.log(`\nConversation started in DAG: ${dagId.substring(0, 12)}...`);
+  console.log(`\nConversation started - Node ID: ${node1.id.substring(0, 12)}...`);
 
   // ============================================================================
-  // Step 2: Continue the conversation
+  // Step 2: Continue the conversation using node.prompt()
   // ============================================================================
-  printHeader('Step 2: Continue the Conversation');
+  printHeader('Step 2: Continue Conversation (node.prompt)');
 
   const secondMessage = 'What was the first high-level programming language?';
   console.log(`User: ${secondMessage}\n`);
   printSeparator();
 
-  const stream2 = client.continueChat(dagId, {
-    message: secondMessage,
-    stream: true,
-  });
-
-  const result2 = await streamChat(stream2, 'Assistant');
-  const secondNodeId = result2.nodeId;
-
-  printSeparator();
-  console.log(`\nContinued conversation - new node: ${secondNodeId.substring(0, 12)}...`);
+  const node2 = await node1.prompt(secondMessage);
+  console.log(`\n  Assistant: ${node2.content}\n`);
+  console.log(`  (Node ID: ${node2.id.substring(0, 8)}...)`);
 
   // ============================================================================
-  // Step 3: Fork from the first response to explore an alternative
+  // Step 3: Branch from the first response using node.promptStream()
   // ============================================================================
-  printHeader('Step 3: Fork from Earlier Node (Branching)');
+  printHeader('Step 3: Branch with Streaming (node.promptStream)');
 
-  console.log('Now we will fork from the first assistant response to ask a different');
-  console.log('follow-up question, creating a branch in our conversation DAG.\n');
-  console.log(`Forking from node: ${firstNodeId.substring(0, 12)}...`);
+  console.log(`Branching from node: ${node1.id.substring(0, 12)}...\n`);
 
-  const forkMessage =
-    'Instead of history, tell me which language you recommend for beginners today.';
-  console.log(`\nUser (alternative branch): ${forkMessage}\n`);
+  const branchMessage = 'Instead of history, tell me which language you recommend for beginners today.';
+  console.log(`User (alternative branch): ${branchMessage}\n`);
   printSeparator();
 
-  const stream3 = client.forkChat(dagId, {
-    node_id: firstNodeId,
-    message: forkMessage,
-    stream: true,
-  });
+  const stream3 = await node1.promptStream(branchMessage);
 
-  const result3 = await streamChat(stream3, 'Assistant (branch)');
-
-  printSeparator();
-  console.log(`\nCreated branch - new node: ${result3.nodeId.substring(0, 12)}...`);
+  console.log('  ');
+  for await (const event of stream3.events()) {
+    if (event.type === 'delta') {
+      process.stdout.write(event.content);
+    }
+  }
+  const node3 = await stream3.node();
+  console.log(`\n\n  (Branch node: ${node3.id.substring(0, 8)}...)`);
 
   // ============================================================================
-  // Step 4: List all DAGs and show structure
+  // Step 4: List all conversation roots
   // ============================================================================
-  printHeader('Step 4: List All DAGs');
+  printHeader('Step 4: List Conversation Roots');
 
-  const dags = await client.listDags();
-  console.log(`Found ${dags.length} DAG(s):\n`);
+  const roots = await client.listRoots();
+  console.log(`Found ${roots.length} conversation(s):\n`);
 
-  for (const dag of dags.slice(0, 5)) {
-    // Show up to 5 most recent
-    console.log(`  - ${dag.id.substring(0, 12)}... | ${dag.status} | ${dag.title || '(untitled)'}`);
+  for (const root of roots.slice(0, 5)) {
+    const title = root.title || '(untitled)';
+    const preview = root.content.length > 50 ? root.content.substring(0, 50) + '...' : root.content;
+    console.log(`  - ${root.id.substring(0, 12)}... | ${title} | ${preview}`);
   }
 
-  if (dags.length > 5) {
-    console.log(`  ... and ${dags.length - 5} more`);
+  if (roots.length > 5) {
+    console.log(`  ... and ${roots.length - 5} more`);
   }
 
   // ============================================================================
-  // Step 5: Show the DAG structure with branching
+  // Step 5: Show the tree structure
   // ============================================================================
-  printHeader('Step 5: Show DAG Structure (Branching Visualization)');
+  printHeader('Step 5: Conversation Tree');
 
-  const dagDetail = await client.getDag(dagId);
-  displayDagStructure(dagDetail);
+  const tree = await client.getTree(node1.id);
+  console.log(`Tree has ${tree.length} nodes:\n`);
+  displayTree(tree);
 
   // ============================================================================
   // Summary
@@ -257,23 +182,16 @@ async function main(): Promise<void> {
   printHeader('Summary');
 
   console.log('This example demonstrated:');
-  console.log('  1. Starting a new chat with streaming responses');
-  console.log('  2. Continuing an existing conversation');
-  console.log('  3. Forking from an earlier node to create a branch');
-  console.log('  4. Listing all DAGs in the system');
-  console.log('  5. Visualizing the conversation structure as a tree');
+  console.log('  1. Starting a conversation with client.promptStream()');
+  console.log('  2. Continuing from a node with node.prompt()');
+  console.log('  3. Branching with streaming via node.promptStream()');
+  console.log('  4. Listing conversation roots');
+  console.log('  5. Visualizing the tree structure');
   console.log();
-  console.log('Key Concepts:');
-  console.log('  - DAG: A conversation stored as a directed acyclic graph');
-  console.log('  - Node: A single message (user or assistant) in the conversation');
-  console.log('  - Fork: Creating a branch by continuing from any earlier node');
-  console.log('  - Stream: Real-time response streaming via Server-Sent Events');
-  console.log();
-  console.log(`Your conversation DAG ID: ${dagId}`);
-  console.log('\nRun "langdag show ' + dagId.substring(0, 8) + '" to view this conversation in the CLI.');
+  console.log(`Your first node ID: ${node1.id}`);
+  console.log(`\nRun "langdag show ${node1.id.substring(0, 8)}" to view this conversation in the CLI.`);
 }
 
-// Run the example
 main().catch((error) => {
   console.error('\nError:', error.message);
   if (error.stack) {

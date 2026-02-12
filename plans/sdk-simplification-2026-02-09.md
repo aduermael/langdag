@@ -255,7 +255,7 @@ Replace `chat new` / `chat continue` with unified `prompt` command.
 
 - [x] 6a: Rewrite TypeScript SDK with `node.prompt()` / `node.promptStream()` pattern
 - [x] 6b: Update TypeScript SDK unit tests
-- [ ] 6c: Rewrite `examples/typescript/example.ts`
+- [x] 6c: Rewrite `examples/typescript/example.ts`
 
 ---
 
