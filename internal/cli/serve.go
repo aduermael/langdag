@@ -26,8 +26,8 @@ var serveCmd = &cobra.Command{
 	Long: `Start the LangDAG API server.
 
 The server provides REST endpoints for:
-  - DAG management (list, get, delete)
-  - Chat (new, continue, fork) with SSE streaming
+  - Prompting (new tree, continue from node) with SSE streaming
+  - Node management (list roots, get, tree, delete)
   - Workflow management and execution
 
 Example:
@@ -83,16 +83,16 @@ func runServe(cmd *cobra.Command, args []string) {
 	fmt.Printf("LangDAG API server starting on http://%s\n", addr)
 	fmt.Println()
 	fmt.Println("Endpoints:")
-	fmt.Println("  GET  /health            - Health check")
-	fmt.Println("  GET  /dags              - List all DAGs")
-	fmt.Println("  GET  /dags/{id}         - Get DAG details")
-	fmt.Println("  DELETE /dags/{id}       - Delete a DAG")
-	fmt.Println("  POST /chat              - Start new conversation")
-	fmt.Println("  POST /chat/{id}         - Continue conversation")
-	fmt.Println("  POST /chat/{id}/fork    - Fork from a node")
-	fmt.Println("  GET  /workflows         - List workflows")
-	fmt.Println("  POST /workflows         - Create workflow")
-	fmt.Println("  POST /workflows/{id}/run - Run workflow")
+	fmt.Println("  GET    /health             - Health check")
+	fmt.Println("  POST   /prompt             - Start new conversation tree")
+	fmt.Println("  POST   /nodes/{id}/prompt  - Continue from existing node")
+	fmt.Println("  GET    /nodes              - List root nodes")
+	fmt.Println("  GET    /nodes/{id}         - Get a single node")
+	fmt.Println("  GET    /nodes/{id}/tree    - Get full tree from node")
+	fmt.Println("  DELETE /nodes/{id}         - Delete node and subtree")
+	fmt.Println("  GET    /workflows          - List workflows")
+	fmt.Println("  POST   /workflows          - Create workflow")
+	fmt.Println("  POST   /workflows/{id}/run - Run workflow")
 	fmt.Println()
 	if serveAPIKey != "" {
 		fmt.Println("Authentication: Required (use Authorization: Bearer <key> or X-API-Key header)")

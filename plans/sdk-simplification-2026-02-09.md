@@ -263,7 +263,7 @@ Replace `chat new` / `chat continue` with unified `prompt` command.
 
 Fix remaining server-side inconsistencies.
 
-- [ ] 7a: Fix `serve.go` startup message — still prints old `/dags`, `/chat` endpoint listing
+- [x] 7a: Fix `serve.go` startup message — still prints old `/dags`, `/chat` endpoint listing
 - [x] 7b: Update API tests (was 2d)
 
 ---
