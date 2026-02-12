@@ -76,19 +76,22 @@ go install github.com/aduermael/langdag/cmd/langdag@latest
 export ANTHROPIC_API_KEY="your-api-key"
 
 # Start a new conversation
-langdag chat new
+langdag prompt "What is a DAG?"
 
-# List all conversations
+# Interactive mode
+langdag prompt
+
+# List all conversations (root nodes)
 langdag ls
 
-# View a conversation (shows the DAG structure)
+# View a conversation tree
 langdag show a1b2
 
-# Continue from where you left off
-langdag chat continue a1b2
+# Continue from a specific node
+langdag prompt a1b2 "Tell me more"
 
-# Fork from a specific node to explore alternatives
-langdag chat continue --node 1a2b3c4d
+# Delete a conversation
+langdag rm a1b2
 ```
 
 Every conversation is a DAG that grows as you chat—and you can branch from any point:
@@ -108,21 +111,18 @@ Node history:
 <summary><strong>CLI Reference</strong></summary>
 
 ```bash
-# Chat commands
-langdag chat new                    # Start new conversation
-langdag chat new --model <model>    # Use a specific model
-langdag chat new --system "..."     # With system prompt
-langdag chat continue <id>          # Continue conversation
-langdag chat continue --node <id>   # Fork from specific node
+# Prompt commands
+langdag prompt "message"               # Start new conversation
+langdag prompt -m <model> "message"    # Use a specific model
+langdag prompt -s "system" "message"   # With system prompt
+langdag prompt <node-id> "message"     # Continue from node
+langdag prompt                         # Interactive mode (new tree)
+langdag prompt <node-id>               # Interactive mode from node
 
-# DAG management
-langdag ls                          # List all DAGs
-langdag show <id>                   # Show DAG details and node tree
-langdag rm <id>                     # Delete DAG
-
-# Configuration
-langdag config set <key> <value>    # Set config value
-langdag config get <key>            # Get config value
+# Node management
+langdag ls                             # List root nodes
+langdag show <id>                      # Show node tree
+langdag rm <id>                        # Delete node and subtree
 ```
 
 </details>
@@ -138,11 +138,12 @@ langdag serve --port 8080
 ```
 
 **Endpoints:**
-- `GET /dags` — List all DAGs
-- `GET /dags/{id}` — Get DAG details
-- `POST /chat` — Start new conversation
-- `POST /chat/{id}` — Continue conversation (streaming via SSE)
-- `POST /chat/{id}/fork` — Fork from a specific node
+- `POST /prompt` — Start new conversation tree
+- `POST /nodes/{id}/prompt` — Continue from existing node
+- `GET /nodes` — List root nodes
+- `GET /nodes/{id}` — Get a single node
+- `GET /nodes/{id}/tree` — Get full tree from node
+- `DELETE /nodes/{id}` — Delete node and subtree
 - `POST /workflows/{id}/run` — Execute a workflow
 
 See the [OpenAPI specification](api/openapi.yaml) for full API documentation.
@@ -156,15 +157,18 @@ pip install langdag
 ```python
 from langdag import LangDAGClient
 
-client = LangDAGClient(api_key="your-api-key")
+client = LangDAGClient()
 
 # Start a conversation
-response = client.chat("What is a DAG?")
-print(response.content)
+node = client.prompt("What is a DAG?")
+print(node.content)
+
+# Continue from any node
+node2 = node.prompt("Tell me more")
 
 # Stream responses
-for event in client.chat("Explain graphs", stream=True):
-    if event.is_delta:
+for event in client.prompt("Explain graphs", stream=True):
+    if event.content:
         print(event.content, end="")
 ```
 
@@ -175,24 +179,21 @@ go get github.com/langdag/langdag-go
 ```
 
 ```go
-client := langdag.NewClient("http://localhost:8080",
-    langdag.WithAPIKey("your-api-key"))
+client := langdag.NewClient("http://localhost:8080")
 
 // Start a conversation
-resp, _ := client.Chat(context.Background(), &langdag.NewChatRequest{
-    Message: "What is a DAG?",
-}, nil)
-fmt.Println(resp.Content)
+node, _ := client.Prompt(ctx, "What is a DAG?")
+fmt.Println(node.Content)
+
+// Continue from any node
+node2, _ := node.Prompt(ctx, "Tell me more")
 
 // Stream responses
-client.ChatStream(ctx, &langdag.NewChatRequest{
-    Message: "Explain graphs",
-}, func(event langdag.SSEEvent) error {
-    if event.Type == "delta" {
-        fmt.Print(event.Content)
-    }
-    return nil
-})
+stream, _ := client.PromptStream(ctx, "Explain graphs")
+for event := range stream.Events() {
+    fmt.Print(event.Content)
+}
+result, _ := stream.Node()
 ```
 
 ### TypeScript
@@ -204,18 +205,21 @@ npm install langdag
 ```typescript
 import { LangDAGClient } from 'langdag';
 
-const client = new LangDAGClient({ apiKey: 'your-api-key' });
+const client = new LangDAGClient();
 
 // Start a conversation
-const response = await client.chat({ message: 'What is a DAG?' });
-console.log(response.content);
+const node = await client.prompt('What is a DAG?');
+console.log(node.content);
+
+// Continue from any node
+const node2 = await node.prompt('Tell me more');
 
 // Stream responses
-for await (const event of client.chat({ message: 'Explain graphs', stream: true })) {
-  if (event.type === 'delta') {
-    process.stdout.write(event.content);
-  }
+const stream = await client.promptStream('Explain graphs');
+for await (const event of stream.events()) {
+  process.stdout.write(event.content);
 }
+const result = await stream.node();
 ```
 
 See the [SDK source code](sdks/) and [example projects](examples/) for more details.
@@ -263,7 +267,7 @@ langdag workflow run <name> --stream # With streaming
 langdag workflow validate <file>    # Validate YAML
 ```
 
-Workflows create DAGs that can be continued interactively using `langdag chat continue`.
+Workflows create node trees that can be continued interactively using `langdag prompt`.
 
 ---
 
@@ -304,7 +308,7 @@ Workflows create DAGs that can be continued interactively using `langdag chat co
 
 - [x] SQLite storage
 - [x] Anthropic provider with streaming
-- [x] Conversation mode (new, continue, fork)
+- [x] Node-centric API (prompt, branch, tree)
 - [x] Workflow mode (YAML, validation, execution)
 - [x] Tree visualization
 - [x] REST API with SSE streaming

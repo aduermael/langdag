@@ -272,8 +272,8 @@ Fix remaining server-side inconsistencies.
 
 Update all documentation to reflect the new node-centric API and unified `prompt` command.
 
-- [ ] 8a: Update `README.md` — CLI section (prompt replaces chat new/continue), API endpoints (/nodes, /prompt), SDK examples (Prompt/PromptStream pattern)
-- [ ] 8b: Update `docs/index.html` (website) — CLI demo section (replace `chat new`/`chat continue` with `prompt`), SDK code examples for all 3 languages (replace chat/fork_chat/list_dags with prompt/list_roots/get_tree)
+- [x] 8a: Update `README.md` — CLI section (prompt replaces chat new/continue), API endpoints (/nodes, /prompt), SDK examples (Prompt/PromptStream pattern)
+- [x] 8b: Update `docs/index.html` (website) — CLI demo section (replace `chat new`/`chat continue` with `prompt`), SDK code examples for all 3 languages (replace chat/fork_chat/list_dags with prompt/list_roots/get_tree)
 - [ ] 8c: Update `docs/llms.txt` — concise summary with correct API/CLI/SDK info
 - [ ] 8d: Update `docs/llms-full.txt` — full reference with correct API/CLI/SDK info
 - [ ] 8e: Update `docs/DESIGN.md` — update or add note that schema/API sections reflect new node-centric model
