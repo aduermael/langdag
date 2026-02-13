@@ -37,9 +37,9 @@ Add missing unit test coverage for both sync and async Python clients.
 
 Add missing unit test coverage for the TypeScript SDK.
 
-- [ ] 4a: Add Stream class tests — `stream.node()` called multiple times, stream error propagation, stream with empty content deltas
-- [ ] 4b: Add SSE edge cases — multi-line data fields, SSE comments (lines starting with `:`), event blocks with missing data field
-- [ ] 4c: Add client edge case tests — response body null handling, non-JSON error responses, custom fetch option validation
+- [x] 4a: Add Stream class tests — `stream.node()` called multiple times, stream error propagation, stream with empty content deltas
+- [x] 4b: Add SSE edge cases — multi-line data fields, SSE comments (lines starting with `:`), event blocks with missing data field
+- [x] 4c: Add client edge case tests — response body null handling, non-JSON error responses, custom fetch option validation
 
 **Parallel Tasks: 4a, 4b, 4c**
 

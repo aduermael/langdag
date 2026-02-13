@@ -124,4 +124,83 @@ describe('parseSSEStream', () => {
     expect(events[0].type).toBe('start');
     expect(events[1].type).toBe('done');
   });
+
+  // --- 4b: SSE edge cases ---
+
+  it('handles multi-line data fields', async () => {
+    const text = [
+      'event: error',
+      'data: line one',
+      'data: line two',
+      '',
+    ].join('\n');
+
+    const events = await collectEvents(parseSSEStream(createStream(text)));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].error).toBe('line one\nline two');
+    }
+  });
+
+  it('handles SSE comments (lines starting with :)', async () => {
+    const text = [
+      ': this is a comment',
+      'event: start',
+      'data: {}',
+      '',
+      ': another comment',
+      'event: done',
+      'data: {"node_id":"n-1"}',
+      '',
+    ].join('\n');
+
+    const events = await collectEvents(parseSSEStream(createStream(text)));
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe('start');
+    expect(events[1].type).toBe('done');
+  });
+
+  it('handles event blocks with missing data field', async () => {
+    const text = [
+      'event: start',
+      '',
+      'event: done',
+      'data: {"node_id":"n-1"}',
+      '',
+    ].join('\n');
+
+    const events = await collectEvents(parseSSEStream(createStream(text)));
+    // start event with no data: parseEventBlock returns start (start allows empty data)
+    // done event with data: should parse normally
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe('start');
+    expect(events[1].type).toBe('done');
+  });
+
+  it('handles stream without trailing newline', async () => {
+    const text = 'event: done\ndata: {"node_id":"n-1"}';
+
+    const events = await collectEvents(parseSSEStream(createStream(text)));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('done');
+    if (events[0].type === 'done') {
+      expect(events[0].node_id).toBe('n-1');
+    }
+  });
+
+  it('handles empty content deltas', async () => {
+    const text = [
+      'event: delta',
+      'data: {"content":""}',
+      '',
+    ].join('\n');
+
+    const events = await collectEvents(parseSSEStream(createStream(text)));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('delta');
+    if (events[0].type === 'delta') {
+      expect(events[0].content).toBe('');
+    }
+  });
 });

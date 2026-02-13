@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { LangDAGClient, Node, Stream } from './client.js';
-import { UnauthorizedError, NotFoundError, BadRequestError, ApiError, NetworkError } from './errors.js';
+import { UnauthorizedError, NotFoundError, BadRequestError, ApiError, NetworkError, SSEParseError } from './errors.js';
 
 function mockFetch(response: Partial<Response>): typeof fetch {
   return vi.fn().mockResolvedValue({
@@ -361,6 +361,148 @@ describe('LangDAGClient', () => {
       });
       const client = new LangDAGClient({ fetch: fetchFn });
       await expect(client.deleteNode('n-1')).resolves.toBeUndefined();
+    });
+  });
+
+  // --- 4a: Stream class edge case tests ---
+
+  describe('Stream class', () => {
+    function createSSEStream(text: string): ReadableStream<Uint8Array> {
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(text));
+          controller.close();
+        },
+      });
+    }
+
+    it('stream.events() called twice throws', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-1"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      // First call should work
+      for await (const _ of stream.events()) { /* drain */ }
+
+      // Second call should throw (async generator throws on first .next())
+      const gen = stream.events();
+      await expect(gen.next()).rejects.toThrow(SSEParseError);
+    });
+
+    it('stream error propagation', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: error',
+        'data: something broke',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      const events = [];
+      for await (const event of stream.events()) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[1].type).toBe('error');
+
+      // node() should throw since no done event was received
+      await expect(stream.node()).rejects.toThrow(SSEParseError);
+    });
+
+    it('stream with empty content deltas collects correctly', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":""}',
+        '',
+        'event: delta',
+        'data: {"content":"hello"}',
+        '',
+        'event: delta',
+        'data: {"content":""}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-1"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      for await (const _ of stream.events()) { /* drain */ }
+
+      const node = await stream.node();
+      expect(node.content).toBe('hello');
+    });
+  });
+
+  // --- 4c: Client edge case tests ---
+
+  describe('client edge cases', () => {
+    it('response body null throws NetworkError for streaming', async () => {
+      const fetchFn = mockFetch({
+        body: null,
+      });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      await expect(client.promptStream('Hello')).rejects.toThrow(NetworkError);
+    });
+
+    it('non-JSON error responses are handled', async () => {
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        json: () => Promise.reject(new Error('not JSON')),
+        headers: new Headers(),
+      } as unknown as Response);
+
+      const client = new LangDAGClient({ fetch: fetchFn });
+      await expect(client.health()).rejects.toThrow(ApiError);
+      try {
+        await client.health();
+      } catch (e) {
+        expect(e).toBeInstanceOf(ApiError);
+        const apiErr = e as ApiError;
+        expect(apiErr.status).toBe(502);
+        // When JSON parsing fails, body is undefined, message should be default
+        expect(apiErr.message).toBe('HTTP 502: Bad Gateway');
+      }
+    });
+
+    it('custom fetch function is used', async () => {
+      const customFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () => Promise.resolve({ status: 'ok' }),
+        headers: new Headers(),
+      } as Response);
+
+      const client = new LangDAGClient({ fetch: customFetch });
+      await client.health();
+      expect(customFetch).toHaveBeenCalledTimes(1);
     });
   });
 });
