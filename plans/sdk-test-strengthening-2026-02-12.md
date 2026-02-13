@@ -10,8 +10,8 @@ Guiding principle: **Never patch/workaround tests to make them pass.** Tests mus
 
 Run each SDK's unit tests as-is. Identify any failures and fix them in the SDK source code (not in the tests).
 
-- [ ] 1a: Run all existing unit tests across all 3 SDKs and document any failures
-- [ ] 1b: Fix any SDK bugs uncovered by existing tests
+- [x] 1a: Run all existing unit tests across all 3 SDKs and document any failures
+- [x] 1b: Fix any SDK bugs uncovered by existing tests (none found — all tests pass)
 
 ## Phase 2: Strengthen Go SDK unit tests
 
