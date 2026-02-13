@@ -47,9 +47,9 @@ Add missing unit test coverage for the TypeScript SDK.
 
 Expand E2E tests to cover node operations more thoroughly, including error cases. (Workflow E2E tests are excluded since workflows are not yet fully stabilized.)
 
-- [ ] 5a: Go E2E — add streaming continuation from node, error cases (get non-existent node, delete non-existent node), node ID prefix lookup
-- [ ] 5b: Python E2E — add streaming continuation (sync + async), error cases, verify node field parsing (timestamps, token counts)
-- [ ] 5c: TypeScript E2E — add error cases, verify node metadata fields, streaming edge cases
+- [x] 5a: Go E2E — add streaming continuation from node, error cases (get non-existent node, delete non-existent node), node ID prefix lookup
+- [x] 5b: Python E2E — add streaming continuation (sync + async), error cases, verify node field parsing (timestamps, token counts)
+- [x] 5c: TypeScript E2E — add error cases, verify node metadata fields, streaming edge cases
 
 **Parallel Tasks: 5a, 5b, 5c**
 

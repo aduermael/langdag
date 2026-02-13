@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { LangDAGClient, Node, Stream } from './client.js';
+import { NotFoundError } from './errors.js';
 import type { SSEEvent } from './types.js';
 
 const E2E_URL = process.env.LANGDAG_E2E_URL;
@@ -128,6 +129,100 @@ describe.skipIf(!E2E_URL)('E2E Tests', () => {
     const node2 = await stream.node();
     expect(node2).toBeInstanceOf(Node);
     expect(node2.content).toBeTruthy();
+
+    // Clean up
+    const tree = await client.getTree(node1.id);
+    const rootNode = tree.find(n => !n.parentId);
+    if (rootNode) {
+      await client.deleteNode(rootNode.id);
+    }
+  });
+
+  it('error: get non-existent node', async () => {
+    const client = getClient();
+    await expect(client.getNode('nonexistent-node-id-12345')).rejects.toThrow();
+    try {
+      await client.getNode('nonexistent-node-id-12345');
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotFoundError);
+    }
+  });
+
+  it('error: delete non-existent node', async () => {
+    const client = getClient();
+    await expect(client.deleteNode('nonexistent-node-id-12345')).rejects.toThrow();
+    try {
+      await client.deleteNode('nonexistent-node-id-12345');
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotFoundError);
+    }
+  });
+
+  it('node metadata fields', async () => {
+    const client = getClient();
+
+    const node1 = await client.prompt('Test metadata fields');
+
+    // Get the tree to see full node details
+    const tree = await client.getTree(node1.id);
+    expect(tree.length).toBeGreaterThanOrEqual(2);
+
+    // Find user and assistant nodes
+    const userNode = tree.find(n => n.type === 'user');
+    const assistantNode = tree.find(n => n.type === 'assistant');
+
+    expect(userNode).toBeDefined();
+    expect(assistantNode).toBeDefined();
+
+    // Verify user node fields
+    expect(userNode!.id).toBeTruthy();
+    expect(userNode!.content).toBeTruthy();
+    expect(userNode!.sequence).toBeGreaterThanOrEqual(0);
+    expect(userNode!.createdAt).toBeTruthy();
+
+    // Verify assistant node fields
+    expect(assistantNode!.id).toBeTruthy();
+    expect(assistantNode!.content).toBeTruthy();
+    expect(assistantNode!.parentId).toBeTruthy();
+
+    // Clean up
+    const rootNode = tree.find(n => !n.parentId);
+    if (rootNode) {
+      await client.deleteNode(rootNode.id);
+    }
+  });
+
+  it('streaming content accumulation', async () => {
+    const client = getClient();
+
+    const stream = await client.promptStream('Tell me something');
+
+    let accumulatedContent = '';
+    for await (const event of stream.events()) {
+      if (event.type === 'delta') {
+        accumulatedContent += event.content;
+      }
+    }
+
+    const node = await stream.node();
+    expect(node.content).toBe(accumulatedContent);
+    expect(accumulatedContent.length).toBeGreaterThan(0);
+
+    // Clean up
+    await client.deleteNode(node.id);
+  });
+
+  it('node ID prefix lookup', async () => {
+    const client = getClient();
+
+    const node1 = await client.prompt('Test prefix lookup');
+
+    // Use first 8 characters as prefix
+    const prefix = node1.id.substring(0, 8);
+    const resolved = await client.getNode(prefix);
+
+    expect(resolved.id).toBe(node1.id);
+    expect(resolved.content).toBeTruthy();
 
     // Clean up
     const tree = await client.getTree(node1.id);
