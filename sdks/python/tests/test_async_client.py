@@ -9,10 +9,11 @@ from langdag.async_client import AsyncLangDAGClient
 from langdag.exceptions import (
     APIError,
     AuthenticationError,
+    BadRequestError,
     ConnectionError,
     NotFoundError,
 )
-from langdag.models import PromptResponse
+from langdag.models import PromptResponse, SSEEventType
 
 
 class TestAsyncClientInit:
@@ -199,3 +200,115 @@ class TestAsyncAPIKeyHeader:
             await client.health()
         request = httpx_mock.get_request()
         assert request.headers["X-API-Key"] == "my-key"
+
+
+# --- 3b: Streaming unit tests for async client ---
+
+
+class TestAsyncStreaming:
+    async def test_prompt_stream_iteration(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            'event: delta\ndata: {"content":"Hello "}\n\n'
+            'event: delta\ndata: {"content":"world!"}\n\n'
+            'event: done\ndata: {"node_id":"n-1"}\n\n'
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        async with AsyncLangDAGClient() as client:
+            events = []
+            stream = await client.prompt("Hello", stream=True)
+            async for event in stream:
+                events.append(event)
+        assert len(events) == 4
+        assert events[0].event == SSEEventType.START
+        assert events[1].content == "Hello "
+        assert events[2].content == "world!"
+        assert events[3].event == SSEEventType.DONE
+        assert events[3].node_id == "n-1"
+
+    async def test_prompt_from_stream_iteration(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            'event: delta\ndata: {"content":"Continued"}\n\n'
+            'event: done\ndata: {"node_id":"n-2"}\n\n'
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        async with AsyncLangDAGClient() as client:
+            events = []
+            stream = await client.prompt_from("n-1", "More please", stream=True)
+            async for event in stream:
+                events.append(event)
+        assert len(events) == 3
+        assert events[2].node_id == "n-2"
+
+    async def test_stream_error_event(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            "event: error\ndata: something went wrong\n\n"
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        async with AsyncLangDAGClient() as client:
+            events = []
+            stream = await client.prompt("Hello", stream=True)
+            async for event in stream:
+                events.append(event)
+        assert len(events) == 2
+        assert events[1].event == SSEEventType.ERROR
+
+    async def test_stream_http_error(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            status_code=500,
+            json={"error": "server error"},
+        )
+        async with AsyncLangDAGClient() as client:
+            with pytest.raises(APIError) as exc_info:
+                stream = await client.prompt("Hello", stream=True)
+                async for _ in stream:
+                    pass
+            assert exc_info.value.status_code == 500
+
+    async def test_stream_collect_content(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            'event: delta\ndata: {"content":"One "}\n\n'
+            'event: delta\ndata: {"content":"two "}\n\n'
+            'event: delta\ndata: {"content":"three"}\n\n'
+            'event: done\ndata: {"node_id":"n-1"}\n\n'
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        async with AsyncLangDAGClient() as client:
+            content = ""
+            stream = await client.prompt("Hello", stream=True)
+            async for event in stream:
+                if event.content:
+                    content += event.content
+        assert content == "One two three"
+
+    async def test_stream_non_json_error(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            status_code=502,
+            content=b"<html>Bad Gateway</html>",
+            headers={"content-type": "text/html"},
+        )
+        async with AsyncLangDAGClient() as client:
+            with pytest.raises(APIError) as exc_info:
+                stream = await client.prompt("Hello", stream=True)
+                async for _ in stream:
+                    pass
+            assert exc_info.value.status_code == 502

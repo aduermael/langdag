@@ -27,9 +27,9 @@ Add missing unit test coverage for the Go SDK.
 
 Add missing unit test coverage for both sync and async Python clients.
 
-- [ ] 3a: Add streaming unit tests for sync client — test `prompt(stream=True)` and `prompt_from(stream=True)` iteration, SSE error events during stream, stream with non-JSON error responses
-- [ ] 3b: Add streaming unit tests for async client — currently has ZERO streaming tests; mirror sync streaming coverage
-- [ ] 3c: Add edge case tests — `_handle_response` with non-JSON error bodies, `_parse_sse_stream` with unknown event types, multi-line data fields
+- [x] 3a: Add streaming unit tests for sync client — test `prompt(stream=True)` and `prompt_from(stream=True)` iteration, SSE error events during stream, stream with non-JSON error responses
+- [x] 3b: Add streaming unit tests for async client — currently has ZERO streaming tests; mirror sync streaming coverage
+- [x] 3c: Add edge case tests — `_handle_response` with non-JSON error bodies, `_parse_sse_stream` with unknown event types, multi-line data fields
 
 **Parallel Tasks: 3a, 3b, 3c**
 

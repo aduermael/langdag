@@ -311,3 +311,138 @@ class TestSSEParsing:
     def test_parse_empty_stream(self):
         events = list(_parse_sse_stream(iter([])))
         assert len(events) == 0
+
+
+# --- 3a: Streaming unit tests for sync client ---
+
+
+class TestSyncStreaming:
+    def test_prompt_stream_iteration(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            'event: delta\ndata: {"content":"Hello "}\n\n'
+            'event: delta\ndata: {"content":"world!"}\n\n'
+            'event: done\ndata: {"node_id":"n-1"}\n\n'
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        client = LangDAGClient()
+        events = list(client.prompt("Hello", stream=True))
+        assert len(events) == 4
+        assert events[0].event == SSEEventType.START
+        assert events[1].content == "Hello "
+        assert events[2].content == "world!"
+        assert events[3].event == SSEEventType.DONE
+        assert events[3].node_id == "n-1"
+
+    def test_prompt_from_stream_iteration(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            'event: delta\ndata: {"content":"Continued"}\n\n'
+            'event: done\ndata: {"node_id":"n-2"}\n\n'
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        client = LangDAGClient()
+        events = list(client.prompt_from("n-1", "More please", stream=True))
+        assert len(events) == 3
+        assert events[2].node_id == "n-2"
+
+    def test_stream_error_event(self, httpx_mock: HTTPXMock):
+        sse_body = (
+            "event: start\ndata: {}\n\n"
+            "event: error\ndata: something went wrong\n\n"
+        )
+        httpx_mock.add_response(
+            status_code=200,
+            content=sse_body.encode(),
+            headers={"content-type": "text/event-stream"},
+        )
+        client = LangDAGClient()
+        events = list(client.prompt("Hello", stream=True))
+        assert len(events) == 2
+        assert events[1].event == SSEEventType.ERROR
+
+    def test_stream_http_error(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            status_code=500,
+            json={"error": "server error"},
+        )
+        client = LangDAGClient()
+        with pytest.raises(APIError) as exc_info:
+            list(client.prompt("Hello", stream=True))
+        assert exc_info.value.status_code == 500
+
+
+# --- 3c: Edge case tests ---
+
+
+class TestHandleResponseEdgeCases:
+    def test_non_json_error_body_401(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            status_code=401,
+            content=b"Unauthorized",
+            headers={"content-type": "text/plain"},
+        )
+        client = LangDAGClient()
+        with pytest.raises(AuthenticationError) as exc_info:
+            client.health()
+        # Should fall back to default message
+        assert "Authentication failed" in str(exc_info.value)
+
+    def test_non_json_error_body_generic(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            status_code=502,
+            content=b"<html>Bad Gateway</html>",
+            headers={"content-type": "text/html"},
+        )
+        client = LangDAGClient()
+        with pytest.raises(APIError) as exc_info:
+            client.health()
+        assert exc_info.value.status_code == 502
+
+
+class TestSSEParsingEdgeCases:
+    def test_unknown_event_type_skipped(self):
+        lines = iter([
+            "event: custom_type",
+            "data: {}",
+            "",
+            "event: delta",
+            'data: {"content":"kept"}',
+            "",
+        ])
+        events = list(_parse_sse_stream(lines))
+        assert len(events) == 1
+        assert events[0].content == "kept"
+
+    def test_multiline_data_fields(self):
+        lines = iter([
+            "event: error",
+            "data: line one",
+            "data: line two",
+            "",
+        ])
+        events = list(_parse_sse_stream(lines))
+        assert len(events) == 1
+        assert events[0].event == SSEEventType.ERROR
+        # Multi-line data gets joined with \n, then treated as non-JSON → {"message": ...}
+        assert events[0].data["message"] == "line one\nline two"
+
+    def test_non_json_delta_data(self):
+        lines = iter([
+            "event: delta",
+            "data: not-json-at-all",
+            "",
+        ])
+        events = list(_parse_sse_stream(lines))
+        assert len(events) == 1
+        assert events[0].event == SSEEventType.DELTA
+        # Non-JSON data should fall back to {"message": ...}
+        assert events[0].data == {"message": "not-json-at-all"}
