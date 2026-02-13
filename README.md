@@ -5,7 +5,10 @@
 <h3 align="center"><em>LLM Conversations as Directed Acyclic Graphs</em></h3>
 
 <p align="center">
-  <a href="https://github.com/aduermael/langdag/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://github.com/aduermael/langdag/actions/workflows/test-go.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test-go.yml?style=flat-square&label=Go%20SDK" alt="Go SDK Tests"></a>
+  <a href="https://github.com/aduermael/langdag/actions/workflows/test-python.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test-python.yml?style=flat-square&label=Python%20SDK" alt="Python SDK Tests"></a>
+  <a href="https://github.com/aduermael/langdag/actions/workflows/test-typescript.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test-typescript.yml?style=flat-square&label=TypeScript%20SDK" alt="TypeScript SDK Tests"></a>
+  <a href="https://github.com/aduermael/langdag/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test.yml?style=flat-square&label=E2E" alt="E2E Tests"></a>
   <a href="https://github.com/aduermael/langdag/releases"><img src="https://img.shields.io/badge/version-0.2.0-00ADD8?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go"></a>

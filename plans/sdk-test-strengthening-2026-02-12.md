@@ -61,6 +61,6 @@ Split the CI workflow into separate per-SDK workflows so each gets its own badge
 - [x] 6b: Create `.github/workflows/test-python.yml` for Python SDK unit tests (matrix: Python 3.10, 3.11, 3.12)
 - [x] 6c: Create `.github/workflows/test-typescript.yml` for TypeScript SDK unit tests (matrix: Node 20, 22)
 - [x] 6d: Update `.github/workflows/test.yml` to keep E2E tests (depends on per-SDK workflows passing)
-- [ ] 6e: Add per-SDK test badges to README.md (Go SDK, Python SDK, TypeScript SDK — each linking to their workflow)
+- [x] 6e: Add per-SDK test badges to README.md (Go SDK, Python SDK, TypeScript SDK — each linking to their workflow)
 
 **Parallel Tasks: 6a, 6b, 6c**
