@@ -17,9 +17,9 @@ Run each SDK's unit tests as-is. Identify any failures and fix them in the SDK s
 
 Add missing unit test coverage for the Go SDK.
 
-- [ ] 2a: Add streaming unit tests — SSE error events, malformed JSON in delta/done, empty data fields, scanner errors
-- [ ] 2b: Add `WithHTTPClient()` option test, combined options test, context cancellation test
-- [ ] 2c: Add `parseError()` edge case tests — empty body, non-JSON body, unknown status codes (e.g. 502)
+- [x] 2a: Add streaming unit tests — SSE error events, malformed JSON in delta/done, empty data fields, scanner errors
+- [x] 2b: Add `WithHTTPClient()` option test, combined options test, context cancellation test
+- [x] 2c: Add `parseError()` edge case tests — empty body, non-JSON body, unknown status codes (e.g. 502)
 
 **Parallel Tasks: 2a, 2b, 2c**
 

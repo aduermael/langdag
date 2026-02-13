@@ -1,6 +1,7 @@
 package langdag
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -155,4 +156,166 @@ data: {"node_id":"n-1"}
 	if content.String() != "Hello world!" {
 		t.Errorf("expected 'Hello world!', got %q", content.String())
 	}
+}
+
+func TestStream_MalformedDeltaJSON(t *testing.T) {
+	input := "event: delta\ndata: {not valid json}\n\nevent: done\ndata: {\"node_id\":\"n-1\"}\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	// Malformed delta should still be emitted but with empty Content
+	if events[0].Type != "delta" {
+		t.Errorf("expected delta, got %s", events[0].Type)
+	}
+	if events[0].Content != "" {
+		t.Errorf("expected empty content for malformed delta, got %q", events[0].Content)
+	}
+}
+
+func TestStream_MalformedDoneJSON(t *testing.T) {
+	input := "event: done\ndata: not-json\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].NodeID != "" {
+		t.Errorf("expected empty NodeID for malformed done, got %q", events[0].NodeID)
+	}
+
+	// Node() should return error because nodeID was never set
+	_, err := stream.Node()
+	if err == nil {
+		t.Error("expected error from Node() with malformed done event")
+	}
+}
+
+func TestStream_EmptyDataField(t *testing.T) {
+	input := "event: delta\ndata: \n\nevent: done\ndata: {\"node_id\":\"n-2\"}\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	// Empty data field on delta: JSON unmarshal will fail, Content stays ""
+	if events[0].Content != "" {
+		t.Errorf("expected empty content, got %q", events[0].Content)
+	}
+}
+
+func TestStream_ScannerError(t *testing.T) {
+	// errorReader simulates an I/O error mid-stream
+	r := &errorReader{
+		data: "event: start\ndata: {}\n\n",
+		err:  errors.New("connection reset"),
+	}
+	body := io.NopCloser(r)
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	// Should have emitted the start event before the error
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != "start" {
+		t.Errorf("expected start, got %s", events[0].Type)
+	}
+
+	// stream.err should be set from the scanner error
+	_, err := stream.Node()
+	if err == nil {
+		t.Error("expected error from Node() after scanner error")
+	}
+}
+
+func TestStream_MultipleErrorEvents(t *testing.T) {
+	input := "event: error\ndata: first error\n\nevent: error\ndata: second error\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+
+	// The last error should be the one stored in s.err
+	_, err := stream.Node()
+	if err == nil {
+		t.Fatal("expected error from Node()")
+	}
+	streamErr, ok := err.(*StreamError)
+	if !ok {
+		t.Fatalf("expected *StreamError, got %T", err)
+	}
+	if streamErr.Message != "second error" {
+		t.Errorf("expected 'second error', got %q", streamErr.Message)
+	}
+}
+
+func TestStream_MultilineDataField(t *testing.T) {
+	// SSE spec: multiple data: lines get joined with newlines
+	input := "event: delta\ndata: {\"content\":\n data: \"hello\"}\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	// The two data lines get joined with "\n", result is: {"content":\n"hello"}
+	// This is invalid JSON so Content will be empty (no crash)
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != "delta" {
+		t.Errorf("expected delta, got %s", events[0].Type)
+	}
+}
+
+// errorReader returns data first, then an error
+type errorReader struct {
+	data string
+	err  error
+	pos  int
+}
+
+func (r *errorReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	if r.pos >= len(r.data) {
+		return n, r.err
+	}
+	return n, nil
 }

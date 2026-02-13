@@ -3,6 +3,7 @@ package langdag
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -322,5 +323,143 @@ func TestDeleteNode(t *testing.T) {
 	err := c.DeleteNode(context.Background(), "node-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// --- 2b: WithHTTPClient, combined options, context cancellation ---
+
+func TestWithHTTPClient(t *testing.T) {
+	customClient := &http.Client{Timeout: 99 * time.Second}
+	c := NewClient("http://localhost:8080", WithHTTPClient(customClient))
+	if c.httpClient != customClient {
+		t.Error("expected custom HTTP client to be set")
+	}
+	if c.httpClient.Timeout != 99*time.Second {
+		t.Errorf("expected timeout 99s, got %s", c.httpClient.Timeout)
+	}
+}
+
+func TestCombinedOptions(t *testing.T) {
+	c := NewClient("http://localhost:8080/",
+		WithAPIKey("key-1"),
+		WithBearerToken("tok-1"),
+		WithTimeout(10*time.Second),
+	)
+	if c.baseURL != "http://localhost:8080" {
+		t.Errorf("expected trailing slash stripped, got %s", c.baseURL)
+	}
+	if c.apiKey != "key-1" {
+		t.Errorf("expected apiKey key-1, got %s", c.apiKey)
+	}
+	if c.bearerToken != "tok-1" {
+		t.Errorf("expected bearerToken tok-1, got %s", c.bearerToken)
+	}
+	if c.httpClient.Timeout != 10*time.Second {
+		t.Errorf("expected timeout 10s, got %s", c.httpClient.Timeout)
+	}
+}
+
+func TestContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Server blocks — the client should cancel before reaching here
+		select {}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	c := NewClient(server.URL)
+	_, err := c.Health(ctx)
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	// Should be a ConnectionError wrapping a context.Canceled
+	connErr, ok := err.(*ConnectionError)
+	if !ok {
+		t.Fatalf("expected *ConnectionError, got %T: %v", err, err)
+	}
+	if !errors.Is(connErr.Err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", connErr.Err)
+	}
+}
+
+// --- 2c: parseError edge cases ---
+
+func TestParseError_EmptyBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		// Write nothing — empty body
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	_, err := c.Health(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 500 {
+		t.Errorf("expected status 500, got %d", apiErr.StatusCode)
+	}
+	// Empty body should fall back to status text
+	if apiErr.Message != "500 Internal Server Error" {
+		t.Errorf("expected '500 Internal Server Error', got %q", apiErr.Message)
+	}
+}
+
+func TestParseError_NonJSONBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte("<html>Bad Gateway</html>"))
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	_, err := c.Health(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 502 {
+		t.Errorf("expected status 502, got %d", apiErr.StatusCode)
+	}
+	// Non-JSON body should be returned as-is
+	if apiErr.Message != "<html>Bad Gateway</html>" {
+		t.Errorf("expected HTML body as message, got %q", apiErr.Message)
+	}
+}
+
+func TestParseError_UnknownStatusCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "overloaded"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	_, err := c.Health(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 503 {
+		t.Errorf("expected status 503, got %d", apiErr.StatusCode)
+	}
+	if apiErr.Message != "overloaded" {
+		t.Errorf("expected 'overloaded', got %q", apiErr.Message)
+	}
+	// 503 is not 400/401/404, so the convenience methods should all return false
+	if apiErr.IsNotFound() || apiErr.IsUnauthorized() || apiErr.IsBadRequest() {
+		t.Error("expected all convenience methods to return false for 503")
 	}
 }
