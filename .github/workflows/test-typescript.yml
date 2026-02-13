@@ -1,0 +1,35 @@
+name: TypeScript SDK Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdks/typescript/**'
+      - '.github/workflows/test-typescript.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sdks/typescript/**'
+      - '.github/workflows/test-typescript.yml'
+
+jobs:
+  test:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: sdks/typescript
+        run: npm install
+
+      - name: Run unit tests
+        working-directory: sdks/typescript
+        run: npx vitest run src/client.test.ts src/sse.test.ts
