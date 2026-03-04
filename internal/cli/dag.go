@@ -6,36 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langdag/langdag/internal/config"
-	"github.com/langdag/langdag/internal/storage/sqlite"
 	"github.com/langdag/langdag/pkg/types"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
-
-// initStorage initializes the SQLite storage from config.
-func initStorage(ctx context.Context, cfg *config.Config) (*sqlite.SQLiteStorage, error) {
-	storagePath := cfg.Storage.Path
-	if storagePath == "./langdag.db" {
-		storagePath = config.GetDefaultStoragePath()
-	}
-
-	if err := config.EnsureStorageDir(storagePath); err != nil {
-		return nil, fmt.Errorf("failed to create storage directory: %w", err)
-	}
-
-	store, err := sqlite.New(storagePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open storage: %w", err)
-	}
-
-	if err := store.Init(ctx); err != nil {
-		store.Close()
-		return nil, fmt.Errorf("failed to initialize storage: %w", err)
-	}
-
-	return store, nil
-}
 
 // lsCmd lists all root nodes (conversations).
 var lsCmd = &cobra.Command{
@@ -68,18 +42,13 @@ var rmCmd = &cobra.Command{
 func runNodeList(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
-	cfg, err := config.Load()
-	if err != nil {
-		exitError("failed to load config: %v", err)
-	}
-
-	store, err := initStorage(ctx, cfg)
+	client, err := newLibraryClient(ctx)
 	if err != nil {
 		exitError("%v", err)
 	}
-	defer store.Close()
+	defer client.Close()
 
-	roots, err := store.ListRootNodes(ctx)
+	roots, err := client.ListConversations(ctx)
 	if err != nil {
 		exitError("failed to list nodes: %v", err)
 	}
@@ -138,34 +107,22 @@ func runNodeShow(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	nodeID := args[0]
 
-	cfg, err := config.Load()
-	if err != nil {
-		exitError("failed to load config: %v", err)
-	}
-
-	store, err := initStorage(ctx, cfg)
+	client, err := newLibraryClient(ctx)
 	if err != nil {
 		exitError("%v", err)
 	}
-	defer store.Close()
+	defer client.Close()
 
-	// Resolve node ID (try exact, then prefix)
-	node, err := store.GetNode(ctx, nodeID)
+	node, err := client.GetNode(ctx, nodeID)
 	if err != nil {
 		exitError("failed to get node: %v", err)
-	}
-	if node == nil {
-		node, err = store.GetNodeByPrefix(ctx, nodeID)
-		if err != nil {
-			exitError("failed to get node: %v", err)
-		}
 	}
 	if node == nil {
 		exitError("node not found: %s", nodeID)
 	}
 
 	// Get subtree
-	nodes, err := store.GetSubtree(ctx, node.ID)
+	nodes, err := client.GetSubtree(ctx, node.ID)
 	if err != nil {
 		exitError("failed to get tree: %v", err)
 	}
@@ -188,7 +145,7 @@ func runNodeShow(cmd *cobra.Command, args []string) {
 	if len(nodes) > 0 {
 		// If showing a non-root node, show root and skipped ancestors
 		if node.ParentID != "" {
-			ancestors, err := store.GetAncestors(ctx, node.ID)
+			ancestors, err := client.GetAncestors(ctx, node.ID)
 			if err == nil && len(ancestors) > 1 {
 				// ancestors is root-first and includes the node itself
 				root := ancestors[0]
@@ -275,32 +232,21 @@ func runNodeDelete(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	nodeID := args[0]
 
-	cfg, err := config.Load()
-	if err != nil {
-		exitError("failed to load config: %v", err)
-	}
-
-	store, err := initStorage(ctx, cfg)
+	client, err := newLibraryClient(ctx)
 	if err != nil {
 		exitError("%v", err)
 	}
-	defer store.Close()
+	defer client.Close()
 
-	node, err := store.GetNode(ctx, nodeID)
+	node, err := client.GetNode(ctx, nodeID)
 	if err != nil {
 		exitError("failed to get node: %v", err)
-	}
-	if node == nil {
-		node, err = store.GetNodeByPrefix(ctx, nodeID)
-		if err != nil {
-			exitError("failed to get node: %v", err)
-		}
 	}
 	if node == nil {
 		exitError("node not found: %s", nodeID)
 	}
 
-	if err := store.DeleteNode(ctx, node.ID); err != nil {
+	if err := client.DeleteNode(ctx, node.ID); err != nil {
 		exitError("failed to delete node: %v", err)
 	}
 
