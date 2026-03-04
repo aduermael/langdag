@@ -135,8 +135,13 @@ type requestMessage struct {
 }
 
 type contentPart struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+type imageURL struct {
+	URL string `json:"url"`
 }
 
 type requestToolCall struct {
@@ -222,13 +227,28 @@ func convertMessages(messages []types.Message, system string) []requestMessage {
 
 		// Check if blocks contain tool_use (assistant with tool calls)
 		var toolCalls []requestToolCall
-		var textParts []string
+		var contentParts []contentPart
 		var toolResults []requestMessage
+		var hasImages bool
 
 		for _, block := range blocks {
 			switch block.Type {
 			case "text":
-				textParts = append(textParts, block.Text)
+				contentParts = append(contentParts, contentPart{Type: "text", Text: block.Text})
+			case "image":
+				hasImages = true
+				var url string
+				if block.URL != "" {
+					url = block.URL
+				} else if block.Data != "" {
+					url = "data:" + block.MediaType + ";base64," + block.Data
+				}
+				if url != "" {
+					contentParts = append(contentParts, contentPart{
+						Type:     "image_url",
+						ImageURL: &imageURL{URL: url},
+					})
+				}
 			case "tool_use":
 				toolCalls = append(toolCalls, requestToolCall{
 					ID:   block.ID,
@@ -249,21 +269,34 @@ func convertMessages(messages []types.Message, system string) []requestMessage {
 
 		if len(toolCalls) > 0 {
 			rm.Role = "assistant"
-			if len(textParts) > 0 {
-				rm.Content = strings.Join(textParts, "\n")
+			if len(contentParts) > 0 {
+				rm.Content = extractText(contentParts)
 			}
 			rm.ToolCalls = toolCalls
 			result = append(result, rm)
 			result = append(result, toolResults...)
 		} else if len(toolResults) > 0 {
 			result = append(result, toolResults...)
+		} else if hasImages {
+			rm.Content = contentParts
+			result = append(result, rm)
 		} else {
-			rm.Content = strings.Join(textParts, "\n")
+			rm.Content = extractText(contentParts)
 			result = append(result, rm)
 		}
 	}
 
 	return result
+}
+
+func extractText(parts []contentPart) string {
+	var texts []string
+	for _, p := range parts {
+		if p.Type == "text" {
+			texts = append(texts, p.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 func convertTools(tools []types.ToolDefinition) []requestTool {

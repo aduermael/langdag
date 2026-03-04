@@ -119,10 +119,10 @@ Update all three SDKs to expose the new token fields.
 
 Extend content blocks to support images and documents for multi-modal providers.
 
-- [ ] 5a: Add `MediaType`, `Data` (base64), and `URL` fields to `ContentBlock` in `pkg/types/types.go` for image/document support
-- [ ] 5b: Update Anthropic provider to handle image and document content blocks
-- [ ] 5c: Update OpenAI provider to convert image content blocks to `image_url` parts
-- [ ] 5d: Update Gemini provider to convert image blocks to `inlineData`/`fileData` parts
+- [x] 5a: Add `MediaType`, `Data` (base64), and `URL` fields to `ContentBlock` in `pkg/types/types.go` for image/document support
+- [x] 5b: Update Anthropic provider to handle image and document content blocks
+- [x] 5c: Update OpenAI provider to convert image content blocks to `image_url` parts
+- [x] 5d: Update Gemini provider to convert image blocks to `inlineData`/`fileData` parts
 
 ---
 

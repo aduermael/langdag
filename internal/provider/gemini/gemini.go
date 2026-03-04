@@ -121,8 +121,20 @@ type content struct {
 
 type part struct {
 	Text             string            `json:"text,omitempty"`
+	InlineData       *inlineData       `json:"inlineData,omitempty"`
+	FileData         *fileData         `json:"fileData,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+}
+
+type inlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"` // base64
+}
+
+type fileData struct {
+	MimeType string `json:"mimeType"`
+	FileURI  string `json:"fileUri"`
 }
 
 type functionCall struct {
@@ -221,6 +233,16 @@ func convertMessages(messages []types.Message) []content {
 			switch block.Type {
 			case "text":
 				c.Parts = append(c.Parts, part{Text: block.Text})
+			case "image", "document":
+				if block.Data != "" {
+					c.Parts = append(c.Parts, part{
+						InlineData: &inlineData{MimeType: block.MediaType, Data: block.Data},
+					})
+				} else if block.URL != "" {
+					c.Parts = append(c.Parts, part{
+						FileData: &fileData{MimeType: block.MediaType, FileURI: block.URL},
+					})
+				}
 			case "tool_use":
 				var args map[string]interface{}
 				if block.Input != nil {

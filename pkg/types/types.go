@@ -14,10 +14,15 @@ type Message struct {
 
 // ContentBlock represents a content block in a message.
 type ContentBlock struct {
-	Type string `json:"type"` // "text", "image", "tool_use", "tool_result"
+	Type string `json:"type"` // "text", "image", "document", "tool_use", "tool_result"
 
 	// For text blocks
 	Text string `json:"text,omitempty"`
+
+	// For image/document blocks
+	MediaType string `json:"media_type,omitempty"` // e.g. "image/png", "application/pdf"
+	Data      string `json:"data,omitempty"`       // base64-encoded content
+	URL       string `json:"url,omitempty"`         // URL source
 
 	// For tool_use blocks
 	ID    string          `json:"id,omitempty"`

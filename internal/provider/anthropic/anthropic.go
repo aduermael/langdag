@@ -230,6 +230,24 @@ func convertMessages(messages []types.Message) ([]anthropic.MessageParam, error)
 				switch block.Type {
 				case "text":
 					anthropicBlocks = append(anthropicBlocks, anthropic.NewTextBlock(block.Text))
+				case "image":
+					if block.Data != "" {
+						anthropicBlocks = append(anthropicBlocks, anthropic.NewImageBlockBase64(block.MediaType, block.Data))
+					} else if block.URL != "" {
+						anthropicBlocks = append(anthropicBlocks, anthropic.NewImageBlock(anthropic.URLImageSourceParam{URL: block.URL}))
+					}
+				case "document":
+					if block.Data != "" {
+						anthropicBlocks = append(anthropicBlocks, anthropic.ContentBlockParamUnion{
+							OfDocument: &anthropic.DocumentBlockParam{
+								Source: anthropic.DocumentBlockParamSourceUnion{
+									OfBase64: &anthropic.Base64PDFSourceParam{
+										Data: block.Data,
+									},
+								},
+							},
+						})
+					}
 				case "tool_result":
 					anthropicBlocks = append(anthropicBlocks, anthropic.NewToolResultBlock(block.ToolUseID, block.Content, block.IsError))
 				}
