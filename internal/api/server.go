@@ -15,6 +15,7 @@ import (
 	"github.com/langdag/langdag/internal/provider"
 	"github.com/langdag/langdag/internal/provider/anthropic"
 	mockprovider "github.com/langdag/langdag/internal/provider/mock"
+	openaiprovider "github.com/langdag/langdag/internal/provider/openai"
 	"github.com/langdag/langdag/internal/storage/sqlite"
 	"github.com/langdag/langdag/internal/workflow"
 )
@@ -207,6 +208,13 @@ func createProvider(appConfig *config.Config) (provider.Provider, error) {
 		}
 		log.Printf("Using mock provider (mode: %s)", cfg.Mode)
 		return mockprovider.New(cfg), nil
+	case "openai":
+		apiKey := appConfig.Providers.OpenAI.APIKey
+		if apiKey == "" {
+			return nil, fmt.Errorf("OPENAI_API_KEY not set")
+		}
+		log.Printf("Using OpenAI-compatible provider (base_url: %s)", appConfig.Providers.OpenAI.BaseURL)
+		return openaiprovider.New(apiKey, appConfig.Providers.OpenAI.BaseURL), nil
 	default:
 		apiKey := appConfig.Providers.Anthropic.APIKey
 		if apiKey == "" {

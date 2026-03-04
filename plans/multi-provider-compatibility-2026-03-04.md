@@ -79,14 +79,14 @@ Extend the `Usage` struct, database schema, executor, and API responses to suppo
 
 Implement an OpenAI-compatible provider that works with OpenAI, xAI/Grok, and Mistral (all share the same wire format).
 
-- [ ] 2a: Create `internal/provider/openai/openai.go` implementing the `Provider` interface — `Complete` and `Stream` methods using the OpenAI chat completions API
-- [ ] 2b: Implement message conversion: unified `ContentBlock` to/from OpenAI message format (handle system-as-role, tool_calls array, tool role messages)
-- [ ] 2c: Implement token usage mapping: `prompt_tokens` → `InputTokens`, `completion_tokens` → `OutputTokens`, extract `cached_tokens` and `reasoning_tokens` from `_details` objects
-- [ ] 2d: Implement streaming: parse OpenAI SSE chunks (`chat.completion.chunk` with `delta` field), emit unified `StreamEvent` types
-- [ ] 2e: Support configurable `BaseURL` so the same provider works for xAI (`api.x.ai/v1`) and Mistral (`api.mistral.ai/v1`)
-- [ ] 2f: Wire into provider factory in `server.go` — support `LANGDAG_PROVIDER=openai` with `OPENAI_API_KEY`, `OPENAI_BASE_URL` env vars
-- [ ] 2g: Add OpenAI provider to config: `LANGDAG_OPENAI_API_KEY`, `LANGDAG_OPENAI_BASE_URL`
-- [ ] 2h: Add unit tests for message conversion, token mapping, and streaming parsing
+- [x] 2a: Create `internal/provider/openai/openai.go` implementing the `Provider` interface — `Complete` and `Stream` methods using the OpenAI chat completions API
+- [x] 2b: Implement message conversion: unified `ContentBlock` to/from OpenAI message format (handle system-as-role, tool_calls array, tool role messages)
+- [x] 2c: Implement token usage mapping: `prompt_tokens` → `InputTokens`, `completion_tokens` → `OutputTokens`, extract `cached_tokens` and `reasoning_tokens` from `_details` objects
+- [x] 2d: Implement streaming: parse OpenAI SSE chunks (`chat.completion.chunk` with `delta` field), emit unified `StreamEvent` types
+- [x] 2e: Support configurable `BaseURL` so the same provider works for xAI (`api.x.ai/v1`) and Mistral (`api.mistral.ai/v1`)
+- [x] 2f: Wire into provider factory in `server.go` — support `LANGDAG_PROVIDER=openai` with `OPENAI_API_KEY`, `OPENAI_BASE_URL` env vars
+- [x] 2g: Add OpenAI provider to config: `LANGDAG_OPENAI_API_KEY`, `LANGDAG_OPENAI_BASE_URL`
+- [x] 2h: Add unit tests for message conversion, token mapping, and streaming parsing
 
 ---
 

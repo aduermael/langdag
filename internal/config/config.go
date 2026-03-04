@@ -104,6 +104,7 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.default", "LANGDAG_PROVIDER")
 	v.BindEnv("providers.anthropic.api_key", "ANTHROPIC_API_KEY")
 	v.BindEnv("providers.openai.api_key", "OPENAI_API_KEY")
+	v.BindEnv("providers.openai.base_url", "OPENAI_BASE_URL")
 	v.BindEnv("providers.mock.mode", "LANGDAG_MOCK_MODE")
 	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
 	v.BindEnv("providers.mock.delay", "LANGDAG_MOCK_DELAY")
