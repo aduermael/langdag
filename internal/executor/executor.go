@@ -209,11 +209,11 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, rootN
 
 	startTime := time.Now()
 	var output json.RawMessage
-	var tokensIn, tokensOut int
+	var usage types.Usage
 	var err error
 
 	if opts.Stream {
-		output, tokensIn, tokensOut, err = e.streamLLMNode(ctx, req, node.ID, events)
+		output, usage, err = e.streamLLMNode(ctx, req, node.ID, events)
 	} else {
 		resp, respErr := e.provider.Complete(ctx, req)
 		if respErr != nil {
@@ -228,8 +228,7 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, rootN
 			}
 		}
 		output = json.RawMessage(fmt.Sprintf("%q", text))
-		tokensIn = resp.Usage.InputTokens
-		tokensOut = resp.Usage.OutputTokens
+		usage = resp.Usage
 	}
 
 	if err != nil {
@@ -238,17 +237,20 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, rootN
 
 	// Save as child node of the root
 	childNode := &types.Node{
-		ID:        uuid.New().String(),
-		ParentID:  rootNode.ID,
-		Sequence:  seq + 1,
-		NodeType:  types.NodeTypeAssistant,
-		Content:   prompt,
-		Model:     model,
-		TokensIn:  tokensIn,
-		TokensOut: tokensOut,
-		Status:    "completed",
-		LatencyMs: int(time.Since(startTime).Milliseconds()),
-		CreatedAt: time.Now(),
+		ID:                  uuid.New().String(),
+		ParentID:            rootNode.ID,
+		Sequence:            seq + 1,
+		NodeType:            types.NodeTypeAssistant,
+		Content:             prompt,
+		Model:               model,
+		TokensIn:            usage.InputTokens,
+		TokensOut:           usage.OutputTokens,
+		TokensCacheRead:     usage.CacheReadInputTokens,
+		TokensCacheCreation: usage.CacheCreationInputTokens,
+		TokensReasoning:     usage.ReasoningTokens,
+		Status:              "completed",
+		LatencyMs:           int(time.Since(startTime).Milliseconds()),
+		CreatedAt:           time.Now(),
 	}
 	e.storage.CreateNode(ctx, childNode)
 
@@ -256,14 +258,14 @@ func (e *Executor) executeLLMNode(ctx context.Context, wf *types.Workflow, rootN
 }
 
 // streamLLMNode streams an LLM node execution.
-func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionRequest, nodeID string, events chan<- ExecutionEvent) (json.RawMessage, int, int, error) {
+func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionRequest, nodeID string, events chan<- ExecutionEvent) (json.RawMessage, types.Usage, error) {
 	stream, err := e.provider.Stream(ctx, req)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, types.Usage{}, err
 	}
 
 	var fullText string
-	var tokensIn, tokensOut int
+	var usage types.Usage
 	for event := range stream {
 		switch event.Type {
 		case types.StreamEventDelta:
@@ -275,15 +277,14 @@ func (e *Executor) streamLLMNode(ctx context.Context, req *types.CompletionReque
 			}
 		case types.StreamEventDone:
 			if event.Response != nil {
-				tokensIn = event.Response.Usage.InputTokens
-				tokensOut = event.Response.Usage.OutputTokens
+				usage = event.Response.Usage
 			}
 		case types.StreamEventError:
-			return nil, 0, 0, event.Error
+			return nil, types.Usage{}, event.Error
 		}
 	}
 
-	return json.RawMessage(fmt.Sprintf("%q", fullText)), tokensIn, tokensOut, nil
+	return json.RawMessage(fmt.Sprintf("%q", fullText)), usage, nil
 }
 
 // executeMergeNode executes a merge node.

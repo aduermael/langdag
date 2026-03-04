@@ -61,11 +61,14 @@ type Node struct {
 	Content  string   `json:"content"`
 
 	// LLM execution metadata (on assistant nodes)
-	Model     string `json:"model,omitempty"`
-	TokensIn  int    `json:"tokens_in,omitempty"`
-	TokensOut int    `json:"tokens_out,omitempty"`
-	LatencyMs int    `json:"latency_ms,omitempty"`
-	Status    string `json:"status,omitempty"`
+	Model                string `json:"model,omitempty"`
+	TokensIn             int    `json:"tokens_in,omitempty"`
+	TokensOut            int    `json:"tokens_out,omitempty"`
+	TokensCacheRead      int    `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation  int    `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning      int    `json:"tokens_reasoning,omitempty"`
+	LatencyMs            int    `json:"latency_ms,omitempty"`
+	Status               string `json:"status,omitempty"`
 
 	// Root node metadata (empty on non-root nodes)
 	Title        string `json:"title,omitempty"`
@@ -152,8 +155,11 @@ type CompletionResponse struct {
 
 // Usage represents token usage information.
 type Usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
 }
 
 // StreamEventType represents the type of a streaming event.

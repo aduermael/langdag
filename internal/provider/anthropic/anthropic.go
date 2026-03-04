@@ -134,8 +134,10 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 					ID:    event.Message.ID,
 					Model: string(event.Message.Model),
 					Usage: types.Usage{
-						InputTokens:  int(event.Message.Usage.InputTokens),
-						OutputTokens: int(event.Message.Usage.OutputTokens),
+						InputTokens:              int(event.Message.Usage.InputTokens),
+						OutputTokens:             int(event.Message.Usage.OutputTokens),
+						CacheReadInputTokens:     int(event.Message.Usage.CacheReadInputTokens),
+						CacheCreationInputTokens: int(event.Message.Usage.CacheCreationInputTokens),
 					},
 				}
 				events <- types.StreamEvent{Type: types.StreamEventStart}
@@ -301,8 +303,10 @@ func convertResponse(resp *anthropic.Message) *types.CompletionResponse {
 		Content:    content,
 		StopReason: string(resp.StopReason),
 		Usage: types.Usage{
-			InputTokens:  int(resp.Usage.InputTokens),
-			OutputTokens: int(resp.Usage.OutputTokens),
+			InputTokens:              int(resp.Usage.InputTokens),
+			OutputTokens:             int(resp.Usage.OutputTokens),
+			CacheReadInputTokens:     int(resp.Usage.CacheReadInputTokens),
+			CacheCreationInputTokens: int(resp.Usage.CacheCreationInputTokens),
 		},
 	}
 }

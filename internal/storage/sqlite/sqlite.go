@@ -13,11 +13,11 @@ import (
 )
 
 // nodeColumns is the column list for node queries (unqualified).
-const nodeColumns = `id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, latency_ms, status, title, system_prompt, created_at`
+const nodeColumns = `id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at`
 
 // nodeColumnsQ returns the column list qualified with a table alias.
 func nodeColumnsQ(alias string) string {
-	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
+	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
 }
 
 // SQLiteStorage implements the Storage interface using SQLite.
@@ -185,11 +185,12 @@ func (s *SQLiteStorage) DeleteWorkflow(ctx context.Context, id string) error {
 func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	var node types.Node
 	var parentID, model, status, title, systemPrompt sql.NullString
-	var tokensIn, tokensOut, latencyMs sql.NullInt64
+	var tokensIn, tokensOut, tokensCacheRead, tokensCacheCreation, tokensReasoning, latencyMs sql.NullInt64
 
 	err := scanner.Scan(
 		&node.ID, &parentID, &node.Sequence, &node.NodeType, &node.Content,
-		&model, &tokensIn, &tokensOut, &latencyMs, &status,
+		&model, &tokensIn, &tokensOut, &tokensCacheRead, &tokensCacheCreation, &tokensReasoning,
+		&latencyMs, &status,
 		&title, &systemPrompt, &node.CreatedAt,
 	)
 	if err != nil {
@@ -200,6 +201,9 @@ func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	node.Model = model.String
 	node.TokensIn = int(tokensIn.Int64)
 	node.TokensOut = int(tokensOut.Int64)
+	node.TokensCacheRead = int(tokensCacheRead.Int64)
+	node.TokensCacheCreation = int(tokensCacheCreation.Int64)
+	node.TokensReasoning = int(tokensReasoning.Int64)
 	node.LatencyMs = int(latencyMs.Int64)
 	node.Status = status.String
 	node.Title = title.String
@@ -225,9 +229,10 @@ func scanNodes(rows *sql.Rows) ([]*types.Node, error) {
 func (s *SQLiteStorage) CreateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO nodes (`+nodeColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, node.ID, nullString(node.ParentID), node.Sequence, node.NodeType, node.Content,
-		nullString(node.Model), node.TokensIn, node.TokensOut, node.LatencyMs, nullString(node.Status),
+		nullString(node.Model), node.TokensIn, node.TokensOut, node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
+		node.LatencyMs, nullString(node.Status),
 		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create node: %w", err)
@@ -331,9 +336,11 @@ func (s *SQLiteStorage) ListRootNodes(ctx context.Context) ([]*types.Node, error
 func (s *SQLiteStorage) UpdateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE nodes SET content = ?, model = ?, tokens_in = ?, tokens_out = ?,
+			tokens_cache_read = ?, tokens_cache_creation = ?, tokens_reasoning = ?,
 			latency_ms = ?, status = ?, title = ?, system_prompt = ?
 		WHERE id = ?
 	`, node.Content, nullString(node.Model), node.TokensIn, node.TokensOut,
+		node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
 		node.LatencyMs, nullString(node.Status), nullString(node.Title), nullString(node.SystemPrompt),
 		node.ID)
 	if err != nil {

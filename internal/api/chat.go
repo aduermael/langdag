@@ -18,10 +18,13 @@ type PromptRequest struct {
 
 // PromptResponse represents a prompt response.
 type PromptResponse struct {
-	NodeID    string `json:"node_id"`
-	Content   string `json:"content"`
-	TokensIn  int    `json:"tokens_in,omitempty"`
-	TokensOut int    `json:"tokens_out,omitempty"`
+	NodeID              string `json:"node_id"`
+	Content             string `json:"content"`
+	TokensIn            int    `json:"tokens_in,omitempty"`
+	TokensOut           int    `json:"tokens_out,omitempty"`
+	TokensCacheRead     int    `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int    `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int    `json:"tokens_reasoning,omitempty"`
 }
 
 // handlePrompt starts a new conversation tree.

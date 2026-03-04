@@ -146,6 +146,9 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 			if response != nil {
 				assistantNode.TokensIn = response.Usage.InputTokens
 				assistantNode.TokensOut = response.Usage.OutputTokens
+				assistantNode.TokensCacheRead = response.Usage.CacheReadInputTokens
+				assistantNode.TokensCacheCreation = response.Usage.CacheCreationInputTokens
+				assistantNode.TokensReasoning = response.Usage.ReasoningTokens
 			}
 			m.storage.CreateNode(ctx, assistantNode)
 			events <- types.StreamEvent{

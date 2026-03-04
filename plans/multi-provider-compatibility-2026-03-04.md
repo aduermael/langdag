@@ -64,14 +64,14 @@ Key adapter responsibilities per family:
 
 Extend the `Usage` struct, database schema, executor, and API responses to support all token types.
 
-- [ ] 1a: Add `CacheReadInputTokens`, `CacheCreationInputTokens`, `ReasoningTokens` to `Usage` struct in `pkg/types/types.go`
-- [ ] 1b: Add matching fields to `Node` struct (`tokens_cache_read`, `tokens_cache_creation`, `tokens_reasoning`)
-- [ ] 1c: Add DB migration for new columns in `internal/storage/sqlite/migrations.go`
-- [ ] 1d: Update SQLite storage implementation to read/write new token fields
-- [ ] 1e: Update executor and conversation manager to propagate all token fields from `Usage` to `Node`
-- [ ] 1f: Update Anthropic provider to populate `CacheReadInputTokens` and `CacheCreationInputTokens` from Anthropic responses
-- [ ] 1g: Update API response structs to include new token fields
-- [ ] 1h: Update mock provider to set cache/reasoning token fields for testing
+- [x] 1a: Add `CacheReadInputTokens`, `CacheCreationInputTokens`, `ReasoningTokens` to `Usage` struct in `pkg/types/types.go`
+- [x] 1b: Add matching fields to `Node` struct (`tokens_cache_read`, `tokens_cache_creation`, `tokens_reasoning`)
+- [x] 1c: Add DB migration for new columns in `internal/storage/sqlite/migrations.go`
+- [x] 1d: Update SQLite storage implementation to read/write new token fields
+- [x] 1e: Update executor and conversation manager to propagate all token fields from `Usage` to `Node`
+- [x] 1f: Update Anthropic provider to populate `CacheReadInputTokens` and `CacheCreationInputTokens` from Anthropic responses
+- [x] 1g: Update API response structs to include new token fields
+- [x] 1h: Update mock provider to set cache/reasoning token fields for testing
 
 ---
 

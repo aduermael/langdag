@@ -55,6 +55,7 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 
 	text := p.generateResponse(req)
 
+	inputTokens := estimateTokens(req)
 	return &types.CompletionResponse{
 		ID:    generateID(),
 		Model: req.Model,
@@ -63,8 +64,11 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 		},
 		StopReason: "end_turn",
 		Usage: types.Usage{
-			InputTokens:  estimateTokens(req),
-			OutputTokens: len(strings.Fields(text)),
+			InputTokens:              inputTokens,
+			OutputTokens:             len(strings.Fields(text)),
+			CacheReadInputTokens:     inputTokens / 4,
+			CacheCreationInputTokens: inputTokens / 8,
+			ReasoningTokens:          len(strings.Fields(text)) / 3,
 		},
 	}, nil
 }
@@ -113,6 +117,7 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 		}
 
 		// Done event
+		inputTokens := estimateTokens(req)
 		events <- types.StreamEvent{
 			Type: types.StreamEventDone,
 			Response: &types.CompletionResponse{
@@ -123,8 +128,11 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 				},
 				StopReason: "end_turn",
 				Usage: types.Usage{
-					InputTokens:  estimateTokens(req),
-					OutputTokens: len(words),
+					InputTokens:              inputTokens,
+					OutputTokens:             len(words),
+					CacheReadInputTokens:     inputTokens / 4,
+					CacheCreationInputTokens: inputTokens / 8,
+					ReasoningTokens:          len(words) / 3,
 				},
 			},
 		}

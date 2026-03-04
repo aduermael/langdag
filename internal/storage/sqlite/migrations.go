@@ -47,4 +47,12 @@ var migrations = []string{
 	);
 	INSERT OR IGNORE INTO schema_version (version) VALUES (1);
 	`,
+
+	// Migration 2: Add extended token tracking columns
+	`
+	ALTER TABLE nodes ADD COLUMN tokens_cache_read INTEGER;
+	ALTER TABLE nodes ADD COLUMN tokens_cache_creation INTEGER;
+	ALTER TABLE nodes ADD COLUMN tokens_reasoning INTEGER;
+	UPDATE schema_version SET version = 2;
+	`,
 }
