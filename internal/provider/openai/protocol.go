@@ -1,126 +1,28 @@
-// Package openai provides an OpenAI-compatible provider implementation.
-// It works with OpenAI, xAI/Grok, Mistral, and any API that follows
-// the OpenAI chat completions format.
+// Package openai provides OpenAI-compatible provider implementations.
+// This file contains shared request building, response parsing, SSE streaming,
+// and message/tool conversion used by all OpenAI-protocol variants (direct, Azure).
 package openai
 
 import (
 	"bufio"
-	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/langdag/langdag/pkg/types"
 )
 
-// Provider implements the provider interface for OpenAI-compatible APIs.
-type Provider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
-}
-
-// New creates a new OpenAI-compatible provider.
-func New(apiKey, baseURL string) *Provider {
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-	return &Provider{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		client:  &http.Client{},
-	}
-}
-
-// Name returns the provider name.
-func (p *Provider) Name() string {
-	return "openai"
-}
-
-// Models returns the available models.
-func (p *Provider) Models() []types.ModelInfo {
-	return []types.ModelInfo{
-		{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, MaxOutput: 16384},
-		{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000, MaxOutput: 16384},
-		{ID: "o3-mini", Name: "o3-mini", ContextWindow: 200000, MaxOutput: 100000},
-	}
-}
-
-// Complete performs a synchronous completion request.
-func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
-	body := buildRequest(req, false)
-
-	respBody, err := p.doRequest(ctx, body)
-	if err != nil {
-		return nil, err
-	}
-	defer respBody.Close()
-
-	var resp chatCompletionResponse
-	if err := json.NewDecoder(respBody).Decode(&resp); err != nil {
-		return nil, fmt.Errorf("openai: failed to decode response: %w", err)
-	}
-
-	return convertResponse(&resp), nil
-}
-
-// Stream performs a streaming completion request.
-func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
-	body := buildRequest(req, true)
-
-	respBody, err := p.doRequest(ctx, body)
-	if err != nil {
-		return nil, err
-	}
-
-	events := make(chan types.StreamEvent, 100)
-	go func() {
-		defer close(events)
-		defer respBody.Close()
-		parseSSEStream(respBody, events)
-	}()
-
-	return events, nil
-}
-
-func (p *Provider) doRequest(ctx context.Context, body []byte) (io.ReadCloser, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("openai: failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("openai: request failed: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("openai: API error (status %d): %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return resp.Body, nil
-}
-
-// --- Request building ---
+// --- Request types ---
 
 type chatCompletionRequest struct {
-	Model       string           `json:"model"`
-	Messages    []requestMessage `json:"messages"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Temperature *float64         `json:"temperature,omitempty"`
-	Stop        []string         `json:"stop,omitempty"`
-	Tools       []requestTool    `json:"tools,omitempty"`
-	Stream      bool             `json:"stream,omitempty"`
-	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+	Model         string           `json:"model"`
+	Messages      []requestMessage `json:"messages"`
+	MaxTokens     int              `json:"max_tokens,omitempty"`
+	Temperature   *float64         `json:"temperature,omitempty"`
+	Stop          []string         `json:"stop,omitempty"`
+	Tools         []requestTool    `json:"tools,omitempty"`
+	Stream        bool             `json:"stream,omitempty"`
+	StreamOptions *streamOptions   `json:"stream_options,omitempty"`
 }
 
 type streamOptions struct {
@@ -128,10 +30,10 @@ type streamOptions struct {
 }
 
 type requestMessage struct {
-	Role       string             `json:"role"`
-	Content    interface{}        `json:"content,omitempty"` // string or []contentPart
-	ToolCalls  []requestToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID string             `json:"tool_call_id,omitempty"`
+	Role       string            `json:"role"`
+	Content    interface{}       `json:"content,omitempty"` // string or []contentPart
+	ToolCalls  []requestToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string            `json:"tool_call_id,omitempty"`
 }
 
 type contentPart struct {
@@ -145,9 +47,9 @@ type imageURL struct {
 }
 
 type requestToolCall struct {
-	ID       string           `json:"id"`
-	Type     string           `json:"type"`
-	Function requestFunction  `json:"function"`
+	ID       string          `json:"id"`
+	Type     string          `json:"type"`
+	Function requestFunction `json:"function"`
 }
 
 type requestFunction struct {
@@ -165,6 +67,54 @@ type requestToolFunction struct {
 	Description string          `json:"description"`
 	Parameters  json.RawMessage `json:"parameters"`
 }
+
+// --- Response types ---
+
+type chatCompletionResponse struct {
+	ID      string   `json:"id"`
+	Model   string   `json:"model"`
+	Choices []choice `json:"choices"`
+	Usage   *usage   `json:"usage,omitempty"`
+}
+
+type choice struct {
+	Index        int             `json:"index"`
+	Message      responseMessage `json:"message"`
+	Delta        responseMessage `json:"delta"`
+	FinishReason *string         `json:"finish_reason,omitempty"`
+}
+
+type responseMessage struct {
+	Role      string             `json:"role,omitempty"`
+	Content   *string            `json:"content,omitempty"`
+	ToolCalls []responseToolCall `json:"tool_calls,omitempty"`
+}
+
+type responseToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Index    int              `json:"index"`
+	Function responseFunction `json:"function"`
+}
+
+type responseFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type usage struct {
+	PromptTokens            int           `json:"prompt_tokens"`
+	CompletionTokens        int           `json:"completion_tokens"`
+	PromptTokensDetails     *tokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *tokenDetails `json:"completion_tokens_details,omitempty"`
+}
+
+type tokenDetails struct {
+	CachedTokens    int `json:"cached_tokens,omitempty"`
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+}
+
+// --- Request building ---
 
 func buildRequest(req *types.CompletionRequest, stream bool) []byte {
 	messages := convertMessages(req.Messages, req.System)
@@ -198,7 +148,6 @@ func buildRequest(req *types.CompletionRequest, stream bool) []byte {
 func convertMessages(messages []types.Message, system string) []requestMessage {
 	var result []requestMessage
 
-	// System prompt as a system role message
 	if system != "" {
 		result = append(result, requestMessage{
 			Role:    "system",
@@ -209,7 +158,6 @@ func convertMessages(messages []types.Message, system string) []requestMessage {
 	for _, msg := range messages {
 		rm := requestMessage{Role: msg.Role}
 
-		// Try to parse as plain string
 		var text string
 		if err := json.Unmarshal(msg.Content, &text); err == nil {
 			rm.Content = text
@@ -217,7 +165,6 @@ func convertMessages(messages []types.Message, system string) []requestMessage {
 			continue
 		}
 
-		// Parse as content blocks
 		var blocks []types.ContentBlock
 		if err := json.Unmarshal(msg.Content, &blocks); err != nil {
 			rm.Content = string(msg.Content)
@@ -225,7 +172,6 @@ func convertMessages(messages []types.Message, system string) []requestMessage {
 			continue
 		}
 
-		// Check if blocks contain tool_use (assistant with tool calls)
 		var toolCalls []requestToolCall
 		var contentParts []contentPart
 		var toolResults []requestMessage
@@ -314,51 +260,7 @@ func convertTools(tools []types.ToolDefinition) []requestTool {
 	return result
 }
 
-// --- Response parsing ---
-
-type chatCompletionResponse struct {
-	ID      string   `json:"id"`
-	Model   string   `json:"model"`
-	Choices []choice `json:"choices"`
-	Usage   *usage   `json:"usage,omitempty"`
-}
-
-type choice struct {
-	Index        int              `json:"index"`
-	Message      responseMessage  `json:"message"`
-	Delta        responseMessage  `json:"delta"`
-	FinishReason *string          `json:"finish_reason,omitempty"`
-}
-
-type responseMessage struct {
-	Role      string             `json:"role,omitempty"`
-	Content   *string            `json:"content,omitempty"`
-	ToolCalls []responseToolCall `json:"tool_calls,omitempty"`
-}
-
-type responseToolCall struct {
-	ID       string           `json:"id"`
-	Type     string           `json:"type"`
-	Index    int              `json:"index"`
-	Function responseFunction `json:"function"`
-}
-
-type responseFunction struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type usage struct {
-	PromptTokens            int           `json:"prompt_tokens"`
-	CompletionTokens        int           `json:"completion_tokens"`
-	PromptTokensDetails     *tokenDetails `json:"prompt_tokens_details,omitempty"`
-	CompletionTokensDetails *tokenDetails `json:"completion_tokens_details,omitempty"`
-}
-
-type tokenDetails struct {
-	CachedTokens    int `json:"cached_tokens,omitempty"`
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
-}
+// --- Response conversion ---
 
 func convertResponse(resp *chatCompletionResponse) *types.CompletionResponse {
 	cr := &types.CompletionResponse{
@@ -446,7 +348,6 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 			responseModel = chunk.Model
 		}
 
-		// Usage chunk (sent with stream_options.include_usage)
 		if chunk.Usage != nil {
 			u := mapUsage(chunk.Usage)
 			finalUsage = &u
@@ -458,7 +359,6 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 		delta := chunk.Choices[0].Delta
 
-		// Text delta
 		if delta.Content != nil && *delta.Content != "" {
 			events <- types.StreamEvent{
 				Type:    types.StreamEventDelta,
@@ -466,7 +366,6 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 			}
 		}
 
-		// Tool call deltas
 		for _, tc := range delta.ToolCalls {
 			existing, ok := currentToolCalls[tc.Index]
 			if !ok {
@@ -493,11 +392,9 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 			}
 		}
 
-		// Check for finish reason
 		if chunk.Choices[0].FinishReason != nil {
 			fr := *chunk.Choices[0].FinishReason
 			if fr == "tool_calls" || fr == "stop" {
-				// Emit completed tool calls
 				for _, tc := range currentToolCalls {
 					events <- types.StreamEvent{
 						Type:         types.StreamEventContentDone,
@@ -508,7 +405,6 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 		}
 	}
 
-	// Build final response
 	var content []types.ContentBlock
 	for _, tc := range currentToolCalls {
 		content = append(content, *tc)

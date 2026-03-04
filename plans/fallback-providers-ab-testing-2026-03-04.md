@@ -96,7 +96,7 @@ Extract shared protocol code from the current monolithic `anthropic.go`, then ad
 
 ## Phase 2: Refactor OpenAI Provider into Protocol + Variants
 
-- [ ] 2a: Split `openai.go` into `protocol.go` (message/tool conversion, SSE parsing, response mapping) and `direct.go` (already supports base_url, just restructure)
+- [x] 2a: Split `openai.go` into `protocol.go` (message/tool conversion, SSE parsing, response mapping) and `direct.go` (already supports base_url, just restructure)
 - [ ] 2b: Add `azure.go` — Azure OpenAI variant (different URL scheme: `{endpoint}/openai/deployments/{model}/chat/completions?api-version=...`, `api-key` header)
 - [ ] 2c: Tests for Azure variant
 
