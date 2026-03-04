@@ -77,6 +77,7 @@ func (r *Router) Complete(ctx context.Context, req *types.CompletionRequest) (*t
 	if primary != nil {
 		resp, err := primary.Complete(ctx, req)
 		if err == nil {
+			resp.Provider = primary.Name()
 			return resp, nil
 		}
 		// Primary failed, try fallback chain (skipping the primary)
@@ -93,7 +94,7 @@ func (r *Router) Stream(ctx context.Context, req *types.CompletionRequest) (<-ch
 	if primary != nil {
 		ch, err := primary.Stream(ctx, req)
 		if err == nil {
-			return ch, nil
+			return tagStreamProvider(ch, primary.Name()), nil
 		}
 		return r.streamFallback(ctx, req, primary, err)
 	}
@@ -127,6 +128,7 @@ func (r *Router) completeFallback(ctx context.Context, req *types.CompletionRequ
 		}
 		resp, err := p.Complete(ctx, req)
 		if err == nil {
+			resp.Provider = p.Name()
 			return resp, nil
 		}
 		lastErr = err
@@ -141,9 +143,25 @@ func (r *Router) streamFallback(ctx context.Context, req *types.CompletionReques
 		}
 		ch, err := p.Stream(ctx, req)
 		if err == nil {
-			return ch, nil
+			return tagStreamProvider(ch, p.Name()), nil
 		}
 		lastErr = err
 	}
 	return nil, fmt.Errorf("router: all providers failed, last error: %w", lastErr)
+}
+
+// tagStreamProvider wraps a stream channel to set the Provider field on the
+// done event's CompletionResponse.
+func tagStreamProvider(ch <-chan types.StreamEvent, providerName string) <-chan types.StreamEvent {
+	out := make(chan types.StreamEvent, cap(ch))
+	go func() {
+		defer close(out)
+		for event := range ch {
+			if event.Type == types.StreamEventDone && event.Response != nil {
+				event.Response.Provider = providerName
+			}
+			out <- event
+		}
+	}()
+	return out
 }

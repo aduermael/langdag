@@ -3,19 +3,9 @@ package sqlite
 // migrations contains the SQL migrations for the SQLite database.
 // Since this is a fresh start (no existing users), we use a single migration.
 var migrations = []string{
-	// Migration 1: Create tables — everything is nodes
+	// Migration 1: Create tables
 	`
-	-- Workflow templates
-	CREATE TABLE IF NOT EXISTS workflows (
-		id TEXT PRIMARY KEY,
-		name TEXT NOT NULL UNIQUE,
-		version INTEGER DEFAULT 1,
-		definition JSON NOT NULL,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	);
-
-	-- Nodes: the single unified table for all conversation/workflow tree data.
+	-- Nodes: the single unified table for all conversation tree data.
 	-- Root nodes (parent_id IS NULL) carry tree-level metadata (title, system_prompt).
 	CREATE TABLE IF NOT EXISTS nodes (
 		id TEXT PRIMARY KEY,
@@ -54,5 +44,21 @@ var migrations = []string{
 	ALTER TABLE nodes ADD COLUMN tokens_cache_creation INTEGER;
 	ALTER TABLE nodes ADD COLUMN tokens_reasoning INTEGER;
 	UPDATE schema_version SET version = 2;
+	`,
+
+	// Migration 3: Add node aliases
+	`
+	CREATE TABLE IF NOT EXISTS node_aliases (
+		alias TEXT PRIMARY KEY,
+		node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_aliases_node ON node_aliases(node_id);
+	UPDATE schema_version SET version = 3;
+	`,
+
+	// Migration 4: Add provider column for tracking which provider served a request
+	`
+	ALTER TABLE nodes ADD COLUMN provider TEXT;
+	UPDATE schema_version SET version = 4;
 	`,
 }

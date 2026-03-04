@@ -46,13 +46,6 @@ const (
 	NodeTypeToolCall   NodeType = "tool_call"
 	NodeTypeToolResult NodeType = "tool_result"
 
-	// Workflow template node types
-	NodeTypeLLM    NodeType = "llm"
-	NodeTypeTool   NodeType = "tool"
-	NodeTypeBranch NodeType = "branch"
-	NodeTypeMerge  NodeType = "merge"
-	NodeTypeInput  NodeType = "input"
-	NodeTypeOutput NodeType = "output"
 )
 
 // Node represents a node in the conversation/workflow tree.
@@ -66,6 +59,7 @@ type Node struct {
 	Content  string   `json:"content"`
 
 	// LLM execution metadata (on assistant nodes)
+	Provider             string `json:"provider,omitempty"`
 	Model                string `json:"model,omitempty"`
 	TokensIn             int    `json:"tokens_in,omitempty"`
 	TokensOut            int    `json:"tokens_out,omitempty"`
@@ -88,54 +82,11 @@ type Tree struct {
 	Nodes []Node `json:"nodes"`
 }
 
-// WorkflowNode represents a node in a workflow template.
-type WorkflowNode struct {
-	ID        string          `json:"id"`
-	Type      NodeType        `json:"type"`
-	Content   json.RawMessage `json:"content,omitempty"`
-	Model     string          `json:"model,omitempty"`
-	System    string          `json:"system,omitempty"`
-	Prompt    string          `json:"prompt,omitempty"`
-	Tools     []string        `json:"tools,omitempty"`
-	Handler   string          `json:"handler,omitempty"`
-	Condition string          `json:"condition,omitempty"`
-}
-
-// Edge represents an edge connecting two nodes in a workflow.
-type Edge struct {
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Condition string `json:"condition,omitempty"`
-	Transform string `json:"transform,omitempty"`
-}
-
-// WorkflowDefaults represents default settings for a workflow.
-type WorkflowDefaults struct {
-	Provider    string  `json:"provider,omitempty"`
-	Model       string  `json:"model,omitempty"`
-	MaxTokens   int     `json:"max_tokens,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
-}
-
-// ToolDefinition represents a tool that can be used in a workflow.
+// ToolDefinition represents a tool that can be used in a completion request.
 type ToolDefinition struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"input_schema"`
-}
-
-// Workflow represents a workflow template (pre-defined DAG structure).
-type Workflow struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Version     int              `json:"version"`
-	Description string           `json:"description,omitempty"`
-	Defaults    WorkflowDefaults `json:"defaults,omitempty"`
-	Tools       []ToolDefinition `json:"tools,omitempty"`
-	Nodes       []WorkflowNode   `json:"nodes"`
-	Edges       []Edge           `json:"edges"`
-	CreatedAt   time.Time        `json:"created_at"`
-	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
 // CompletionRequest represents a request to an LLM provider.
@@ -153,6 +104,7 @@ type CompletionRequest struct {
 type CompletionResponse struct {
 	ID         string         `json:"id"`
 	Model      string         `json:"model"`
+	Provider   string         `json:"provider,omitempty"` // Which provider served this request
 	Content    []ContentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
 	Usage      Usage          `json:"usage"`

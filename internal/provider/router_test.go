@@ -79,6 +79,9 @@ func TestRouterSingleProvider(t *testing.T) {
 	if resp.ID != "resp-p1" {
 		t.Errorf("expected resp-p1, got %s", resp.ID)
 	}
+	if resp.Provider != "p1" {
+		t.Errorf("expected provider p1, got %s", resp.Provider)
+	}
 }
 
 func TestRouterWeightedDistribution(t *testing.T) {
@@ -120,6 +123,9 @@ func TestRouterFallbackOnError(t *testing.T) {
 	if resp.ID != "resp-fallback" {
 		t.Errorf("expected resp-fallback, got %s", resp.ID)
 	}
+	if resp.Provider != "fallback" {
+		t.Errorf("expected provider fallback, got %s", resp.Provider)
+	}
 }
 
 func TestRouterAllFail(t *testing.T) {
@@ -156,8 +162,12 @@ func TestRouterStreamFallback(t *testing.T) {
 	if len(events) < 2 {
 		t.Fatalf("expected at least 2 events, got %d", len(events))
 	}
-	if events[len(events)-1].Response.ID != "resp-fallback" {
+	doneEvent := events[len(events)-1]
+	if doneEvent.Response.ID != "resp-fallback" {
 		t.Error("expected fallback response")
+	}
+	if doneEvent.Response.Provider != "fallback" {
+		t.Errorf("expected provider fallback, got %s", doneEvent.Response.Provider)
 	}
 }
 

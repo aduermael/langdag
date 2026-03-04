@@ -119,7 +119,7 @@ Extract shared protocol code from the current monolithic `anthropic.go`, then ad
 
 ## Phase 6: Observability & Metadata
 
-- [ ] 6a: Add provider name to completion response metadata — extend `CompletionResponse` or `StreamEvent` so the caller knows which provider actually served the request (useful for A/B analysis)
+- [x] 6a: Add provider name to completion response metadata — extend `CompletionResponse` or `StreamEvent` so the caller knows which provider actually served the request (useful for A/B analysis)
 - [ ] 6b: Log routing decisions — log which provider was selected, whether fallback was triggered, and which provider ultimately succeeded
 
 ## Phase 7: Documentation & Integration Tests

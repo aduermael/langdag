@@ -4,20 +4,18 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/langdag/langdag/pkg/types"
 	_ "modernc.org/sqlite"
 )
 
 // nodeColumns is the column list for node queries (unqualified).
-const nodeColumns = `id, parent_id, sequence, node_type, content, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at`
+const nodeColumns = `id, parent_id, sequence, node_type, content, provider, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at`
 
 // nodeColumnsQ returns the column list qualified with a table alias.
 func nodeColumnsQ(alias string) string {
-	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
+	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.provider, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
 }
 
 // SQLiteStorage implements the Storage interface using SQLite.
@@ -64,132 +62,18 @@ func (s *SQLiteStorage) Close() error {
 }
 
 // =============================================================================
-// Workflow Operations (Templates)
-// =============================================================================
-
-// CreateWorkflow creates a new workflow.
-func (s *SQLiteStorage) CreateWorkflow(ctx context.Context, workflow *types.Workflow) error {
-	definition, err := json.Marshal(workflow)
-	if err != nil {
-		return fmt.Errorf("failed to marshal workflow: %w", err)
-	}
-
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO workflows (id, name, version, definition, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, workflow.ID, workflow.Name, workflow.Version, definition, workflow.CreatedAt, workflow.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("failed to create workflow: %w", err)
-	}
-	return nil
-}
-
-// GetWorkflow retrieves a workflow by ID.
-func (s *SQLiteStorage) GetWorkflow(ctx context.Context, id string) (*types.Workflow, error) {
-	var definition []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT definition FROM workflows WHERE id = ?
-	`, id).Scan(&definition)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get workflow: %w", err)
-	}
-
-	var workflow types.Workflow
-	if err := json.Unmarshal(definition, &workflow); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal workflow: %w", err)
-	}
-	return &workflow, nil
-}
-
-// GetWorkflowByName retrieves a workflow by name.
-func (s *SQLiteStorage) GetWorkflowByName(ctx context.Context, name string) (*types.Workflow, error) {
-	var definition []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT definition FROM workflows WHERE name = ?
-	`, name).Scan(&definition)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get workflow: %w", err)
-	}
-
-	var workflow types.Workflow
-	if err := json.Unmarshal(definition, &workflow); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal workflow: %w", err)
-	}
-	return &workflow, nil
-}
-
-// ListWorkflows returns all workflows.
-func (s *SQLiteStorage) ListWorkflows(ctx context.Context) ([]*types.Workflow, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT definition FROM workflows ORDER BY created_at DESC
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list workflows: %w", err)
-	}
-	defer rows.Close()
-
-	var workflows []*types.Workflow
-	for rows.Next() {
-		var definition []byte
-		if err := rows.Scan(&definition); err != nil {
-			return nil, fmt.Errorf("failed to scan workflow: %w", err)
-		}
-
-		var workflow types.Workflow
-		if err := json.Unmarshal(definition, &workflow); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal workflow: %w", err)
-		}
-		workflows = append(workflows, &workflow)
-	}
-	return workflows, rows.Err()
-}
-
-// UpdateWorkflow updates an existing workflow.
-func (s *SQLiteStorage) UpdateWorkflow(ctx context.Context, workflow *types.Workflow) error {
-	definition, err := json.Marshal(workflow)
-	if err != nil {
-		return fmt.Errorf("failed to marshal workflow: %w", err)
-	}
-
-	workflow.UpdatedAt = time.Now()
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE workflows SET name = ?, version = ?, definition = ?, updated_at = ?
-		WHERE id = ?
-	`, workflow.Name, workflow.Version, definition, workflow.UpdatedAt, workflow.ID)
-	if err != nil {
-		return fmt.Errorf("failed to update workflow: %w", err)
-	}
-	return nil
-}
-
-// DeleteWorkflow deletes a workflow.
-func (s *SQLiteStorage) DeleteWorkflow(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM workflows WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete workflow: %w", err)
-	}
-	return nil
-}
-
-// =============================================================================
 // Node Operations
 // =============================================================================
 
 // scanNode scans a node from a SQL row.
 func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	var node types.Node
-	var parentID, model, status, title, systemPrompt sql.NullString
+	var parentID, providerName, model, status, title, systemPrompt sql.NullString
 	var tokensIn, tokensOut, tokensCacheRead, tokensCacheCreation, tokensReasoning, latencyMs sql.NullInt64
 
 	err := scanner.Scan(
 		&node.ID, &parentID, &node.Sequence, &node.NodeType, &node.Content,
-		&model, &tokensIn, &tokensOut, &tokensCacheRead, &tokensCacheCreation, &tokensReasoning,
+		&providerName, &model, &tokensIn, &tokensOut, &tokensCacheRead, &tokensCacheCreation, &tokensReasoning,
 		&latencyMs, &status,
 		&title, &systemPrompt, &node.CreatedAt,
 	)
@@ -198,6 +82,7 @@ func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	}
 
 	node.ParentID = parentID.String
+	node.Provider = providerName.String
 	node.Model = model.String
 	node.TokensIn = int(tokensIn.Int64)
 	node.TokensOut = int(tokensOut.Int64)
@@ -229,9 +114,9 @@ func scanNodes(rows *sql.Rows) ([]*types.Node, error) {
 func (s *SQLiteStorage) CreateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO nodes (`+nodeColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, node.ID, nullString(node.ParentID), node.Sequence, node.NodeType, node.Content,
-		nullString(node.Model), node.TokensIn, node.TokensOut, node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
+		nullString(node.Provider), nullString(node.Model), node.TokensIn, node.TokensOut, node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
 		node.LatencyMs, nullString(node.Status),
 		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt)
 	if err != nil {
@@ -335,11 +220,11 @@ func (s *SQLiteStorage) ListRootNodes(ctx context.Context) ([]*types.Node, error
 // UpdateNode updates an existing node.
 func (s *SQLiteStorage) UpdateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE nodes SET content = ?, model = ?, tokens_in = ?, tokens_out = ?,
+		UPDATE nodes SET content = ?, provider = ?, model = ?, tokens_in = ?, tokens_out = ?,
 			tokens_cache_read = ?, tokens_cache_creation = ?, tokens_reasoning = ?,
 			latency_ms = ?, status = ?, title = ?, system_prompt = ?
 		WHERE id = ?
-	`, node.Content, nullString(node.Model), node.TokensIn, node.TokensOut,
+	`, node.Content, nullString(node.Provider), nullString(node.Model), node.TokensIn, node.TokensOut,
 		node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
 		node.LatencyMs, nullString(node.Status), nullString(node.Title), nullString(node.SystemPrompt),
 		node.ID)
@@ -363,6 +248,67 @@ func (s *SQLiteStorage) DeleteNode(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to delete node: %w", err)
 	}
 	return nil
+}
+
+// =============================================================================
+// Alias Operations
+// =============================================================================
+
+// CreateAlias creates an alias for a node.
+func (s *SQLiteStorage) CreateAlias(ctx context.Context, nodeID, alias string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO node_aliases (alias, node_id) VALUES (?, ?)
+	`, alias, nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to create alias: %w", err)
+	}
+	return nil
+}
+
+// DeleteAlias removes an alias.
+func (s *SQLiteStorage) DeleteAlias(ctx context.Context, alias string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM node_aliases WHERE alias = ?`, alias)
+	if err != nil {
+		return fmt.Errorf("failed to delete alias: %w", err)
+	}
+	return nil
+}
+
+// GetNodeByAlias retrieves a node by its alias.
+func (s *SQLiteStorage) GetNodeByAlias(ctx context.Context, alias string) (*types.Node, error) {
+	node, err := scanNode(s.db.QueryRowContext(ctx, `
+		SELECT `+nodeColumnsQ("n")+` FROM nodes n
+		JOIN node_aliases a ON n.id = a.node_id
+		WHERE a.alias = ?
+	`, alias))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node by alias: %w", err)
+	}
+	return node, nil
+}
+
+// ListAliases returns all aliases for a node.
+func (s *SQLiteStorage) ListAliases(ctx context.Context, nodeID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT alias FROM node_aliases WHERE node_id = ? ORDER BY alias
+	`, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list aliases: %w", err)
+	}
+	defer rows.Close()
+
+	var aliases []string
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, fmt.Errorf("failed to scan alias: %w", err)
+		}
+		aliases = append(aliases, alias)
+	}
+	return aliases, rows.Err()
 }
 
 // nullString returns a sql.NullString from a string.

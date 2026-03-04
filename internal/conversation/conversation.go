@@ -144,6 +144,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 				CreatedAt: time.Now(),
 			}
 			if response != nil {
+				assistantNode.Provider = response.Provider
 				assistantNode.TokensIn = response.Usage.InputTokens
 				assistantNode.TokensOut = response.Usage.OutputTokens
 				assistantNode.TokensCacheRead = response.Usage.CacheReadInputTokens
@@ -186,8 +187,9 @@ func buildMessages(ancestors []*types.Node) []types.Message {
 	return messages
 }
 
-// ResolveNode finds a node by exact ID or prefix.
+// ResolveNode finds a node by exact ID, prefix match, or alias.
 func (m *Manager) ResolveNode(ctx context.Context, idOrPrefix string) (*types.Node, error) {
+	// Try exact ID
 	node, err := m.storage.GetNode(ctx, idOrPrefix)
 	if err != nil {
 		return nil, err
@@ -195,7 +197,33 @@ func (m *Manager) ResolveNode(ctx context.Context, idOrPrefix string) (*types.No
 	if node != nil {
 		return node, nil
 	}
-	return m.storage.GetNodeByPrefix(ctx, idOrPrefix)
+
+	// Try prefix match
+	node, err = m.storage.GetNodeByPrefix(ctx, idOrPrefix)
+	if err != nil {
+		return nil, err
+	}
+	if node != nil {
+		return node, nil
+	}
+
+	// Try alias
+	return m.storage.GetNodeByAlias(ctx, idOrPrefix)
+}
+
+// CreateAlias creates an alias for a node.
+func (m *Manager) CreateAlias(ctx context.Context, nodeID, alias string) error {
+	return m.storage.CreateAlias(ctx, nodeID, alias)
+}
+
+// DeleteAlias removes an alias.
+func (m *Manager) DeleteAlias(ctx context.Context, alias string) error {
+	return m.storage.DeleteAlias(ctx, alias)
+}
+
+// ListAliases returns all aliases for a node.
+func (m *Manager) ListAliases(ctx context.Context, nodeID string) ([]string, error) {
+	return m.storage.ListAliases(ctx, nodeID)
 }
 
 // ListRoots returns all root nodes.
