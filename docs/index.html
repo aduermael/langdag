@@ -720,38 +720,27 @@
         </div>
         <div class="features-grid">
           <div class="feature-card">
-            <div class="feature-icon">⚡</div>
-            <h3>~1ms Overhead</h3>
+            <h3>⚡ ~1ms Overhead</h3>
             <p>Pure Go implementation with minimal latency. Single static binary with zero runtime dependencies.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🔀</div>
-            <h3>Two Modes</h3>
-            <p>Workflow mode for YAML pipelines, Conversation mode for dynamic chats. Same engine, same storage.</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">🌊</div>
-            <h3>Native Streaming</h3>
+            <h3>🌊 Native Streaming</h3>
             <p>Real-time token streaming via SSE. WebSocket support for bidirectional communication.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🔧</div>
-            <h3>Tool Integration</h3>
-            <p>Three execution modes: Auto, Interrupt, or WebSocket. Native function calling support.</p>
+            <h3>🔄 Auto Retry</h3>
+            <p>Automatic exponential backoff for transient LLM failures. Configurable retry limits per provider.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🌳</div>
-            <h3>Conversation Forking</h3>
+            <h3>🌳 Conversation Forking</h3>
             <p>Branch from any node in your conversation. Explore alternative paths while preserving history.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">💾</div>
-            <h3>Persistent Storage</h3>
-            <p>SQLite by default (zero config). PostgreSQL ready for production. Full replay capabilities.</p>
+            <h3>💾 Persistent Storage</h3>
+            <p>SQLite by default (zero config). Full history replay and conversation tree navigation.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📦</div>
-            <h3>Embeddable Go Module</h3>
+            <h3>📦 Go Module</h3>
             <p>Import langdag directly into your Go application. Build AI agents with persistent DAG storage — no separate server required.</p>
           </div>
         </div>
@@ -765,7 +754,7 @@
           <div>
             <h2 style="font-size: 2rem; margin-bottom: 16px;">Simple CLI Interface</h2>
             <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 1.1rem;">
-              Start conversations, run workflows, and manage your DAGs with intuitive commands.
+              Start conversations, branch from any node, and manage your DAGs with intuitive commands.
             </p>
             <a href="https://github.com/aduermael/langdag" class="btn btn-primary">Get Started</a>
           </div>
@@ -789,77 +778,6 @@
 
 <span class="prompt">$</span> langdag prompt k7x2 <span class="string">"Tell me more"</span>
 <span class="comment"># Continue from any node to branch the tree</span></pre>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Go Module Section -->
-    <section class="features" id="golib">
-      <div class="container">
-        <div class="section-header">
-          <h2>Embed in Your Go Application</h2>
-          <p>Import langdag as a Go module — no separate server, no extra dependencies</p>
-        </div>
-        <div style="max-width: 860px; margin: 0 auto;">
-          <div class="code-block" style="margin-bottom: 24px;">
-            <div class="code-header">
-              <span class="code-dot red"></span>
-              <span class="code-dot yellow"></span>
-              <span class="code-dot green"></span>
-              <span class="code-title">agent.go — Build a Go AI agent</span>
-            </div>
-            <pre class="code-content"><span class="keyword">import</span> <span class="string">"github.com/langdag/langdag/pkg/langdag"</span>
-
-client, _ := langdag.New(langdag.Config{
-    StoragePath: <span class="string">"./agent.db"</span>,
-    APIKeys: map[string]string{
-        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
-    },
-})
-<span class="keyword">defer</span> client.Close()
-
-<span class="comment">// Start a new conversation with streaming</span>
-result, _ := client.Prompt(ctx, <span class="string">"What is LangDAG?"</span>,
-    langdag.WithModel(<span class="string">"claude-opus-4-6"</span>),
-)
-<span class="keyword">for</span> chunk := <span class="keyword">range</span> result.Stream {
-    <span class="keyword">if</span> chunk.Done {
-        fmt.Printf(<span class="string">"\n[node %s]\n"</span>, chunk.NodeID)
-    } <span class="keyword">else</span> {
-        fmt.Print(chunk.Content)
-    }
-}
-
-<span class="comment">// Continue from any node — branch your conversation DAG</span>
-result2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell me more"</span>)
-
-<span class="comment">// Multi-provider routing with fallback</span>
-clientMulti, _ := langdag.New(langdag.Config{
-    Routing: []langdag.RoutingEntry{
-        {Provider: <span class="string">"anthropic"</span>, Weight: 80},
-        {Provider: <span class="string">"openai"</span>, Weight: 20},
-    },
-    FallbackOrder: []string{<span class="string">"anthropic"</span>, <span class="string">"openai"</span>},
-    APIKeys: map[string]string{
-        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
-        <span class="string">"openai"</span>:    os.Getenv(<span class="string">"OPENAI_API_KEY"</span>),
-    },
-})</pre>
-          </div>
-          <div style="display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
-            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
-              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">go get</div>
-              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">go get github.com/langdag/langdag/pkg/langdag</code>
-            </div>
-            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
-              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">Testing</div>
-              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">langdag.NewWithDeps(mockProvider, tempDB)</code>
-            </div>
-            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
-              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">No cobra/viper</div>
-              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">Config struct — no CLI framework dependency</code>
-            </div>
           </div>
         </div>
       </div>
@@ -1147,6 +1065,52 @@ console.log(node.content);
   console.log(<span class="string">`[${n.type}] ${n.content}`</span>);
 }</pre>
             </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Go Module Section -->
+    <section class="features" id="golib" style="padding-top: 0;">
+      <div class="container">
+        <div class="section-header">
+          <h2>Use as a Go Module</h2>
+          <p>Import langdag directly into your Go application — no server, no extra dependencies</p>
+        </div>
+        <div style="max-width: 860px; margin: 0 auto;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--accent-cyan);">go get github.com/langdag/langdag/pkg/langdag</code>
+          </div>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-dot red"></span>
+              <span class="code-dot yellow"></span>
+              <span class="code-dot green"></span>
+              <span class="code-title">agent.go</span>
+            </div>
+            <pre class="code-content"><span class="keyword">import</span> <span class="string">"github.com/langdag/langdag/pkg/langdag"</span>
+
+client, _ := langdag.New(langdag.Config{
+    StoragePath: <span class="string">"./agent.db"</span>,
+    APIKeys: map[string]string{
+        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
+    },
+})
+<span class="keyword">defer</span> client.Close()
+
+result, _ := client.Prompt(ctx, <span class="string">"What is LangDAG?"</span>,
+    langdag.WithModel(<span class="string">"claude-opus-4-6"</span>),
+)
+<span class="keyword">for</span> chunk := <span class="keyword">range</span> result.Stream {
+    <span class="keyword">if</span> chunk.Done {
+        fmt.Printf(<span class="string">"\n[node %s]\n"</span>, chunk.NodeID)
+    } <span class="keyword">else</span> {
+        fmt.Print(chunk.Content)
+    }
+}
+
+<span class="comment">// Continue from any node — branch your conversation DAG</span>
+result2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell me more"</span>)</pre>
           </div>
         </div>
       </div>
