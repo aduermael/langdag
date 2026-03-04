@@ -16,6 +16,7 @@
 
 <p align="center">
   <a href="#features">Features</a> •
+  <a href="#use-as-a-go-library">Go Library</a> •
   <a href="#installation">Installation</a> •
   <a href="#cli">CLI</a> •
   <a href="#api--sdks">API & SDKs</a> •
@@ -51,6 +52,95 @@ LangDAG is a **high-performance Go tool** that persists LLM conversations as dir
 | 🏷️ **Node Aliases** | Human-readable names for any node |
 | 🔄 **Auto Retry** | Exponential backoff for transient LLM failures |
 | 💾 **Persistent Storage** | SQLite with WAL mode, full history replay |
+
+---
+
+## Use as a Go Library
+
+LangDAG is available as an importable Go package for building AI agent applications with persistent conversation storage.
+
+```bash
+go get github.com/langdag/langdag/pkg/langdag
+```
+
+### Basic Usage
+
+```go
+import "github.com/langdag/langdag/pkg/langdag"
+
+client, err := langdag.New(langdag.Config{
+    StoragePath: "./agent.db",
+    APIKeys: map[string]string{
+        "anthropic": os.Getenv("ANTHROPIC_API_KEY"),
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+
+// Start a new conversation
+result, err := client.Prompt(ctx, "What is LangDAG?",
+    langdag.WithModel("claude-opus-4-6"),
+)
+// Stream the response
+for chunk := range result.Stream {
+    if chunk.Done {
+        fmt.Printf("\n[saved as node %s]\n", chunk.NodeID)
+    } else {
+        fmt.Print(chunk.Content)
+    }
+}
+
+// Continue the conversation from a specific node
+result2, err := client.PromptFrom(ctx, result.NodeID, "Tell me more")
+```
+
+### Multi-Provider Routing
+
+```go
+client, err := langdag.New(langdag.Config{
+    Routing: []langdag.RoutingEntry{
+        {Provider: "anthropic", Weight: 80},
+        {Provider: "openai", Weight: 20},
+    },
+    FallbackOrder: []string{"anthropic", "openai"},
+    APIKeys: map[string]string{
+        "anthropic": os.Getenv("ANTHROPIC_API_KEY"),
+        "openai":    os.Getenv("OPENAI_API_KEY"),
+    },
+})
+```
+
+### Config Options
+
+| Field | Description |
+|-------|-------------|
+| `StoragePath` | Path to SQLite database file |
+| `APIKeys` | Map of provider name to API key (`"anthropic"`, `"openai"`, `"gemini"`) |
+| `DefaultModel` | Default model to use when not specified per-request |
+| `DefaultProvider` | Default provider when not using routing |
+| `Routing` | Weighted routing rules across multiple providers |
+| `FallbackOrder` | Provider fallback order on failure |
+| `RetryMax` | Maximum retry attempts (exponential backoff) |
+
+### Available Methods
+
+- `client.Prompt(ctx, message, opts...)` — Start a new conversation
+- `client.PromptFrom(ctx, nodeID, message, opts...)` — Continue from an existing node
+- `client.ListConversations(ctx)` — List all root conversation nodes
+- `client.GetNode(ctx, nodeID)` — Get a single node by ID
+- `client.GetSubtree(ctx, nodeID)` — Get full subtree rooted at a node
+- `client.GetAncestors(ctx, nodeID)` — Get ancestor chain up to root
+- `client.DeleteNode(ctx, nodeID)` — Delete a node and its subtree
+
+### Testing with `NewWithDeps`
+
+Use `NewWithDeps` to inject custom storage and provider implementations — no API keys required in tests:
+
+```go
+client, err := langdag.NewWithDeps(mockProvider, tempStorage)
+```
 
 ---
 

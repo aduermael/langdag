@@ -567,6 +567,7 @@
         </a>
         <div class="nav-links">
           <a href="#features">Features</a>
+          <a href="#golib">Go Library</a>
           <a href="#demo">SDKs</a>
           <a href="https://github.com/aduermael/langdag#sdks">Docs</a>
           <a href="https://github.com/aduermael/langdag" class="btn btn-secondary">
@@ -591,7 +592,8 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
             View on GitHub
           </a>
-          <a href="#demo" class="btn btn-secondary">Python / Go / TypeScript SDKs</a>
+          <a href="#golib" class="btn btn-secondary">Go Library</a>
+          <a href="#demo" class="btn btn-secondary">SDKs</a>
         </div>
 
         <div class="dag-visual">
@@ -747,6 +749,11 @@
             <h3>Persistent Storage</h3>
             <p>SQLite by default (zero config). PostgreSQL ready for production. Full replay capabilities.</p>
           </div>
+          <div class="feature-card">
+            <div class="feature-icon">📦</div>
+            <h3>Embeddable Go Module</h3>
+            <p>Import langdag directly into your Go application. Build AI agents with persistent DAG storage — no separate server required.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -787,6 +794,77 @@
       </div>
     </section>
 
+    <!-- Go Module Section -->
+    <section class="features" id="golib">
+      <div class="container">
+        <div class="section-header">
+          <h2>Embed in Your Go Application</h2>
+          <p>Import langdag as a Go module — no separate server, no extra dependencies</p>
+        </div>
+        <div style="max-width: 860px; margin: 0 auto;">
+          <div class="code-block" style="margin-bottom: 24px;">
+            <div class="code-header">
+              <span class="code-dot red"></span>
+              <span class="code-dot yellow"></span>
+              <span class="code-dot green"></span>
+              <span class="code-title">agent.go — Build a Go AI agent</span>
+            </div>
+            <pre class="code-content"><span class="keyword">import</span> <span class="string">"github.com/langdag/langdag/pkg/langdag"</span>
+
+client, _ := langdag.New(langdag.Config{
+    StoragePath: <span class="string">"./agent.db"</span>,
+    APIKeys: map[string]string{
+        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
+    },
+})
+<span class="keyword">defer</span> client.Close()
+
+<span class="comment">// Start a new conversation with streaming</span>
+result, _ := client.Prompt(ctx, <span class="string">"What is LangDAG?"</span>,
+    langdag.WithModel(<span class="string">"claude-opus-4-6"</span>),
+)
+<span class="keyword">for</span> chunk := <span class="keyword">range</span> result.Stream {
+    <span class="keyword">if</span> chunk.Done {
+        fmt.Printf(<span class="string">"\n[node %s]\n"</span>, chunk.NodeID)
+    } <span class="keyword">else</span> {
+        fmt.Print(chunk.Content)
+    }
+}
+
+<span class="comment">// Continue from any node — branch your conversation DAG</span>
+result2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell me more"</span>)
+
+<span class="comment">// Multi-provider routing with fallback</span>
+clientMulti, _ := langdag.New(langdag.Config{
+    Routing: []langdag.RoutingEntry{
+        {Provider: <span class="string">"anthropic"</span>, Weight: 80},
+        {Provider: <span class="string">"openai"</span>, Weight: 20},
+    },
+    FallbackOrder: []string{<span class="string">"anthropic"</span>, <span class="string">"openai"</span>},
+    APIKeys: map[string]string{
+        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
+        <span class="string">"openai"</span>:    os.Getenv(<span class="string">"OPENAI_API_KEY"</span>),
+    },
+})</pre>
+          </div>
+          <div style="display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
+            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">go get</div>
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">go get github.com/langdag/langdag/pkg/langdag</code>
+            </div>
+            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">Testing</div>
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">langdag.NewWithDeps(mockProvider, tempDB)</code>
+            </div>
+            <div style="flex: 1; min-width: 220px; background: var(--bg-card); border-radius: 12px; padding: 20px 24px; border: 1px solid rgba(255,255,255,0.05);">
+              <div style="color: var(--accent-cyan); font-weight: 600; margin-bottom: 8px;">No cobra/viper</div>
+              <code style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text-secondary);">Config struct — no CLI framework dependency</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- SDK Demo Section -->
     <section class="features" id="demo">
       <div class="container">
@@ -795,7 +873,8 @@
           <p>Build AI-powered applications with native SDKs for Python, Go, and TypeScript</p>
           <div class="lang-toggle" style="margin-top: 24px; display: inline-flex;">
             <button class="lang-btn active" data-lang="python">Python</button>
-            <button class="lang-btn" data-lang="go">Go</button>
+            <button class="lang-btn" data-lang="go">Go SDK</button>
+            <button class="lang-btn" data-lang="gomod">Go Module</button>
             <button class="lang-btn" data-lang="typescript">TypeScript</button>
           </div>
         </div>
@@ -929,6 +1008,81 @@ tree, err := client.GetTree(ctx, nodeID)
           </div>
         </div>
 
+        <!-- Go Module Examples -->
+        <div class="sdk-code" data-lang="gomod">
+          <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));">
+            <!-- Basic Usage -->
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot red"></span>
+                <span class="code-dot yellow"></span>
+                <span class="code-dot green"></span>
+                <span class="code-title">agent.go — Embed in your app</span>
+              </div>
+              <pre class="code-content"><span class="keyword">import</span> <span class="string">"github.com/langdag/langdag/pkg/langdag"</span>
+
+client, _ := langdag.New(langdag.Config{
+    StoragePath: <span class="string">"./agent.db"</span>,
+    APIKeys: map[string]string{
+        <span class="string">"anthropic"</span>: os.Getenv(<span class="string">"ANTHROPIC_API_KEY"</span>),
+    },
+})
+<span class="keyword">defer</span> client.Close()
+
+<span class="comment">// Prompt with streaming</span>
+result, _ := client.Prompt(ctx, <span class="string">"What is LangDAG?"</span>)
+<span class="keyword">for</span> chunk := <span class="keyword">range</span> result.Stream {
+    fmt.Print(chunk.Content)
+}</pre>
+            </div>
+
+            <!-- Multi-provider routing -->
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot red"></span>
+                <span class="code-dot yellow"></span>
+                <span class="code-dot green"></span>
+                <span class="code-title">routing.go — Multi-provider routing</span>
+              </div>
+              <pre class="code-content"><span class="comment">// Weighted routing + fallback</span>
+client, _ := langdag.New(langdag.Config{
+    Routing: []langdag.RoutingEntry{
+        {Provider: <span class="string">"anthropic"</span>, Weight: 80},
+        {Provider: <span class="string">"openai"</span>, Weight: 20},
+    },
+    FallbackOrder: []string{
+        <span class="string">"anthropic"</span>, <span class="string">"openai"</span>,
+    },
+    APIKeys: map[string]string{
+        <span class="string">"anthropic"</span>: anthropicKey,
+        <span class="string">"openai"</span>:    openaiKey,
+    },
+})</pre>
+            </div>
+
+            <!-- DAG navigation -->
+            <div class="code-block">
+              <div class="code-header">
+                <span class="code-dot red"></span>
+                <span class="code-dot yellow"></span>
+                <span class="code-dot green"></span>
+                <span class="code-title">dag.go — Navigate conversations</span>
+              </div>
+              <pre class="code-content"><span class="comment">// Continue from any node</span>
+r2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell me more"</span>)
+
+<span class="comment">// List all conversations</span>
+convs, _ := client.ListConversations(ctx)
+
+<span class="comment">// Get full subtree</span>
+tree, _ := client.GetSubtree(ctx, nodeID)
+
+<span class="comment">// Testing — inject mock deps</span>
+c, _ := langdag.NewWithDeps(mockProvider, tempDB)</pre>
+            </div>
+          </div>
+        </div>
+
         <!-- TypeScript SDK Examples -->
         <div class="sdk-code" data-lang="typescript">
           <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));">
@@ -1006,7 +1160,8 @@ console.log(node.content);
 
           <div class="lang-toggle" style="margin-bottom: 24px; display: inline-flex;">
             <button class="lang-btn active" data-lang="python">Python</button>
-            <button class="lang-btn" data-lang="go">Go</button>
+            <button class="lang-btn" data-lang="go">Go SDK</button>
+            <button class="lang-btn" data-lang="gomod">Go Module</button>
             <button class="lang-btn" data-lang="typescript">TypeScript</button>
           </div>
 
@@ -1020,6 +1175,15 @@ console.log(node.content);
             <div class="install-command">
               <code>go get github.com/langdag/langdag-go</code>
             </div>
+          </div>
+
+          <div class="sdk-code" data-lang="gomod">
+            <div class="install-command">
+              <code>go get github.com/langdag/langdag/pkg/langdag</code>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 12px;">
+              Embed langdag directly in your Go app — persistent DAG storage, multi-provider routing, no server required.
+            </p>
           </div>
 
           <div class="sdk-code" data-lang="typescript">
