@@ -26,8 +26,11 @@ type Node struct {
 	Content      string    `json:"content"`
 	Model        string    `json:"model,omitempty"`
 	TokensIn     int       `json:"tokens_in,omitempty"`
-	TokensOut    int       `json:"tokens_out,omitempty"`
-	LatencyMs    int       `json:"latency_ms,omitempty"`
+	TokensOut           int       `json:"tokens_out,omitempty"`
+	TokensCacheRead     int       `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int       `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int       `json:"tokens_reasoning,omitempty"`
+	LatencyMs           int       `json:"latency_ms,omitempty"`
 	Status       string    `json:"status,omitempty"`
 	Title        string    `json:"title,omitempty"`
 	SystemPrompt string    `json:"system_prompt,omitempty"`

@@ -36,6 +36,9 @@ export class Node {
   readonly model?: string;
   readonly tokensIn?: number;
   readonly tokensOut?: number;
+  readonly cacheReadTokensIn?: number;
+  readonly cacheCreationTokensIn?: number;
+  readonly reasoningTokens?: number;
   readonly latencyMs?: number;
   readonly status?: string;
   readonly title?: string;
@@ -55,6 +58,9 @@ export class Node {
     this.model = data.model;
     this.tokensIn = data.tokens_in;
     this.tokensOut = data.tokens_out;
+    this.cacheReadTokensIn = data.tokens_cache_read;
+    this.cacheCreationTokensIn = data.tokens_cache_creation;
+    this.reasoningTokens = data.tokens_reasoning;
     this.latencyMs = data.latency_ms;
     this.status = data.status;
     this.title = data.title;

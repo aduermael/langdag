@@ -71,6 +71,9 @@ class Node:
     model: str | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
+    cache_read_tokens_in: int | None = None
+    cache_creation_tokens_in: int | None = None
+    reasoning_tokens: int | None = None
     latency_ms: int | None = None
     status: str | None = None
     title: str | None = None
@@ -89,6 +92,9 @@ class Node:
             model=data.get("model"),
             tokens_in=data.get("tokens_in"),
             tokens_out=data.get("tokens_out"),
+            cache_read_tokens_in=data.get("tokens_cache_read"),
+            cache_creation_tokens_in=data.get("tokens_cache_creation"),
+            reasoning_tokens=data.get("tokens_reasoning"),
             latency_ms=data.get("latency_ms"),
             status=data.get("status"),
             title=data.get("title"),

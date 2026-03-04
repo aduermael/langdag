@@ -35,6 +35,9 @@ export interface NodeData {
   model?: string;
   tokens_in?: number;
   tokens_out?: number;
+  tokens_cache_read?: number;
+  tokens_cache_creation?: number;
+  tokens_reasoning?: number;
   latency_ms?: number;
   status?: string;
   title?: string;

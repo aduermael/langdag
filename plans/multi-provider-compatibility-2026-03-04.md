@@ -109,9 +109,9 @@ Update all three SDKs to expose the new token fields.
 
 **Parallel Tasks: 4a, 4b, 4c**
 
-- [ ] 4a: Go SDK — add `CacheReadTokensIn`, `CacheCreationTokensIn`, `ReasoningTokens` to `Node` struct, update JSON parsing
-- [ ] 4b: Python SDK — add `cache_read_tokens_in`, `cache_creation_tokens_in`, `reasoning_tokens` to `Node` dataclass
-- [ ] 4c: TypeScript SDK — add `cacheReadTokensIn`, `cacheCreationTokensIn`, `reasoningTokens` to `NodeData` interface and `Node` class
+- [x] 4a: Go SDK — add `CacheReadTokensIn`, `CacheCreationTokensIn`, `ReasoningTokens` to `Node` struct, update JSON parsing
+- [x] 4b: Python SDK — add `cache_read_tokens_in`, `cache_creation_tokens_in`, `reasoning_tokens` to `Node` dataclass
+- [x] 4c: TypeScript SDK — add `cacheReadTokensIn`, `cacheCreationTokensIn`, `reasoningTokens` to `NodeData` interface and `Node` class
 
 ---
 
