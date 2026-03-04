@@ -92,7 +92,7 @@ Extract shared protocol code from the current monolithic `anthropic.go`, then ad
 - [x] 1a: Split `anthropic.go` into `protocol.go` (message conversion, tool conversion, response parsing, stream event handling) and `direct.go` (client construction, auth, Complete/Stream methods that call protocol helpers)
 - [x] 1b: Add `vertex.go` — Vertex AI variant using HTTP client with Google OAuth, same protocol helpers
 - [x] 1c: Add `bedrock.go` — AWS Bedrock variant using HTTP client with SigV4 auth, same protocol helpers
-- [ ] 1d: Tests for new variants (can be unit tests with HTTP mocks for auth/endpoint logic)
+- [x] 1d: Tests for new variants (can be unit tests with HTTP mocks for auth/endpoint logic)
 
 ## Phase 2: Refactor OpenAI Provider into Protocol + Variants
 
