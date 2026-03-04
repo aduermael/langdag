@@ -124,5 +124,5 @@ Extract shared protocol code from the current monolithic `anthropic.go`, then ad
 
 ## Phase 7: Documentation & Integration Tests
 
-- [ ] 7a: Add integration test with mock providers — test full routing + fallback + retry flow using mock providers with configurable failure modes
+- [x] 7a: Add integration test with mock providers — test full routing + fallback + retry flow using mock providers with configurable failure modes
 - [ ] 7b: Add example config in `examples/` — sample `config.yaml` showing multi-provider routing, fallback, and per-provider retry setup
