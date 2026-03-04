@@ -1,71 +1,128 @@
 # Fallback Providers, A/B Testing & Routing Strategy
 
-**Goal:** Replace single-provider selection with a multi-provider routing system that supports fallback chains, weighted A/B testing, per-provider retry configs, and automatic API key availability filtering. This is critical for migrating off LangGraph while preserving fallback provider behavior.
+**Goal:** Replace single-provider selection with a multi-provider routing system that supports fallback chains, weighted A/B testing, per-provider retry configs, and automatic credential filtering. Also restructure providers into protocol groups so adding new endpoints (Vertex, Bedrock, Azure) is trivial.
 
 ## Design Overview
 
-A new `Router` wraps multiple `Provider` instances and implements the `Provider` interface itself. It is configured via YAML/env vars and supports:
+### Provider Group Architecture
+
+Providers are organized by **API protocol** — variants within a group share all message conversion, streaming, and response parsing code. Only auth, base URL, and model list differ per variant.
+
+```
+internal/provider/
+├── anthropic/
+│   ├── protocol.go          # Shared: message/tool conversion, response parsing, streaming
+│   ├── direct.go            # Direct Anthropic API (SDK-based, x-api-key auth)
+│   ├── bedrock.go           # AWS Bedrock (HTTP + AWS SigV4 auth)
+│   └── vertex.go            # Vertex AI (HTTP + Google OAuth)
+├── openai/
+│   ├── protocol.go          # Shared: message/tool conversion, SSE parsing
+│   ├── direct.go            # Direct OpenAI API (Bearer token auth)
+│   └── azure.go             # Azure OpenAI (api-key header, different URL scheme)
+├── gemini/
+│   ├── protocol.go          # Shared: message/tool conversion, SSE snapshot diffing
+│   ├── direct.go            # Direct Gemini API (query param auth)
+│   └── vertex.go            # Vertex AI Gemini (Google OAuth, different base URL)
+├── mock/
+│   └── mock.go              # Unchanged
+├── provider.go              # Provider interface
+├── retry.go                 # Retry wrapper (unchanged)
+└── router.go                # NEW: weighted routing + fallback
+```
+
+Each variant is a distinct provider name in config: `anthropic`, `anthropic-vertex`, `anthropic-bedrock`, `openai`, `openai-azure`, `gemini`, `gemini-vertex`, etc.
+
+### Router
+
+A new `Router` wraps multiple `Provider` instances and implements the `Provider` interface itself:
 
 - **Weighted routing**: e.g. Anthropic 90%, Vertex 10% — chosen probabilistically per request
-- **Fallback chains**: if the selected provider fails (after its own retries), try the next one
+- **Fallback chains**: if the selected provider fails (after its own retries), try the next one in fallback order
 - **Per-provider retry**: each provider gets its own retry config (or inherits global defaults)
-- **API key filtering**: providers without valid credentials are automatically excluded at startup
-- **Transparent**: the Router satisfies the `Provider` interface, so the conversation manager doesn't change
+- **Credential filtering**: providers without valid credentials are automatically excluded at startup
+- **Transparent**: satisfies `Provider` interface, conversation manager doesn't change
 
 ### Config Example (YAML)
 
 ```yaml
 providers:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+  anthropic-vertex:
+    project_id: my-gcp-project
+    region: us-east5
+  openai:
+    api_key: ${OPENAI_API_KEY}
+
   routing:
     - provider: anthropic
-      weight: 90        # 90% of traffic
+      weight: 80
       retry:
         max_retries: 3
         base_delay: 1s
         max_delay: 30s
-    - provider: openai
-      weight: 10        # 10% of traffic
+    - provider: anthropic-vertex
+      weight: 20
       retry:
         max_retries: 2
         base_delay: 500ms
         max_delay: 10s
-  fallback_order:       # on failure, try these in order
+
+  fallback_order:
     - anthropic
+    - anthropic-vertex
     - openai
-    - gemini
 ```
 
 When `providers.routing` is not set, behavior is identical to today (single `providers.default` provider).
 
 ### Env Var Overrides
 
-- `LANGDAG_ROUTING`: JSON array override, e.g. `[{"provider":"anthropic","weight":90},{"provider":"openai","weight":10}]`
-- `LANGDAG_FALLBACK_ORDER`: comma-separated, e.g. `anthropic,openai,gemini`
-- Existing per-provider API key env vars (`ANTHROPIC_API_KEY`, etc.) still work — providers without keys are silently dropped from routing/fallback
+- `LANGDAG_ROUTING`: JSON array, e.g. `[{"provider":"anthropic","weight":80},{"provider":"anthropic-vertex","weight":20}]`
+- `LANGDAG_FALLBACK_ORDER`: comma-separated, e.g. `anthropic,anthropic-vertex,openai`
+- Per-variant env vars: `ANTHROPIC_API_KEY`, `VERTEX_PROJECT_ID`, `VERTEX_REGION`, `AWS_REGION`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, etc.
+- Providers without valid credentials are silently dropped from routing/fallback
 
 ---
 
-## Phase 1: Provider Router Core
+## Phase 1: Refactor Anthropic Provider into Protocol + Variants
 
-- [ ] 1a: Create `internal/provider/router.go` — `Router` struct implementing `Provider` interface with weighted random selection, fallback chain on failure, and API key availability filtering at construction time
-- [ ] 1b: Create `internal/provider/router_test.go` — unit tests for weighted selection distribution, fallback on error, skip unavailable providers, all-fail case
+Extract shared protocol code from the current monolithic `anthropic.go`, then add Vertex and Bedrock variants.
 
-## Phase 2: Per-Provider Retry Config
+- [ ] 1a: Split `anthropic.go` into `protocol.go` (message conversion, tool conversion, response parsing, stream event handling) and `direct.go` (client construction, auth, Complete/Stream methods that call protocol helpers)
+- [ ] 1b: Add `vertex.go` — Vertex AI variant using HTTP client with Google OAuth, same protocol helpers
+- [ ] 1c: Add `bedrock.go` — AWS Bedrock variant using HTTP client with SigV4 auth, same protocol helpers
+- [ ] 1d: Tests for new variants (can be unit tests with HTTP mocks for auth/endpoint logic)
 
-- [ ] 2a: Extend config types — add `RoutingEntry` struct (provider name, weight, per-provider retry config) and `[]RoutingEntry` + `FallbackOrder []string` fields to `ProvidersConfig`
-- [ ] 2b: Wire per-provider retry — each provider in the router gets its own `WithRetry` wrapper based on its entry's retry config (falling back to global retry config if not specified)
+## Phase 2: Refactor OpenAI Provider into Protocol + Variants
 
-## Phase 3: Config & Factory Integration
+- [ ] 2a: Split `openai.go` into `protocol.go` (message/tool conversion, SSE parsing, response mapping) and `direct.go` (already supports base_url, just restructure)
+- [ ] 2b: Add `azure.go` — Azure OpenAI variant (different URL scheme: `{endpoint}/openai/deployments/{model}/chat/completions?api-version=...`, `api-key` header)
+- [ ] 2c: Tests for Azure variant
 
-- [ ] 3a: Update `config.go` — add viper bindings for `providers.routing` list and `providers.fallback_order`, plus `LANGDAG_ROUTING` and `LANGDAG_FALLBACK_ORDER` env var overrides
-- [ ] 3b: Update `createProvider()` in `server.go` — when `providers.routing` is present, build all available providers, wrap each with its retry config, construct the Router; otherwise keep current single-provider behavior
+## Phase 3: Refactor Gemini Provider into Protocol + Variants
 
-## Phase 4: Observability & Metadata
+- [ ] 3a: Split `gemini.go` into `protocol.go` and `direct.go`
+- [ ] 3b: Add `vertex.go` — Vertex AI Gemini variant (different base URL, Google OAuth instead of API key)
+- [ ] 3c: Tests for Vertex Gemini variant
 
-- [ ] 4a: Add provider name to completion response metadata — extend `CompletionResponse` (or `StreamEvent`) so the caller knows which provider actually served the request (useful for A/B analysis)
-- [ ] 4b: Log routing decisions — log which provider was selected, whether fallback was triggered, and which provider ultimately succeeded
+## Phase 4: Provider Router Core
 
-## Phase 5: Documentation & Tests
+- [ ] 4a: Create `internal/provider/router.go` — `Router` struct implementing `Provider` interface with weighted random selection, fallback chain on failure, and credential availability filtering at construction time
+- [ ] 4b: Create `internal/provider/router_test.go` — unit tests for weighted selection distribution, fallback on error, skip unavailable providers, all-fail case
 
-- [ ] 5a: Add integration test with mock providers — test full routing + fallback + retry flow through the server using mock providers with configurable failure modes
-- [ ] 5b: Add example config in `examples/` — sample `config.yaml` showing routing, fallback, and per-provider retry setup
+## Phase 5: Config, Factory & Per-Provider Retry
+
+- [ ] 5a: Extend config types — add per-variant config structs (Vertex: project_id, region; Bedrock: region; Azure: endpoint, api_version), `RoutingEntry` (provider name, weight, retry config), routing list, and fallback_order to `ProvidersConfig`
+- [ ] 5b: Update `config.go` — add viper bindings for new provider variants, routing list, fallback_order, and env var overrides
+- [ ] 5c: Update `createProvider()` in `server.go` — provider registry mapping names to factory functions; when routing config is present, build all available providers, wrap each with per-provider retry (falling back to global), construct Router; otherwise keep single-provider behavior
+
+## Phase 6: Observability & Metadata
+
+- [ ] 6a: Add provider name to completion response metadata — extend `CompletionResponse` or `StreamEvent` so the caller knows which provider actually served the request (useful for A/B analysis)
+- [ ] 6b: Log routing decisions — log which provider was selected, whether fallback was triggered, and which provider ultimately succeeded
+
+## Phase 7: Documentation & Integration Tests
+
+- [ ] 7a: Add integration test with mock providers — test full routing + fallback + retry flow using mock providers with configurable failure modes
+- [ ] 7b: Add example config in `examples/` — sample `config.yaml` showing multi-provider routing, fallback, and per-provider retry setup
