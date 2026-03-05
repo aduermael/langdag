@@ -31,8 +31,10 @@ func NewManager(store storage.Storage, prov provider.Provider) *Manager {
 // It creates a root user node, sends to the LLM, and streams the response.
 // The assistant node is saved when the stream completes.
 func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string) (<-chan types.StreamEvent, error) {
+	rootID := uuid.New().String()
 	rootNode := &types.Node{
-		ID:           uuid.New().String(),
+		ID:           rootID,
+		RootID:       rootID,
 		Sequence:     0,
 		NodeType:     types.NodeTypeUser,
 		Content:      message,
@@ -78,6 +80,7 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 	userNode := &types.Node{
 		ID:        uuid.New().String(),
 		ParentID:  parentNodeID,
+		RootID:    root.ID,
 		Sequence:  lastNode.Sequence + 1,
 		NodeType:  types.NodeTypeUser,
 		Content:   message,
@@ -135,6 +138,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 			assistantNode := &types.Node{
 				ID:        uuid.New().String(),
 				ParentID:  parentNode.ID,
+				RootID:    parentNode.RootID,
 				Sequence:  parentNode.Sequence + 1,
 				NodeType:  types.NodeTypeAssistant,
 				Content:   fullText,

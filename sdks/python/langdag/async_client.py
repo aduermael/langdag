@@ -222,13 +222,27 @@ class AsyncLangDAGClient:
 
     # --- Prompt Methods ---
 
-    async def prompt(
+    async def _prompt_non_streaming(
+        self,
+        message: str,
+        model: str | None = None,
+        system_prompt: str | None = None,
+    ) -> PromptResponse:
+        body: dict[str, Any] = {"message": message, "stream": False}
+        if model is not None:
+            body["model"] = model
+        if system_prompt is not None:
+            body["system_prompt"] = system_prompt
+        data = await self._request("POST", "/prompt", body)
+        return PromptResponse.from_dict(data)
+
+    def prompt(
         self,
         message: str,
         model: str | None = None,
         system_prompt: str | None = None,
         stream: bool = False,
-    ) -> PromptResponse | AsyncIterator[SSEEvent]:
+    ) -> Any:
         """Send a prompt to start a new conversation.
 
         Args:
@@ -238,7 +252,7 @@ class AsyncLangDAGClient:
             stream: If True, return an async iterator of SSE events.
 
         Returns:
-            PromptResponse if stream=False, otherwise an AsyncIterator of SSEEvent.
+            Awaitable[PromptResponse] if stream=False, AsyncIterator[SSEEvent] if stream=True.
 
         Example:
             >>> # Non-streaming
@@ -250,25 +264,35 @@ class AsyncLangDAGClient:
             ...     if event.content:
             ...         print(event.content, end="")
         """
-        body: dict[str, Any] = {"message": message, "stream": stream}
-        if model is not None:
-            body["model"] = model
-        if system_prompt is not None:
-            body["system_prompt"] = system_prompt
-
         if stream:
+            body: dict[str, Any] = {"message": message, "stream": True}
+            if model is not None:
+                body["model"] = model
+            if system_prompt is not None:
+                body["system_prompt"] = system_prompt
             return self._stream_request("POST", "/prompt", body)
         else:
-            data = await self._request("POST", "/prompt", body)
-            return PromptResponse.from_dict(data)
+            return self._prompt_non_streaming(message, model, system_prompt)
 
-    async def prompt_from(
+    async def _prompt_from_non_streaming(
+        self,
+        node_id: str,
+        message: str,
+        model: str | None = None,
+    ) -> PromptResponse:
+        body: dict[str, Any] = {"message": message, "stream": False}
+        if model is not None:
+            body["model"] = model
+        data = await self._request("POST", f"/nodes/{node_id}/prompt", body)
+        return PromptResponse.from_dict(data)
+
+    def prompt_from(
         self,
         node_id: str,
         message: str,
         model: str | None = None,
         stream: bool = False,
-    ) -> PromptResponse | AsyncIterator[SSEEvent]:
+    ) -> Any:
         """Send a prompt continuing from an existing node.
 
         Args:
@@ -278,20 +302,18 @@ class AsyncLangDAGClient:
             stream: If True, return an async iterator of SSE events.
 
         Returns:
-            PromptResponse if stream=False, otherwise an AsyncIterator of SSEEvent.
+            Awaitable[PromptResponse] if stream=False, AsyncIterator[SSEEvent] if stream=True.
 
         Raises:
             NotFoundError: If the node is not found.
         """
-        body: dict[str, Any] = {"message": message, "stream": stream}
-        if model is not None:
-            body["model"] = model
-
         if stream:
+            body: dict[str, Any] = {"message": message, "stream": True}
+            if model is not None:
+                body["model"] = model
             return self._stream_request("POST", f"/nodes/{node_id}/prompt", body)
         else:
-            data = await self._request("POST", f"/nodes/{node_id}/prompt", body)
-            return PromptResponse.from_dict(data)
+            return self._prompt_from_non_streaming(node_id, message, model)
 
     # --- Alias Methods ---
 

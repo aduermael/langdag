@@ -21,6 +21,7 @@ const (
 type Node struct {
 	ID           string    `json:"id"`
 	ParentID     string    `json:"parent_id,omitempty"`
+	RootID       string    `json:"root_id,omitempty"`
 	Sequence     int       `json:"sequence"`
 	Type         NodeType  `json:"node_type"`
 	Content      string    `json:"content"`

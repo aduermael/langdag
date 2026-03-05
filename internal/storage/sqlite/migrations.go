@@ -67,4 +67,20 @@ var migrations = []string{
 	ALTER TABLE nodes ADD COLUMN metadata TEXT;
 	UPDATE schema_version SET version = 5;
 	`,
+
+	// Migration 6: Add root_id column for O(1) root lookup from any node
+	`
+	ALTER TABLE nodes ADD COLUMN root_id TEXT REFERENCES nodes(id);
+	UPDATE nodes SET root_id = id WHERE parent_id IS NULL;
+	UPDATE nodes SET root_id = (
+		WITH RECURSIVE ancestors AS (
+			SELECT id, parent_id FROM nodes WHERE id = nodes.id
+			UNION ALL
+			SELECT n.id, n.parent_id FROM nodes n JOIN ancestors a ON n.id = a.parent_id
+		)
+		SELECT id FROM ancestors WHERE parent_id IS NULL
+	) WHERE root_id IS NULL;
+	CREATE INDEX IF NOT EXISTS idx_nodes_root_id ON nodes(root_id);
+	UPDATE schema_version SET version = 6;
+	`,
 }

@@ -25,6 +25,7 @@ export interface ApiErrorBody {
 export interface NodeData {
   id: string;
   parent_id?: string;
+  root_id?: string;
   sequence: number;
   node_type: NodeType;
   content: string;

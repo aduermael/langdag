@@ -26,6 +26,7 @@ const DEFAULT_BASE_URL = 'http://localhost:8080';
 export class Node {
   readonly id: string;
   readonly parentId?: string;
+  readonly rootId?: string;
   readonly sequence: number;
   readonly type: NodeType;
   readonly content: string;
@@ -48,6 +49,7 @@ export class Node {
   constructor(data: NodeData, client: LangDAGClient) {
     this.id = data.id;
     this.parentId = data.parent_id;
+    this.rootId = data.root_id;
     this.sequence = data.sequence;
     this.type = data.node_type;
     this.content = data.content;

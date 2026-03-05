@@ -54,6 +54,7 @@ class Node:
     content: str
     created_at: datetime
     parent_id: str | None = None
+    root_id: str | None = None
     model: str | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
@@ -75,6 +76,7 @@ class Node:
             content=data["content"],
             created_at=_parse_datetime(data["created_at"]),
             parent_id=data.get("parent_id"),
+            root_id=data.get("root_id"),
             model=data.get("model"),
             tokens_in=data.get("tokens_in"),
             tokens_out=data.get("tokens_out"),

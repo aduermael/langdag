@@ -10,6 +10,7 @@ import (
 type NodeResponse struct {
 	ID           string `json:"id"`
 	ParentID     string `json:"parent_id,omitempty"`
+	RootID       string `json:"root_id,omitempty"`
 	Sequence     int    `json:"sequence"`
 	NodeType     string `json:"node_type"`
 	Content      string `json:"content"`
@@ -59,7 +60,8 @@ func (s *Server) handleGetNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toNodeResponse(node))
 }
 
-// handleGetTree returns a node and its full subtree.
+// handleGetTree returns the full conversation tree containing the given node.
+// Uses root_id for O(1) root lookup, then returns the complete subtree.
 func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	nodeID := r.PathValue("id")
@@ -74,7 +76,13 @@ func (s *Server) handleGetTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nodes, err := s.convMgr.GetSubtree(ctx, node.ID)
+	// Use root_id for O(1) root lookup
+	rootID := node.RootID
+	if rootID == "" {
+		rootID = node.ID
+	}
+
+	nodes, err := s.convMgr.GetSubtree(ctx, rootID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -179,6 +187,7 @@ func toNodeResponse(n *types.Node) NodeResponse {
 	return NodeResponse{
 		ID:           n.ID,
 		ParentID:     n.ParentID,
+		RootID:       n.RootID,
 		Sequence:     n.Sequence,
 		NodeType:     string(n.NodeType),
 		Content:      n.Content,

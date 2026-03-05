@@ -278,6 +278,12 @@ func importThread(ctx context.Context, thread *ExportThread, exportedAt time.Tim
 		return 0, nil
 	}
 
+	// Set root_id on all nodes (root is always the first node).
+	rootID := nodes[0].ID
+	for _, node := range nodes {
+		node.RootID = rootID
+	}
+
 	if dryRun {
 		return len(nodes), nil
 	}
