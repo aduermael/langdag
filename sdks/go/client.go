@@ -88,6 +88,7 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 		Message:      message,
 		Model:        o.model,
 		SystemPrompt: o.systemPrompt,
+		Tools:        o.tools,
 	}
 
 	var resp promptResponse
@@ -115,6 +116,7 @@ func (c *Client) PromptStream(ctx context.Context, message string, opts ...Promp
 		Model:        o.model,
 		SystemPrompt: o.systemPrompt,
 		Stream:       true,
+		Tools:        o.tools,
 	}
 
 	return c.doStreamRequest(ctx, http.MethodPost, "/prompt", req)
@@ -125,6 +127,7 @@ func (c *Client) promptFrom(ctx context.Context, nodeID, message string, o *prom
 	req := promptRequest{
 		Message: message,
 		Model:   o.model,
+		Tools:   o.tools,
 	}
 
 	var resp promptResponse
@@ -146,6 +149,7 @@ func (c *Client) promptStreamFrom(ctx context.Context, nodeID, message string, o
 		Message: message,
 		Model:   o.model,
 		Stream:  true,
+		Tools:   o.tools,
 	}
 
 	return c.doStreamRequest(ctx, http.MethodPost, fmt.Sprintf("/nodes/%s/prompt", nodeID), req)

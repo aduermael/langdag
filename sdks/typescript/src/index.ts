@@ -15,6 +15,7 @@ export type {
   // Client configuration
   LangDAGClientOptions,
   PromptOptions,
+  ToolDefinition,
 
   // Core models
   NodeData,

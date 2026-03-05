@@ -30,7 +30,7 @@ func NewManager(store storage.Storage, prov provider.Provider) *Manager {
 // Prompt creates a new conversation tree with the given message.
 // It creates a root user node, sends to the LLM, and streams the response.
 // The assistant node is saved when the stream completes.
-func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string) (<-chan types.StreamEvent, error) {
+func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
 	rootID := uuid.New().String()
 	rootNode := &types.Node{
 		ID:           rootID,
@@ -52,13 +52,13 @@ func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt strin
 		{Role: "user", Content: json.RawMessage(fmt.Sprintf("%q", message))},
 	}
 
-	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt)
+	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools)
 }
 
 // PromptFrom continues a conversation from an existing node.
 // It creates a user child node, builds message history by walking to the root,
 // sends to the LLM, and streams the response.
-func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string) (<-chan types.StreamEvent, error) {
+func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
 	// Get ancestors (path from root to parentNode)
 	ancestors, err := m.storage.GetAncestors(ctx, parentNodeID)
 	if err != nil {
@@ -98,17 +98,18 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		Content: json.RawMessage(fmt.Sprintf("%q", message)),
 	})
 
-	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt)
+	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools)
 }
 
 // streamResponse sends messages to the LLM and wraps the provider events,
 // saving the assistant node when the stream completes.
-func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string) (<-chan types.StreamEvent, error) {
+func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
 	req := &types.CompletionRequest{
 		Model:     model,
 		Messages:  messages,
 		System:    systemPrompt,
 		MaxTokens: 4096,
+		Tools:     tools,
 	}
 
 	providerEvents, err := m.provider.Stream(ctx, req)
@@ -135,13 +136,23 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 		}
 
 		if response != nil || fullText != "" {
+			// Determine the content to store: if the response contains
+			// non-text content blocks (e.g. tool_use), store the full
+			// JSON-encoded content blocks so callers can parse them.
+			nodeContent := fullText
+			if response != nil && hasNonTextBlocks(response.Content) {
+				if encoded, err := json.Marshal(response.Content); err == nil {
+					nodeContent = string(encoded)
+				}
+			}
+
 			assistantNode := &types.Node{
 				ID:        uuid.New().String(),
 				ParentID:  parentNode.ID,
 				RootID:    parentNode.RootID,
 				Sequence:  parentNode.Sequence + 1,
 				NodeType:  types.NodeTypeAssistant,
-				Content:   fullText,
+				Content:   nodeContent,
 				Model:     model,
 				Status:    "completed",
 				LatencyMs: int(time.Since(startTime).Milliseconds()),
@@ -256,6 +267,16 @@ func (m *Manager) UpdateTitle(ctx context.Context, nodeID, title string) error {
 	}
 	node.Title = title
 	return m.storage.UpdateNode(ctx, node)
+}
+
+// hasNonTextBlocks returns true if content contains any non-text blocks (e.g. tool_use).
+func hasNonTextBlocks(blocks []types.ContentBlock) bool {
+	for _, b := range blocks {
+		if b.Type != "text" {
+			return true
+		}
+	}
+	return false
 }
 
 // GenerateTitle generates a title from the first message.

@@ -43,6 +43,19 @@ export interface NodeData {
 }
 
 // ============================================================================
+// Tool Types
+// ============================================================================
+
+/**
+ * Definition of a tool that can be used by the LLM
+ */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+// ============================================================================
 // Prompt Types
 // ============================================================================
 
@@ -52,6 +65,7 @@ export interface NodeData {
 export interface PromptOptions {
   model?: string;
   systemPrompt?: string;
+  tools?: ToolDefinition[];
 }
 
 // ============================================================================

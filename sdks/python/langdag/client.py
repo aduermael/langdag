@@ -227,6 +227,7 @@ class LangDAGClient:
         model: str | None = None,
         system_prompt: str | None = None,
         stream: bool = False,
+        tools: list[dict[str, Any]] | None = None,
     ) -> PromptResponse | Iterator[SSEEvent]:
         """Send a prompt to start a new conversation.
 
@@ -235,6 +236,7 @@ class LangDAGClient:
             model: LLM model to use.
             system_prompt: Optional system prompt.
             stream: If True, return an iterator of SSE events.
+            tools: Optional list of tool definitions for the LLM.
 
         Returns:
             PromptResponse if stream=False, otherwise an iterator of SSEEvent.
@@ -254,6 +256,8 @@ class LangDAGClient:
             body["model"] = model
         if system_prompt is not None:
             body["system_prompt"] = system_prompt
+        if tools is not None:
+            body["tools"] = tools
 
         if stream:
             return self._stream_request("POST", "/prompt", body)
@@ -267,6 +271,7 @@ class LangDAGClient:
         message: str,
         model: str | None = None,
         stream: bool = False,
+        tools: list[dict[str, Any]] | None = None,
     ) -> PromptResponse | Iterator[SSEEvent]:
         """Send a prompt continuing from an existing node.
 
@@ -275,6 +280,7 @@ class LangDAGClient:
             message: The message to send.
             model: LLM model to use.
             stream: If True, return an iterator of SSE events.
+            tools: Optional list of tool definitions for the LLM.
 
         Returns:
             PromptResponse if stream=False, otherwise an iterator of SSEEvent.
@@ -285,6 +291,8 @@ class LangDAGClient:
         body: dict[str, Any] = {"message": message, "stream": stream}
         if model is not None:
             body["model"] = model
+        if tools is not None:
+            body["tools"] = tools
 
         if stream:
             return self._stream_request("POST", f"/nodes/{node_id}/prompt", body)

@@ -3,6 +3,7 @@ package langdag
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -63,18 +64,33 @@ type Tree struct {
 	Nodes []Node `json:"nodes"`
 }
 
+// ToolDefinition describes a tool that the model can use.
+type ToolDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
 // PromptOption configures a prompt request.
 type PromptOption func(*promptOptions)
 
 type promptOptions struct {
 	model        string
 	systemPrompt string
+	tools        []ToolDefinition
 }
 
 // WithSystem sets the system prompt (only for new trees via client.Prompt).
 func WithSystem(prompt string) PromptOption {
 	return func(o *promptOptions) {
 		o.systemPrompt = prompt
+	}
+}
+
+// WithTools sets the tools available for the prompt.
+func WithTools(tools []ToolDefinition) PromptOption {
+	return func(o *promptOptions) {
+		o.tools = tools
 	}
 }
 
@@ -87,10 +103,11 @@ func WithModel(model string) PromptOption {
 
 // promptRequest is the JSON body sent to /prompt and /nodes/{id}/prompt.
 type promptRequest struct {
-	Message      string `json:"message"`
-	Model        string `json:"model,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	Stream       bool   `json:"stream,omitempty"`
+	Message      string           `json:"message"`
+	Model        string           `json:"model,omitempty"`
+	SystemPrompt string           `json:"system_prompt,omitempty"`
+	Stream       bool             `json:"stream,omitempty"`
+	Tools        []ToolDefinition `json:"tools,omitempty"`
 }
 
 // promptResponse is the JSON body returned from /prompt and /nodes/{id}/prompt.

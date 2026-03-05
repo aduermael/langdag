@@ -73,17 +73,17 @@ export class Node {
    * @param options - Optional model override
    * @returns The assistant's response node
    */
-  async prompt(message: string, options?: { model?: string }): Promise<Node> {
+  async prompt(message: string, options?: PromptOptions): Promise<Node> {
     return this.client.promptFrom(this.id, message, options);
   }
 
   /**
    * Continue the conversation from this node (streaming).
    * @param message - The message to send
-   * @param options - Optional model override
+   * @param options - Optional model override and tools
    * @returns A Stream for consuming SSE events and getting the final node
    */
-  async promptStream(message: string, options?: { model?: string }): Promise<Stream> {
+  async promptStream(message: string, options?: PromptOptions): Promise<Stream> {
     return this.client.promptStreamFrom(this.id, message, options);
   }
 }
@@ -307,6 +307,7 @@ export class LangDAGClient {
       message,
       model: options?.model,
       system_prompt: options?.systemPrompt,
+      tools: options?.tools,
       stream: false,
     });
 
@@ -333,6 +334,7 @@ export class LangDAGClient {
       message,
       model: options?.model,
       system_prompt: options?.systemPrompt,
+      tools: options?.tools,
       stream: true,
     });
 
@@ -344,13 +346,14 @@ export class LangDAGClient {
    * Prefer using node.prompt() instead.
    * @internal
    */
-  async promptFrom(nodeId: string, message: string, options?: { model?: string }): Promise<Node> {
+  async promptFrom(nodeId: string, message: string, options?: PromptOptions): Promise<Node> {
     const resp = await this.request<{ node_id: string; content: string }>(
       'POST',
       `/nodes/${encodeURIComponent(nodeId)}/prompt`,
       {
         message,
         model: options?.model,
+        tools: options?.tools,
         stream: false,
       },
     );
@@ -372,13 +375,14 @@ export class LangDAGClient {
    * Prefer using node.promptStream() instead.
    * @internal
    */
-  async promptStreamFrom(nodeId: string, message: string, options?: { model?: string }): Promise<Stream> {
+  async promptStreamFrom(nodeId: string, message: string, options?: PromptOptions): Promise<Stream> {
     const rawStream = await this.requestStream(
       'POST',
       `/nodes/${encodeURIComponent(nodeId)}/prompt`,
       {
         message,
         model: options?.model,
+        tools: options?.tools,
         stream: true,
       },
     );

@@ -14,10 +14,19 @@ import (
 
 // Config holds mock provider configuration.
 type Config struct {
-	Mode          string        // random, echo, fixed
+	Mode          string        // random, echo, fixed, tool_use
 	FixedResponse string        // response text for fixed mode
 	Delay         time.Duration // delay before responding
 	ChunkDelay    time.Duration // delay between stream chunks
+	// ToolCalls configures tool_use responses when Mode is "tool_use".
+	// Each entry produces a tool_use content block in the response.
+	ToolCalls []ToolCallConfig
+}
+
+// ToolCallConfig defines a mock tool call response.
+type ToolCallConfig struct {
+	Name  string          // Tool name
+	Input json.RawMessage // Tool input as JSON
 }
 
 // Provider implements the provider interface with mock responses.
@@ -54,15 +63,19 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 	}
 
 	text := p.generateResponse(req)
+	contentBlocks := p.generateContentBlocks(text)
+
+	stopReason := "end_turn"
+	if p.cfg.Mode == "tool_use" && len(p.cfg.ToolCalls) > 0 {
+		stopReason = "tool_use"
+	}
 
 	inputTokens := estimateTokens(req)
 	return &types.CompletionResponse{
-		ID:    generateID(),
-		Model: req.Model,
-		Content: []types.ContentBlock{
-			{Type: "text", Text: text},
-		},
-		StopReason: "end_turn",
+		ID:         generateID(),
+		Model:      req.Model,
+		Content:    contentBlocks,
+		StopReason: stopReason,
 		Usage: types.Usage{
 			InputTokens:              inputTokens,
 			OutputTokens:             len(strings.Fields(text)),
@@ -85,7 +98,7 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 
 	text := p.generateResponse(req)
 	words := strings.Fields(text)
-	events := make(chan types.StreamEvent, len(words)+3)
+	events := make(chan types.StreamEvent, len(words)+len(p.cfg.ToolCalls)+5)
 
 	go func() {
 		defer close(events)
@@ -116,17 +129,36 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 			}
 		}
 
+		// Emit content_done events for any tool_use blocks
+		if p.cfg.Mode == "tool_use" {
+			for i, tc := range p.cfg.ToolCalls {
+				events <- types.StreamEvent{
+					Type: types.StreamEventContentDone,
+					ContentBlock: &types.ContentBlock{
+						Type:  "tool_use",
+						ID:    fmt.Sprintf("toolu_%06d", i),
+						Name:  tc.Name,
+						Input: tc.Input,
+					},
+				}
+			}
+		}
+
+		contentBlocks := p.generateContentBlocks(text)
+		stopReason := "end_turn"
+		if p.cfg.Mode == "tool_use" && len(p.cfg.ToolCalls) > 0 {
+			stopReason = "tool_use"
+		}
+
 		// Done event
 		inputTokens := estimateTokens(req)
 		events <- types.StreamEvent{
 			Type: types.StreamEventDone,
 			Response: &types.CompletionResponse{
-				ID:    generateID(),
-				Model: req.Model,
-				Content: []types.ContentBlock{
-					{Type: "text", Text: text},
-				},
-				StopReason: "end_turn",
+				ID:         generateID(),
+				Model:      req.Model,
+				Content:    contentBlocks,
+				StopReason: stopReason,
 				Usage: types.Usage{
 					InputTokens:              inputTokens,
 					OutputTokens:             len(words),
@@ -150,9 +182,35 @@ func (p *Provider) generateResponse(req *types.CompletionRequest) string {
 			return p.cfg.FixedResponse
 		}
 		return "This is a mock response."
+	case "tool_use":
+		// In tool_use mode, text is optional; tool calls come via content blocks.
+		return p.cfg.FixedResponse
 	default: // random
 		return randomResponse()
 	}
+}
+
+// generateContentBlocks returns the content blocks for a response.
+// For tool_use mode this includes tool_use blocks alongside any text.
+func (p *Provider) generateContentBlocks(text string) []types.ContentBlock {
+	var blocks []types.ContentBlock
+	if text != "" {
+		blocks = append(blocks, types.ContentBlock{Type: "text", Text: text})
+	}
+	if p.cfg.Mode == "tool_use" {
+		for i, tc := range p.cfg.ToolCalls {
+			blocks = append(blocks, types.ContentBlock{
+				Type:  "tool_use",
+				ID:    fmt.Sprintf("toolu_%06d", i),
+				Name:  tc.Name,
+				Input: tc.Input,
+			})
+		}
+	}
+	if len(blocks) == 0 {
+		blocks = append(blocks, types.ContentBlock{Type: "text", Text: text})
+	}
+	return blocks
 }
 
 func echoLastMessage(req *types.CompletionRequest) string {

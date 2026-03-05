@@ -2,14 +2,17 @@ package langdag_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"langdag.com/langdag"
 	"langdag.com/langdag/internal/provider/mock"
 	"langdag.com/langdag/internal/storage/sqlite"
+	"langdag.com/langdag/types"
 )
 
 // newTestClient creates a Client backed by a temp SQLite DB and a mock provider.
@@ -739,5 +742,334 @@ func TestProviderAccessor(t *testing.T) {
 	}
 	if p.Name() != "mock" {
 		t.Errorf("Provider().Name() = %q, want %q", p.Name(), "mock")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// newTestClientWithConfig creates a Client with a custom mock provider config.
+// ---------------------------------------------------------------------------
+
+func newTestClientWithConfig(t *testing.T, cfg mock.Config) *langdag.Client {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	if err := store.Init(context.Background()); err != nil {
+		store.Close()
+		t.Fatalf("store.Init: %v", err)
+	}
+
+	prov := mock.New(cfg)
+	client := langdag.NewWithDeps(store, prov)
+	t.Cleanup(func() { client.Close() })
+	return client
+}
+
+// ---------------------------------------------------------------------------
+// WithTools — tool definitions
+// ---------------------------------------------------------------------------
+
+func TestWithTools_PassedToProvider(t *testing.T) {
+	// WithTools should not cause errors even with the default mock provider.
+	client := newTestClient(t, "tools test response")
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get the current weather for a location",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}`),
+		},
+	}
+
+	result, err := client.Prompt(ctx, "What's the weather?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt with WithTools: %v", err)
+	}
+	nodeID, content := drainStream(t, result)
+	if nodeID == "" {
+		t.Error("expected a non-empty nodeID")
+	}
+	if content == "" {
+		t.Error("expected non-empty content")
+	}
+}
+
+func TestWithTools_ToolUseResponse(t *testing.T) {
+	// Use the tool_use mock mode to simulate an LLM responding with tool calls.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Let me check the weather.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "get_weather",
+				Input: json.RawMessage(`{"location":"San Francisco"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`),
+		},
+	}
+
+	result, err := client.Prompt(ctx, "Weather in SF?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt with tool_use mock: %v", err)
+	}
+
+	var gotToolBlock bool
+	var gotDone bool
+	var stopReason string
+	for chunk := range result.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		if chunk.ContentBlock != nil && chunk.ContentBlock.Type == "tool_use" {
+			gotToolBlock = true
+			if chunk.ContentBlock.Name != "get_weather" {
+				t.Errorf("tool name = %q, want %q", chunk.ContentBlock.Name, "get_weather")
+			}
+		}
+		if chunk.Done {
+			gotDone = true
+			stopReason = chunk.StopReason
+		}
+	}
+
+	if !gotToolBlock {
+		t.Error("expected a tool_use content block in the stream")
+	}
+	if !gotDone {
+		t.Error("expected Done chunk")
+	}
+	if stopReason != "tool_use" {
+		t.Errorf("StopReason = %q, want %q", stopReason, "tool_use")
+	}
+	if result.NodeID == "" {
+		t.Error("expected NodeID to be set")
+	}
+}
+
+func TestWithTools_NodeContentContainsToolUse(t *testing.T) {
+	// Verify that when the LLM responds with tool_use blocks, the saved node
+	// content contains the full JSON content blocks (not just text).
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Calling tool.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "run_command",
+				Input: json.RawMessage(`{"cmd":"ls"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "run_command",
+			Description: "Run a shell command",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"cmd":{"type":"string"}}}`),
+		},
+	}
+
+	result, err := client.Prompt(ctx, "List files", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID, _ := drainStream(t, result)
+
+	// Retrieve the saved node and verify content contains tool_use blocks.
+	node, err := client.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if node == nil {
+		t.Fatal("GetNode returned nil")
+	}
+
+	// The content should be JSON-encoded content blocks since there are tool_use blocks.
+	var blocks []types.ContentBlock
+	if err := json.Unmarshal([]byte(node.Content), &blocks); err != nil {
+		t.Fatalf("failed to parse node content as content blocks: %v\ncontent: %s", err, node.Content)
+	}
+
+	var foundToolUse bool
+	for _, b := range blocks {
+		if b.Type == "tool_use" && b.Name == "run_command" {
+			foundToolUse = true
+		}
+	}
+	if !foundToolUse {
+		t.Errorf("expected tool_use block in saved node content, got: %s", node.Content)
+	}
+}
+
+func TestWithTools_NoToolsStillWorks(t *testing.T) {
+	// Passing nil/empty tools should work the same as not passing tools at all.
+	client := newTestClient(t, "no tools response")
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello", langdag.WithTools(nil))
+	if err != nil {
+		t.Fatalf("Prompt with nil tools: %v", err)
+	}
+	nodeID, content := drainStream(t, result)
+	if nodeID == "" {
+		t.Error("expected non-empty nodeID")
+	}
+	if content != "no tools response" {
+		t.Errorf("content = %q, want %q", content, "no tools response")
+	}
+}
+
+func TestWithTools_PromptFrom(t *testing.T) {
+	// Tools should work with PromptFrom (continuing a conversation).
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Using tool.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "search",
+				Input: json.RawMessage(`{"query":"test"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	// Start a conversation without tools (use fixed mode temporarily).
+	// Actually, the mock is already in tool_use mode, so the first prompt
+	// will also return tool blocks. Let's just test the full flow.
+	tools := []types.ToolDefinition{
+		{
+			Name:        "search",
+			Description: "Search for something",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+		},
+	}
+
+	result1, err := client.Prompt(ctx, "Start", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	firstNodeID, _ := drainStream(t, result1)
+
+	// Continue with tools
+	result2, err := client.PromptFrom(ctx, firstNodeID, "Continue search", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom: %v", err)
+	}
+
+	var gotToolBlock bool
+	for chunk := range result2.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		if chunk.ContentBlock != nil && chunk.ContentBlock.Type == "tool_use" {
+			gotToolBlock = true
+		}
+	}
+	if !gotToolBlock {
+		t.Error("expected tool_use content block in PromptFrom response")
+	}
+	if result2.NodeID == "" {
+		t.Error("expected NodeID from PromptFrom")
+	}
+}
+
+func TestWithTools_MultipleTools(t *testing.T) {
+	// Multiple tool definitions and multiple tool calls.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode: "tool_use",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "get_weather",
+				Input: json.RawMessage(`{"location":"NYC"}`),
+			},
+			{
+				Name:  "get_time",
+				Input: json.RawMessage(`{"timezone":"EST"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+		{
+			Name:        "get_time",
+			Description: "Get time",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+	}
+
+	result, err := client.Prompt(ctx, "weather and time?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+
+	var toolNames []string
+	for chunk := range result.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		if chunk.ContentBlock != nil && chunk.ContentBlock.Type == "tool_use" {
+			toolNames = append(toolNames, chunk.ContentBlock.Name)
+		}
+	}
+
+	if len(toolNames) != 2 {
+		t.Fatalf("expected 2 tool_use blocks, got %d", len(toolNames))
+	}
+	if toolNames[0] != "get_weather" || toolNames[1] != "get_time" {
+		t.Errorf("tool names = %v, want [get_weather, get_time]", toolNames)
+	}
+}
+
+func TestWithTools_TextOnlyResponsePreservesPlainText(t *testing.T) {
+	// When the LLM responds with text only (no tool_use), the node content
+	// should remain as plain text, not JSON.
+	client := newTestClient(t, "plain text answer")
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "calculator",
+			Description: "Calculate",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+	}
+
+	result, err := client.Prompt(ctx, "What is 2+2?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID, _ := drainStream(t, result)
+
+	node, err := client.GetNode(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+
+	// Content should be plain text (not JSON-encoded content blocks)
+	// since the response only contained text.
+	if strings.HasPrefix(node.Content, "[") {
+		t.Errorf("expected plain text content, got JSON: %s", node.Content)
+	}
+	if node.Content != "plain text answer" {
+		t.Errorf("content = %q, want %q", node.Content, "plain text answer")
 	}
 }

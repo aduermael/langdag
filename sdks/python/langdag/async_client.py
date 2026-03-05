@@ -227,12 +227,15 @@ class AsyncLangDAGClient:
         message: str,
         model: str | None = None,
         system_prompt: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> PromptResponse:
         body: dict[str, Any] = {"message": message, "stream": False}
         if model is not None:
             body["model"] = model
         if system_prompt is not None:
             body["system_prompt"] = system_prompt
+        if tools is not None:
+            body["tools"] = tools
         data = await self._request("POST", "/prompt", body)
         return PromptResponse.from_dict(data)
 
@@ -242,6 +245,7 @@ class AsyncLangDAGClient:
         model: str | None = None,
         system_prompt: str | None = None,
         stream: bool = False,
+        tools: list[dict[str, Any]] | None = None,
     ) -> Any:
         """Send a prompt to start a new conversation.
 
@@ -250,6 +254,7 @@ class AsyncLangDAGClient:
             model: LLM model to use.
             system_prompt: Optional system prompt.
             stream: If True, return an async iterator of SSE events.
+            tools: Optional list of tool definitions for the LLM.
 
         Returns:
             Awaitable[PromptResponse] if stream=False, AsyncIterator[SSEEvent] if stream=True.
@@ -270,19 +275,24 @@ class AsyncLangDAGClient:
                 body["model"] = model
             if system_prompt is not None:
                 body["system_prompt"] = system_prompt
+            if tools is not None:
+                body["tools"] = tools
             return self._stream_request("POST", "/prompt", body)
         else:
-            return self._prompt_non_streaming(message, model, system_prompt)
+            return self._prompt_non_streaming(message, model, system_prompt, tools)
 
     async def _prompt_from_non_streaming(
         self,
         node_id: str,
         message: str,
         model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> PromptResponse:
         body: dict[str, Any] = {"message": message, "stream": False}
         if model is not None:
             body["model"] = model
+        if tools is not None:
+            body["tools"] = tools
         data = await self._request("POST", f"/nodes/{node_id}/prompt", body)
         return PromptResponse.from_dict(data)
 
@@ -292,6 +302,7 @@ class AsyncLangDAGClient:
         message: str,
         model: str | None = None,
         stream: bool = False,
+        tools: list[dict[str, Any]] | None = None,
     ) -> Any:
         """Send a prompt continuing from an existing node.
 
@@ -300,6 +311,7 @@ class AsyncLangDAGClient:
             message: The message to send.
             model: LLM model to use.
             stream: If True, return an async iterator of SSE events.
+            tools: Optional list of tool definitions for the LLM.
 
         Returns:
             Awaitable[PromptResponse] if stream=False, AsyncIterator[SSEEvent] if stream=True.
@@ -311,9 +323,11 @@ class AsyncLangDAGClient:
             body: dict[str, Any] = {"message": message, "stream": True}
             if model is not None:
                 body["model"] = model
+            if tools is not None:
+                body["tools"] = tools
             return self._stream_request("POST", f"/nodes/{node_id}/prompt", body)
         else:
-            return self._prompt_from_non_streaming(node_id, message, model)
+            return self._prompt_from_non_streaming(node_id, message, model, tools)
 
     # --- Alias Methods ---
 

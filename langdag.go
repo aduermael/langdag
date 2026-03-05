@@ -203,6 +203,7 @@ type promptOptions struct {
 	model        string
 	systemPrompt string
 	maxTokens    int
+	tools        []types.ToolDefinition
 }
 
 // WithModel sets the model for the prompt.
@@ -226,6 +227,14 @@ func WithMaxTokens(n int) PromptOption {
 	}
 }
 
+// WithTools sets the tool definitions for the prompt.
+// When tools are provided, the LLM may respond with tool_use content blocks.
+func WithTools(tools []types.ToolDefinition) PromptOption {
+	return func(o *promptOptions) {
+		o.tools = tools
+	}
+}
+
 // PromptResult holds the result of a prompt call.
 type PromptResult struct {
 	// NodeID is the ID of the saved assistant node (set when streaming completes,
@@ -245,6 +254,9 @@ type StreamChunk struct {
 	// Content is the incremental text content for this chunk.
 	Content string
 
+	// ContentBlock is set for content_done events (e.g. tool_use blocks).
+	ContentBlock *types.ContentBlock
+
 	// Done indicates the stream has completed.
 	Done bool
 
@@ -253,13 +265,17 @@ type StreamChunk struct {
 
 	// NodeID is set when Done=true and the assistant node has been saved to storage.
 	NodeID string
+
+	// StopReason is the reason the LLM stopped generating (e.g. "end_turn", "tool_use").
+	// Set when Done=true.
+	StopReason string
 }
 
 // Prompt starts a new conversation with the given message.
 // Returns a PromptResult with the streaming response.
 func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt)
+	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +285,7 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 // PromptFrom continues a conversation from an existing node.
 func (c *Client) PromptFrom(ctx context.Context, nodeID string, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model)
+	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools)
 	if err != nil {
 		return nil, err
 	}
@@ -343,18 +359,25 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 	go func() {
 		defer close(ch)
 		var accumulated string
+		var stopReason string
 		for event := range events {
 			switch event.Type {
 			case types.StreamEventDelta:
 				accumulated += event.Content
 				ch <- StreamChunk{Content: event.Content}
+			case types.StreamEventContentDone:
+				ch <- StreamChunk{ContentBlock: event.ContentBlock}
+			case types.StreamEventDone:
+				if event.Response != nil {
+					stopReason = event.Response.StopReason
+				}
 			case types.StreamEventError:
 				ch <- StreamChunk{Error: event.Error, Done: true}
 				return
 			case types.StreamEventNodeSaved:
 				result.NodeID = event.NodeID
 				result.Content = accumulated
-				ch <- StreamChunk{Done: true, NodeID: event.NodeID}
+				ch <- StreamChunk{Done: true, NodeID: event.NodeID, StopReason: stopReason}
 			}
 		}
 	}()

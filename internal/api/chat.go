@@ -10,10 +10,11 @@ import (
 
 // PromptRequest represents a request to start a new tree or continue from a node.
 type PromptRequest struct {
-	Message      string `json:"message"`
-	Model        string `json:"model,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	Stream       bool   `json:"stream,omitempty"`
+	Message      string                 `json:"message"`
+	Model        string                 `json:"model,omitempty"`
+	SystemPrompt string                 `json:"system_prompt,omitempty"`
+	Stream       bool                   `json:"stream,omitempty"`
+	Tools        []types.ToolDefinition `json:"tools,omitempty"`
 }
 
 // PromptResponse represents a prompt response.
@@ -44,11 +45,11 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Stream {
-		s.streamPromptResponse(w, r, "", req.Message, req.Model, req.SystemPrompt)
+		s.streamPromptResponse(w, r, "", req.Message, req.Model, req.SystemPrompt, req.Tools)
 		return
 	}
 
-	events, err := s.convMgr.Prompt(r.Context(), req.Message, req.Model, req.SystemPrompt)
+	events, err := s.convMgr.Prompt(r.Context(), req.Message, req.Model, req.SystemPrompt, req.Tools)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -93,11 +94,11 @@ func (s *Server) handleNodePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Stream {
-		s.streamPromptResponse(w, r, node.ID, req.Message, req.Model, "")
+		s.streamPromptResponse(w, r, node.ID, req.Message, req.Model, "", req.Tools)
 		return
 	}
 
-	events, err := s.convMgr.PromptFrom(r.Context(), node.ID, req.Message, req.Model)
+	events, err := s.convMgr.PromptFrom(r.Context(), node.ID, req.Message, req.Model, req.Tools)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -133,7 +134,7 @@ func collectEvents(events <-chan types.StreamEvent) (string, string, error) {
 }
 
 // streamPromptResponse streams the response via SSE.
-func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, parentNodeID, message, model, systemPrompt string) {
+func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, parentNodeID, message, model, systemPrompt string, tools []types.ToolDefinition) {
 	ctx := r.Context()
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -151,9 +152,9 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 	var err error
 
 	if parentNodeID == "" {
-		events, err = s.convMgr.Prompt(ctx, message, model, systemPrompt)
+		events, err = s.convMgr.Prompt(ctx, message, model, systemPrompt, tools)
 	} else {
-		events, err = s.convMgr.PromptFrom(ctx, parentNodeID, message, model)
+		events, err = s.convMgr.PromptFrom(ctx, parentNodeID, message, model, tools)
 	}
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())

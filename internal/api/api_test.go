@@ -509,6 +509,29 @@ func TestPromptWithModel(t *testing.T) {
 	}
 }
 
+func TestPromptWithTools(t *testing.T) {
+	_, mux := testServer(t, "")
+
+	body := `{"message":"What's the weather?","tools":[{"name":"get_weather","description":"Get weather","input_schema":{"type":"object","properties":{"location":{"type":"string"}}}}]}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("prompt with tools: status = %d; body = %s", w.Code, w.Body.String())
+	}
+
+	var resp PromptResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.NodeID == "" {
+		t.Error("prompt with tools: node_id is empty")
+	}
+	if resp.Content == "" {
+		t.Error("prompt with tools: content is empty")
+	}
+}
+
 func TestBranching(t *testing.T) {
 	_, mux := testServer(t, "")
 
