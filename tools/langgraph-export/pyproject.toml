@@ -1,0 +1,23 @@
+[project]
+name = "langgraph-export"
+version = "0.1.0"
+description = "Export LangGraph conversation data to langdag format"
+requires-python = ">=3.11"
+
+dependencies = [
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+]
+
+[project.optional-dependencies]
+postgres = ["langgraph-checkpoint-postgres>=2.0.0", "psycopg[binary]>=3.0.0"]
+
+[project.scripts]
+langgraph-export = "langgraph_export.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

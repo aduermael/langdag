@@ -73,7 +73,8 @@ type Node struct {
 	Title        string `json:"title,omitempty"`
 	SystemPrompt string `json:"system_prompt,omitempty"`
 
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time       `json:"created_at"`
+	Metadata  json.RawMessage `json:"metadata,omitempty"`
 }
 
 // Tree represents a tree of nodes rooted at a specific node.

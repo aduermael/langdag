@@ -4,6 +4,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"github.com/langdag/langdag/pkg/types"
@@ -11,11 +12,11 @@ import (
 )
 
 // nodeColumns is the column list for node queries (unqualified).
-const nodeColumns = `id, parent_id, sequence, node_type, content, provider, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at`
+const nodeColumns = `id, parent_id, sequence, node_type, content, provider, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at, metadata`
 
 // nodeColumnsQ returns the column list qualified with a table alias.
 func nodeColumnsQ(alias string) string {
-	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.provider, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at`
+	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.provider, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at, ` + alias + `.metadata`
 }
 
 // SQLiteStorage implements the Storage interface using SQLite.
@@ -68,14 +69,14 @@ func (s *SQLiteStorage) Close() error {
 // scanNode scans a node from a SQL row.
 func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	var node types.Node
-	var parentID, providerName, model, status, title, systemPrompt sql.NullString
+	var parentID, providerName, model, status, title, systemPrompt, metadata sql.NullString
 	var tokensIn, tokensOut, tokensCacheRead, tokensCacheCreation, tokensReasoning, latencyMs sql.NullInt64
 
 	err := scanner.Scan(
 		&node.ID, &parentID, &node.Sequence, &node.NodeType, &node.Content,
 		&providerName, &model, &tokensIn, &tokensOut, &tokensCacheRead, &tokensCacheCreation, &tokensReasoning,
 		&latencyMs, &status,
-		&title, &systemPrompt, &node.CreatedAt,
+		&title, &systemPrompt, &node.CreatedAt, &metadata,
 	)
 	if err != nil {
 		return nil, err
@@ -93,6 +94,9 @@ func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	node.Status = status.String
 	node.Title = title.String
 	node.SystemPrompt = systemPrompt.String
+	if metadata.Valid && metadata.String != "" {
+		node.Metadata = json.RawMessage(metadata.String)
+	}
 
 	return &node, nil
 }
@@ -114,11 +118,11 @@ func scanNodes(rows *sql.Rows) ([]*types.Node, error) {
 func (s *SQLiteStorage) CreateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO nodes (`+nodeColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, node.ID, nullString(node.ParentID), node.Sequence, node.NodeType, node.Content,
 		nullString(node.Provider), nullString(node.Model), node.TokensIn, node.TokensOut, node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
 		node.LatencyMs, nullString(node.Status),
-		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt)
+		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt, nullRawMessage(node.Metadata))
 	if err != nil {
 		return fmt.Errorf("failed to create node: %w", err)
 	}
@@ -222,12 +226,12 @@ func (s *SQLiteStorage) UpdateNode(ctx context.Context, node *types.Node) error 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE nodes SET content = ?, provider = ?, model = ?, tokens_in = ?, tokens_out = ?,
 			tokens_cache_read = ?, tokens_cache_creation = ?, tokens_reasoning = ?,
-			latency_ms = ?, status = ?, title = ?, system_prompt = ?
+			latency_ms = ?, status = ?, title = ?, system_prompt = ?, metadata = ?
 		WHERE id = ?
 	`, node.Content, nullString(node.Provider), nullString(node.Model), node.TokensIn, node.TokensOut,
 		node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
 		node.LatencyMs, nullString(node.Status), nullString(node.Title), nullString(node.SystemPrompt),
-		node.ID)
+		nullRawMessage(node.Metadata), node.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update node: %w", err)
 	}
@@ -317,4 +321,12 @@ func nullString(s string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: s, Valid: true}
+}
+
+// nullRawMessage returns a sql.NullString from a json.RawMessage.
+func nullRawMessage(m json.RawMessage) sql.NullString {
+	if len(m) == 0 {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: string(m), Valid: true}
 }

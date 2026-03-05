@@ -61,4 +61,10 @@ var migrations = []string{
 	ALTER TABLE nodes ADD COLUMN provider TEXT;
 	UPDATE schema_version SET version = 4;
 	`,
+
+	// Migration 5: Add metadata column for arbitrary JSON metadata
+	`
+	ALTER TABLE nodes ADD COLUMN metadata TEXT;
+	UPDATE schema_version SET version = 5;
+	`,
 }
