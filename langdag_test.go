@@ -1039,6 +1039,452 @@ func TestWithTools_MultipleTools(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Multi-turn tool use — verifies that buildMessages correctly handles
+// JSON content blocks (tool_use and tool_result) in conversation history.
+// This is a regression test for the bug where buildMessages wrapped ALL
+// node content with fmt.Sprintf("%q"), corrupting JSON array content.
+// ---------------------------------------------------------------------------
+
+func TestToolUse_MultiTurnConversation(t *testing.T) {
+	// Simulate a full multi-turn tool use flow:
+	// 1. User asks a question -> LLM responds with tool_use
+	// 2. User sends tool_result via PromptFrom -> LLM responds with final answer
+	//
+	// Step 2 requires that buildMessages correctly reconstructs the history,
+	// passing through JSON content blocks for the assistant's tool_use response.
+
+	// Step 1: LLM responds with tool_use blocks
+	toolUseCfg := mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Let me look that up.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "get_weather",
+				Input: json.RawMessage(`{"location":"Paris"}`),
+			},
+		},
+	}
+	client := newTestClientWithConfig(t, toolUseCfg)
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather for a location",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}`),
+		},
+	}
+
+	result1, err := client.Prompt(ctx, "What's the weather in Paris?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt (turn 1): %v", err)
+	}
+
+	// Collect the tool_use block ID from the stream
+	var toolUseID string
+	var firstNodeID string
+	for chunk := range result1.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error (turn 1): %v", chunk.Error)
+		}
+		if chunk.ContentBlock != nil && chunk.ContentBlock.Type == "tool_use" {
+			toolUseID = chunk.ContentBlock.ID
+		}
+		if chunk.Done {
+			firstNodeID = chunk.NodeID
+		}
+	}
+	if firstNodeID == "" {
+		t.Fatal("expected nodeID from turn 1")
+	}
+	if toolUseID == "" {
+		t.Fatal("expected tool_use block with ID from turn 1")
+	}
+
+	// Verify the assistant node has JSON content blocks stored
+	assistantNode, err := client.GetNode(ctx, firstNodeID)
+	if err != nil || assistantNode == nil {
+		t.Fatalf("GetNode for assistant: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(assistantNode.Content), "[") {
+		t.Fatalf("expected assistant node content to be JSON array, got: %s", assistantNode.Content)
+	}
+
+	// Step 2: Send tool_result and get a final answer.
+	// Build the tool_result content as a JSON array of content blocks,
+	// matching the Anthropic API format.
+	toolResultContent := `[{"type":"tool_result","tool_use_id":"` + toolUseID + `","content":"Sunny, 22°C"}]`
+
+	// PromptFrom with the tool result. This is the critical step: buildMessages
+	// must correctly handle the assistant's JSON content blocks AND this
+	// tool_result JSON content in the conversation history.
+	result2, err := client.PromptFrom(ctx, firstNodeID, toolResultContent, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom (turn 2 - tool_result): %v", err)
+	}
+
+	secondNodeID, content := drainStream(t, result2)
+	if secondNodeID == "" {
+		t.Error("expected nodeID from turn 2")
+	}
+	// The mock is still in tool_use mode, so it will respond with tool blocks again,
+	// but the key assertion is that PromptFrom did not error out due to malformed
+	// message content in the conversation history.
+	_ = content
+}
+
+func TestToolUse_ToolResultContentPassedThrough(t *testing.T) {
+	// Verify that when a user sends tool_result content (JSON array),
+	// it is stored correctly and reconstructed properly in buildMessages.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Processing tool result.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "calculator",
+				Input: json.RawMessage(`{"expression":"2+2"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "calculator",
+			Description: "Calculate an expression",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string"}}}`),
+		},
+	}
+
+	// Turn 1: get tool_use response
+	r1, err := client.Prompt(ctx, "Calculate 2+2", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID1, _ := drainStream(t, r1)
+
+	// Turn 2: send tool_result
+	toolResultJSON := `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"4"}]`
+	r2, err := client.PromptFrom(ctx, nodeID1, toolResultJSON, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom with tool_result: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+	if nodeID2 == "" {
+		t.Error("expected nodeID from tool_result turn")
+	}
+
+	// Verify the user node that was created for the tool_result has JSON content
+	// stored (not double-escaped).
+	ancestors, err := client.GetAncestors(ctx, nodeID2)
+	if err != nil {
+		t.Fatalf("GetAncestors: %v", err)
+	}
+	// Ancestors: root_user, assistant_tool_use, user_tool_result, assistant_final
+	if len(ancestors) < 4 {
+		t.Fatalf("expected at least 4 ancestors, got %d", len(ancestors))
+	}
+
+	// The tool_result user node (index 2) should have JSON array content
+	toolResultNode := ancestors[2]
+	if !strings.HasPrefix(strings.TrimSpace(toolResultNode.Content), "[") {
+		t.Errorf("tool_result node content should be JSON array, got: %s", toolResultNode.Content)
+	}
+
+	// Turn 3: continue again from the last node — this exercises buildMessages
+	// with a full history containing both tool_use and tool_result nodes.
+	r3, err := client.PromptFrom(ctx, nodeID2, "What was the result?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom (turn 3): %v", err)
+	}
+	nodeID3, _ := drainStream(t, r3)
+	if nodeID3 == "" {
+		t.Error("expected nodeID from turn 3")
+	}
+}
+
+func TestToolUse_BuildMessagesWithJSONContentBlocks(t *testing.T) {
+	// Unit-style test: create a conversation where the assistant node has JSON
+	// content blocks stored, then continue from that node with PromptFrom.
+	// This directly exercises buildMessages' handling of JSON array content
+	// without requiring the mock to be in tool_use mode for the second call.
+
+	// First, create a conversation with tool_use response using tool_use mode.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "I will use a tool.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "lookup",
+				Input: json.RawMessage(`{"key":"abc"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "lookup",
+			Description: "Look up a key",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"key":{"type":"string"}}}`),
+		},
+	}
+
+	r1, err := client.Prompt(ctx, "Look up abc", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	assistantNodeID, _ := drainStream(t, r1)
+
+	// Verify the stored content is a JSON array
+	node, err := client.GetNode(ctx, assistantNodeID)
+	if err != nil || node == nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	var blocks []types.ContentBlock
+	if err := json.Unmarshal([]byte(node.Content), &blocks); err != nil {
+		t.Fatalf("assistant node content is not valid JSON content blocks: %v\ncontent: %s", err, node.Content)
+	}
+
+	// Now continue from this node. buildMessages must reconstruct the
+	// assistant's content as a JSON array (not a quoted string).
+	// Even a simple text follow-up should work.
+	r2, err := client.PromptFrom(ctx, assistantNodeID, `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"found it: xyz"}]`, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom after tool_use node: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+	if nodeID2 == "" {
+		t.Error("expected nodeID from PromptFrom")
+	}
+}
+
+func TestToolUse_PlainTextStartingWithBracket(t *testing.T) {
+	// Verify that plain text user messages starting with '[' are NOT
+	// incorrectly treated as JSON content blocks.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode: "echo", // echoes back the last user message
+	})
+	ctx := context.Background()
+
+	// These messages start with '[' but are not valid JSON arrays.
+	bracketMessages := []string{
+		"[IMPORTANT] Please help me with this task",
+		"[1] First point [2] Second point",
+		"[action required] review the code",
+	}
+
+	for _, msg := range bracketMessages {
+		result, err := client.Prompt(ctx, msg)
+		if err != nil {
+			t.Fatalf("Prompt(%q): %v", msg, err)
+		}
+		_, content := drainStream(t, result)
+		// Echo mode should return the original message text, proving it was
+		// sent as a JSON string (not misinterpreted as a content block array).
+		if content != msg {
+			t.Errorf("echo of %q returned %q", msg, content)
+		}
+	}
+}
+
+func TestToolUse_OnlyToolCallsNoText(t *testing.T) {
+	// Verify that a tool-use response with NO text (only tool_use blocks)
+	// is stored and reconstructed correctly in conversation history.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "", // no text, only tool calls
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "fetch_data",
+				Input: json.RawMessage(`{"url":"https://example.com"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "fetch_data",
+			Description: "Fetch data from a URL",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}}}`),
+		},
+	}
+
+	// Turn 1: LLM responds with only tool_use (no text)
+	r1, err := client.Prompt(ctx, "Fetch example.com", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID1, _ := drainStream(t, r1)
+
+	// Verify the stored node has JSON content blocks
+	node, err := client.GetNode(ctx, nodeID1)
+	if err != nil || node == nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	var blocks []types.ContentBlock
+	if err := json.Unmarshal([]byte(node.Content), &blocks); err != nil {
+		t.Fatalf("node content is not valid JSON content blocks: %v\ncontent: %s", err, node.Content)
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected at least one content block")
+	}
+
+	// Turn 2: send tool_result and continue — this verifies buildMessages
+	// handles the tool-use-only assistant node correctly.
+	toolResult := `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"<html>data</html>"}]`
+	r2, err := client.PromptFrom(ctx, nodeID1, toolResult, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom with tool_result: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+	if nodeID2 == "" {
+		t.Error("expected nodeID from turn 2")
+	}
+}
+
+func TestToolUse_NestedJSONInToolResult(t *testing.T) {
+	// Tool results often contain complex nested JSON. Verify this doesn't
+	// break content detection or message reconstruction.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Processing results.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "query_db",
+				Input: json.RawMessage(`{"sql":"SELECT * FROM users"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "query_db",
+			Description: "Query the database",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"sql":{"type":"string"}}}`),
+		},
+	}
+
+	r1, err := client.Prompt(ctx, "Get all users", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID1, _ := drainStream(t, r1)
+
+	// Tool result with complex nested JSON content including escaped quotes,
+	// arrays, and objects — mimics real-world API responses.
+	toolResult := `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"{\"users\":[{\"id\":1,\"name\":\"Alice\"},{\"id\":2,\"name\":\"Bob\"}],\"total\":2}"}]`
+	r2, err := client.PromptFrom(ctx, nodeID1, toolResult, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom with nested JSON tool_result: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+
+	// Turn 3: continue conversation to verify the full history (including
+	// nested JSON tool result) is correctly reconstructed by buildMessages.
+	r3, err := client.PromptFrom(ctx, nodeID2, "How many users?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom (turn 3): %v", err)
+	}
+	nodeID3, _ := drainStream(t, r3)
+	if nodeID3 == "" {
+		t.Error("expected nodeID from turn 3")
+	}
+}
+
+func TestToolUse_MultipleToolResultsInOneMessage(t *testing.T) {
+	// When the LLM calls multiple tools, the user must return all tool_results
+	// in a single message. Verify this works correctly.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Let me check both.",
+		ToolCalls: []mock.ToolCallConfig{
+			{
+				Name:  "get_weather",
+				Input: json.RawMessage(`{"location":"NYC"}`),
+			},
+			{
+				Name:  "get_time",
+				Input: json.RawMessage(`{"timezone":"EST"}`),
+			},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+		{
+			Name:        "get_time",
+			Description: "Get time",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+	}
+
+	r1, err := client.Prompt(ctx, "Weather and time in NYC?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID1, _ := drainStream(t, r1)
+
+	// Send both tool results in one message (as the Anthropic API requires)
+	multiToolResult := `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"Sunny, 75°F"},{"type":"tool_result","tool_use_id":"toolu_000001","content":"3:42 PM EST"}]`
+	r2, err := client.PromptFrom(ctx, nodeID1, multiToolResult, langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom with multiple tool_results: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+	if nodeID2 == "" {
+		t.Error("expected nodeID from turn 2")
+	}
+
+	// Verify all 4+ nodes exist in the ancestor chain
+	ancestors, err := client.GetAncestors(ctx, nodeID2)
+	if err != nil {
+		t.Fatalf("GetAncestors: %v", err)
+	}
+	// root_user, assistant_tool_use, user_tool_results, assistant_response
+	if len(ancestors) < 4 {
+		t.Errorf("expected at least 4 ancestors, got %d", len(ancestors))
+	}
+}
+
+func TestStreamNeverHangs_EmptyResponse(t *testing.T) {
+	// If the mock provider returns an empty response (no text, no tool calls),
+	// the stream must still close and send a Done chunk — never hang.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "fixed",
+		FixedResponse: "", // empty response
+	})
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello")
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+
+	// Must complete within 5 seconds (should be nearly instant).
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range result.Stream {
+		}
+	}()
+
+	select {
+	case <-done:
+		// OK — stream closed
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream hung — timed out waiting for stream to close")
+	}
+}
+
 func TestWithTools_TextOnlyResponsePreservesPlainText(t *testing.T) {
 	// When the LLM responds with text only (no tool_use), the node content
 	// should remain as plain text, not JSON.

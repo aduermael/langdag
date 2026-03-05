@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt strin
 	}
 
 	messages := []types.Message{
-		{Role: "user", Content: json.RawMessage(fmt.Sprintf("%q", message))},
+		{Role: "user", Content: contentToRawMessage(message)},
 	}
 
 	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools)
@@ -91,12 +92,19 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		return nil, fmt.Errorf("failed to create user node: %w", err)
 	}
 
-	// Build message history from ancestors + this new message
+	// Build message history from ancestors + this new message.
+	// If the last message is already "user" (e.g. parent is a tool_result node),
+	// merge into that message to maintain role alternation.
 	messages := buildMessages(ancestors)
-	messages = append(messages, types.Message{
-		Role:    "user",
-		Content: json.RawMessage(fmt.Sprintf("%q", message)),
-	})
+	newContent := contentToRawMessage(message)
+	if n := len(messages); n > 0 && messages[n-1].Role == "user" {
+		messages[n-1].Content = mergeContent(messages[n-1].Content, newContent)
+	} else {
+		messages = append(messages, types.Message{
+			Role:    "user",
+			Content: newContent,
+		})
+	}
 
 	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools)
 }
@@ -166,7 +174,13 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 				assistantNode.TokensCacheCreation = response.Usage.CacheCreationInputTokens
 				assistantNode.TokensReasoning = response.Usage.ReasoningTokens
 			}
-			m.storage.CreateNode(ctx, assistantNode)
+			if err := m.storage.CreateNode(ctx, assistantNode); err != nil {
+				events <- types.StreamEvent{
+					Type:  types.StreamEventError,
+					Error: fmt.Errorf("failed to save assistant node: %w", err),
+				}
+				return
+			}
 			events <- types.StreamEvent{
 				Type:   types.StreamEventNodeSaved,
 				NodeID: assistantNode.ID,
@@ -178,28 +192,84 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 }
 
 // buildMessages converts ancestor nodes into LLM messages.
+// It ensures messages alternate between user and assistant roles by merging
+// consecutive same-role messages into a single message with a content block
+// array, which prevents API errors from providers that enforce strict
+// role alternation (e.g. Anthropic).
 func buildMessages(ancestors []*types.Node) []types.Message {
 	var messages []types.Message
 	for _, node := range ancestors {
+		var role string
 		switch node.NodeType {
 		case types.NodeTypeUser:
-			messages = append(messages, types.Message{
-				Role:    "user",
-				Content: json.RawMessage(fmt.Sprintf("%q", node.Content)),
-			})
+			role = "user"
 		case types.NodeTypeAssistant:
-			messages = append(messages, types.Message{
-				Role:    "assistant",
-				Content: json.RawMessage(fmt.Sprintf("%q", node.Content)),
-			})
+			role = "assistant"
 		case types.NodeTypeToolResult:
-			messages = append(messages, types.Message{
-				Role:    "user",
-				Content: json.RawMessage(fmt.Sprintf("%q", node.Content)),
-			})
+			role = "user"
+		default:
+			continue
 		}
+
+		raw := contentToRawMessage(node.Content)
+
+		// If the last message has the same role, merge content into
+		// a single JSON array of content blocks to maintain role alternation.
+		if n := len(messages); n > 0 && messages[n-1].Role == role {
+			messages[n-1].Content = mergeContent(messages[n-1].Content, raw)
+			continue
+		}
+
+		messages = append(messages, types.Message{
+			Role:    role,
+			Content: raw,
+		})
 	}
 	return messages
+}
+
+// mergeContent combines two json.RawMessage values into a single JSON array
+// of content blocks. Each input may be a JSON string or a JSON array.
+func mergeContent(a, b json.RawMessage) json.RawMessage {
+	blocksA := toContentBlockArray(a)
+	blocksB := toContentBlockArray(b)
+	merged := append(blocksA, blocksB...)
+	out, err := json.Marshal(merged)
+	if err != nil {
+		// Fallback: concatenate as text blocks (should never happen).
+		return a
+	}
+	return json.RawMessage(out)
+}
+
+// toContentBlockArray converts a json.RawMessage that is either a JSON string
+// or a JSON array into a []json.RawMessage. A string is wrapped as a text block.
+func toContentBlockArray(raw json.RawMessage) []json.RawMessage {
+	trimmed := strings.TrimSpace(string(raw))
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var arr []json.RawMessage
+		if json.Unmarshal(raw, &arr) == nil {
+			return arr
+		}
+	}
+	// It's a JSON string — wrap as a text content block.
+	var text string
+	if json.Unmarshal(raw, &text) != nil {
+		text = string(raw)
+	}
+	block, _ := json.Marshal(map[string]string{"type": "text", "text": text})
+	return []json.RawMessage{json.RawMessage(block)}
+}
+
+// contentToRawMessage converts a content string to a json.RawMessage.
+// If the content is a valid JSON array (e.g. content blocks like tool_use or
+// tool_result), it is passed through as-is. Otherwise it is encoded as a JSON string.
+func contentToRawMessage(content string) json.RawMessage {
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) > 0 && trimmed[0] == '[' && json.Valid([]byte(trimmed)) {
+		return json.RawMessage(trimmed)
+	}
+	return json.RawMessage(fmt.Sprintf("%q", content))
 }
 
 // ResolveNode finds a node by exact ID, prefix match, or alias.

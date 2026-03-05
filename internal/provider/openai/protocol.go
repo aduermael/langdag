@@ -6,6 +6,7 @@ package openai
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -403,6 +404,14 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 				}
 			}
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		events <- types.StreamEvent{
+			Type:  types.StreamEventError,
+			Error: fmt.Errorf("openai: stream read error: %w", err),
+		}
+		return
 	}
 
 	var content []types.ContentBlock

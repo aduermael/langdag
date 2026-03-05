@@ -360,6 +360,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 		defer close(ch)
 		var accumulated string
 		var stopReason string
+		var terminated bool
 		for event := range events {
 			switch event.Type {
 			case types.StreamEventDelta:
@@ -373,11 +374,24 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 				}
 			case types.StreamEventError:
 				ch <- StreamChunk{Error: event.Error, Done: true}
+				terminated = true
 				return
 			case types.StreamEventNodeSaved:
 				result.NodeID = event.NodeID
 				result.Content = accumulated
 				ch <- StreamChunk{Done: true, NodeID: event.NodeID, StopReason: stopReason}
+				terminated = true
+			}
+		}
+		// If the stream ended without a NodeSaved or Error event (e.g. provider
+		// closed the channel early or returned an empty stream), send a Done
+		// chunk so consumers never hang waiting for one.
+		if !terminated {
+			result.Content = accumulated
+			ch <- StreamChunk{
+				Done:       true,
+				Error:      fmt.Errorf("stream ended without completion"),
+				StopReason: stopReason,
 			}
 		}
 	}()
