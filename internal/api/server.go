@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/langdag/langdag/internal/config"
-	"github.com/langdag/langdag/internal/conversation"
-	"github.com/langdag/langdag/internal/provider"
-	"github.com/langdag/langdag/internal/provider/anthropic"
-	mockprovider "github.com/langdag/langdag/internal/provider/mock"
-	geminiprovider "github.com/langdag/langdag/internal/provider/gemini"
-	openaiprovider "github.com/langdag/langdag/internal/provider/openai"
-	"github.com/langdag/langdag/internal/storage/sqlite"
+	"langdag.com/langdag/internal/config"
+	"langdag.com/langdag/internal/conversation"
+	"langdag.com/langdag/internal/provider"
+	"langdag.com/langdag/internal/provider/anthropic"
+	mockprovider "langdag.com/langdag/internal/provider/mock"
+	geminiprovider "langdag.com/langdag/internal/provider/gemini"
+	openaiprovider "langdag.com/langdag/internal/provider/openai"
+	"langdag.com/langdag/internal/storage/sqlite"
 )
 
 // Server represents the HTTP API server.

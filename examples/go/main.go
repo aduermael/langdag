@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	langdag "github.com/langdag/langdag-go"
+	langdag "langdag.com/langdag-go"
 )
 
 func main() {

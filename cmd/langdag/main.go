@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/langdag/langdag/internal/cli"
+	"langdag.com/langdag/internal/cli"
 )
 
 func main() {

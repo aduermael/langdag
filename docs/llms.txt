@@ -15,7 +15,7 @@ LangDAG is a high-performance Go tool for orchestrating LLM interactions. Everyt
 ## SDKs
 
 - Python: `pip install langdag`
-- Go: `go get github.com/langdag/langdag-go`
+- Go: `go get langdag.com/langdag-go`
 - TypeScript: `npm install langdag`
 
 ## Quick Start

@@ -1,3 +1,3 @@
-module github.com/langdag/langdag-go
+module langdag.com/langdag-go
 
 go 1.21

@@ -159,7 +159,7 @@ with LangDAGClient() as client:
 ### Go
 
 ```bash
-go get github.com/langdag/langdag-go
+go get langdag.com/langdag-go
 ```
 
 ```go

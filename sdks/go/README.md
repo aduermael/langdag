@@ -1,6 +1,6 @@
 # LangDAG Go SDK
 
-Official Go client library for the [LangDAG](https://github.com/langdag/langdag) REST API.
+Official Go client library for the [LangDAG](https://github.com/aduermael/langdag) REST API.
 
 ## Installation
 

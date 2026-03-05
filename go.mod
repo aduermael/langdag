@@ -1,4 +1,4 @@
-module github.com/langdag/langdag
+module langdag.com/langdag
 
 go 1.23.0
 

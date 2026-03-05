@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/langdag/langdag/internal/config"
+	"langdag.com/langdag/internal/config"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

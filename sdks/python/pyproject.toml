@@ -38,9 +38,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/langdag/langdag"
+Homepage = "https://github.com/aduermael/langdag"
 Documentation = "https://langdag.com"
-Repository = "https://github.com/langdag/langdag"
+Repository = "https://github.com/aduermael/langdag"
 
 [tool.hatch.build.targets.wheel]
 packages = ["langdag"]

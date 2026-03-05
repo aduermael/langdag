@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/langdag/langdag/internal/migrate/langgraph"
-	"github.com/langdag/langdag/internal/storage"
-	"github.com/langdag/langdag/internal/storage/sqlite"
+	"langdag.com/langdag/internal/migrate/langgraph"
+	"langdag.com/langdag/internal/storage"
+	"langdag.com/langdag/internal/storage/sqlite"
 	"github.com/spf13/cobra"
 )
 

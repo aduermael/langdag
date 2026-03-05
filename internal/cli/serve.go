@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/langdag/langdag/internal/api"
-	"github.com/langdag/langdag/internal/config"
+	"langdag.com/langdag/internal/api"
+	"langdag.com/langdag/internal/config"
 	"github.com/spf13/cobra"
 )
 

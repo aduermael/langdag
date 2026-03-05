@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/langdag/langdag/internal/conversation"
-	mockprovider "github.com/langdag/langdag/internal/provider/mock"
-	"github.com/langdag/langdag/internal/storage/sqlite"
+	"langdag.com/langdag/internal/conversation"
+	mockprovider "langdag.com/langdag/internal/provider/mock"
+	"langdag.com/langdag/internal/storage/sqlite"
 )
 
 // testServer creates a Server with a temp SQLite DB and mock provider for testing.
