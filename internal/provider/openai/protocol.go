@@ -120,9 +120,8 @@ var openAIServerTools = map[string]string{
 	types.ServerToolWebSearch: "web_search_preview",
 }
 
-var grokServerTools = map[string]string{
-	// Grok uses the standardized name directly.
-}
+// Note: Grok uses the Responses API (responses.go) which supports server-side
+// tools natively — no tool name mapping is needed there.
 
 // --- Request building ---
 

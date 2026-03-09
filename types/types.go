@@ -110,6 +110,11 @@ type ToolDefinition struct {
 
 // ServerToolWebSearch is the standardized name for web search across providers.
 // Use this as the Name in a ToolDefinition to enable the provider's built-in web search.
+// Each provider maps the name to its native equivalent:
+//   - Anthropic: web_search_20250305
+//   - OpenAI:    web_search_preview
+//   - Gemini:    google_search
+//   - Grok:      web_search (Responses API)
 const ServerToolWebSearch = "web_search"
 
 // IsClientTool reports whether t is a client-side (user-defined function) tool.

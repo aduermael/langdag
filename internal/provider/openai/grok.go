@@ -13,8 +13,8 @@ import (
 )
 
 // GrokProvider implements the provider interface for xAI's Grok API.
-// Grok uses an OpenAI-compatible protocol with a different base URL
-// and server tool names.
+// Grok uses the Responses API (/v1/responses) which supports server-side tools
+// like web_search and x_search alongside function calling.
 type GrokProvider struct {
 	apiKey  string
 	baseURL string
@@ -47,9 +47,9 @@ func (p *GrokProvider) Models() []types.ModelInfo {
 	}
 }
 
-// Complete performs a synchronous completion request.
+// Complete performs a synchronous completion request using the Responses API.
 func (p *GrokProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
-	body := buildRequest(req, false, grokServerTools)
+	body := buildResponsesRequest(req, false)
 
 	respBody, err := p.doRequest(ctx, body)
 	if err != nil {
@@ -57,17 +57,17 @@ func (p *GrokProvider) Complete(ctx context.Context, req *types.CompletionReques
 	}
 	defer respBody.Close()
 
-	var resp chatCompletionResponse
+	var resp responsesResponse
 	if err := json.NewDecoder(respBody).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("grok: failed to decode response: %w", err)
 	}
 
-	return convertResponse(&resp), nil
+	return convertResponsesResult(&resp), nil
 }
 
-// Stream performs a streaming completion request.
+// Stream performs a streaming completion request using the Responses API.
 func (p *GrokProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
-	body := buildRequest(req, true, grokServerTools)
+	body := buildResponsesRequest(req, true)
 
 	respBody, err := p.doRequest(ctx, body)
 	if err != nil {
@@ -78,14 +78,14 @@ func (p *GrokProvider) Stream(ctx context.Context, req *types.CompletionRequest)
 	go func() {
 		defer close(events)
 		defer respBody.Close()
-		parseSSEStream(respBody, events)
+		parseResponsesSSEStream(respBody, events)
 	}()
 
 	return events, nil
 }
 
 func (p *GrokProvider) doRequest(ctx context.Context, body []byte) (io.ReadCloser, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/responses", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("grok: failed to create request: %w", err)
 	}

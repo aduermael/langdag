@@ -117,19 +117,102 @@ func TestConvertTools_WebSearchWithSchemaIsClientTool(t *testing.T) {
 	}
 }
 
-func TestConvertTools_GrokMapping(t *testing.T) {
+// --- Responses API tool conversion tests (used by Grok) ---
+
+func TestConvertResponsesTools_ServerToolWebSearch(t *testing.T) {
 	tools := []types.ToolDefinition{
 		{Name: types.ServerToolWebSearch},
 	}
-	result := convertTools(tools, grokServerTools)
+	result := convertResponsesTools(tools)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(result))
 	}
-	// Grok has no mapping for web_search, so it passes through as-is
-	if result[0].Type != "web_search" {
-		t.Errorf("type = %q, want %q", result[0].Type, "web_search")
+	b, _ := json.Marshal(result[0])
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+	if m["type"] != "web_search" {
+		t.Errorf("type = %v, want %q", m["type"], "web_search")
 	}
-	if result[0].Function != nil {
-		t.Error("expected Function to be nil for server tool")
+	// Should NOT have function-tool fields
+	if _, ok := m["name"]; ok {
+		t.Errorf("expected no 'name' key for server tool, got: %s", string(b))
+	}
+}
+
+func TestConvertResponsesTools_FunctionTool(t *testing.T) {
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`),
+		},
+	}
+	result := convertResponsesTools(tools)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(result))
+	}
+	b, _ := json.Marshal(result[0])
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+	if m["type"] != "function" {
+		t.Errorf("type = %v, want %q", m["type"], "function")
+	}
+	if m["name"] != "get_weather" {
+		t.Errorf("name = %v, want %q", m["name"], "get_weather")
+	}
+	if m["description"] != "Get weather" {
+		t.Errorf("description = %v, want %q", m["description"], "Get weather")
+	}
+}
+
+func TestConvertResponsesTools_Mixed(t *testing.T) {
+	tools := []types.ToolDefinition{
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+		},
+		{Name: types.ServerToolWebSearch},
+	}
+	result := convertResponsesTools(tools)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result))
+	}
+
+	b0, _ := json.Marshal(result[0])
+	var m0 map[string]interface{}
+	json.Unmarshal(b0, &m0)
+	if m0["type"] != "function" {
+		t.Errorf("first tool type = %v, want %q", m0["type"], "function")
+	}
+
+	b1, _ := json.Marshal(result[1])
+	var m1 map[string]interface{}
+	json.Unmarshal(b1, &m1)
+	if m1["type"] != "web_search" {
+		t.Errorf("second tool type = %v, want %q", m1["type"], "web_search")
+	}
+}
+
+func TestConvertResponsesTools_WebSearchWithSchemaIsClientTool(t *testing.T) {
+	tools := []types.ToolDefinition{
+		{
+			Name:        "web_search",
+			Description: "Custom web search",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}}}`),
+		},
+	}
+	result := convertResponsesTools(tools)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(result))
+	}
+	b, _ := json.Marshal(result[0])
+	var m map[string]interface{}
+	json.Unmarshal(b, &m)
+	if m["type"] != "function" {
+		t.Errorf("type = %v, want %q", m["type"], "function")
+	}
+	if m["name"] != "web_search" {
+		t.Errorf("name = %v, want %q", m["name"], "web_search")
 	}
 }
