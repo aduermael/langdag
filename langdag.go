@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"langdag.com/langdag/internal/conversation"
+	"langdag.com/langdag/internal/models"
 	internalprovider "langdag.com/langdag/internal/provider"
 	anthropicprovider "langdag.com/langdag/internal/provider/anthropic"
 	geminiprovider "langdag.com/langdag/internal/provider/gemini"
@@ -29,6 +30,12 @@ type Storage = internalstorage.Storage
 // It is re-exported here so that external consumers can use the return value
 // of Client.Provider() without importing an internal package.
 type Provider = internalprovider.Provider
+
+// ModelPricing contains pricing and capability information for a model.
+type ModelPricing = models.ModelPricing
+
+// ModelCatalog contains model pricing and capability information organized by provider.
+type ModelCatalog = models.Catalog
 
 // Config holds all configuration for the langdag client.
 type Config struct {
@@ -586,6 +593,38 @@ func buildRouter(ctx context.Context, cfg Config, globalRetry internalprovider.R
 	}
 
 	return internalprovider.NewRouter(entries, fallbackProviders)
+}
+
+// DefaultModelCatalog returns the model catalog embedded with the library.
+// It contains model names, pricing (per 1M tokens), context window sizes,
+// and max output tokens for all supported providers.
+func DefaultModelCatalog() (*ModelCatalog, error) {
+	return models.DefaultCatalog()
+}
+
+// LoadModelCatalog loads the model catalog from a cache file, falling back to
+// the embedded default if the file does not exist or is invalid JSON.
+func LoadModelCatalog(cachePath string) (*ModelCatalog, error) {
+	return models.LoadCatalog(cachePath)
+}
+
+// FetchModelCatalog fetches the latest model catalog from the remote source
+// (LiteLLM's model_prices_and_context_window.json on GitHub).
+// This does not require any API keys.
+//
+// If cachePath is non-empty, the fetched catalog is saved to that path
+// so it can be loaded with LoadModelCatalog in future sessions.
+func FetchModelCatalog(ctx context.Context, cachePath string) (*ModelCatalog, error) {
+	catalog, err := models.FetchLatest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cachePath != "" {
+		if saveErr := models.SaveCatalog(catalog, cachePath); saveErr != nil {
+			return catalog, fmt.Errorf("langdag: catalog fetched but save failed: %w", saveErr)
+		}
+	}
+	return catalog, nil
 }
 
 // resolveRetryConfig converts a *RetryConfig to internalprovider.RetryConfig,
