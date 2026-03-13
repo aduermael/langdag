@@ -300,6 +300,8 @@
 
     /* Section anchor links */
     .anchor-link {
+      display: inline-flex;
+      align-items: center;
       opacity: 0;
       margin-left: 0.3em;
       color: var(--text-secondary);
@@ -316,10 +318,6 @@
     .anchor-link:hover {
       opacity: 1 !important;
       color: var(--accent-cyan) !important;
-    }
-
-    .anchor-link svg {
-      vertical-align: -0.15em;
     }
 
     .features-grid {
@@ -762,7 +760,7 @@
     <section class="features" id="features">
       <div class="container">
         <div class="section-header">
-          <h2>Built for Performance in Go <a href="#features" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+          <h2>Built for Performance in Go <a href="#features" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
           <p>A lightweight alternative to LangGraph and LangChain, written in Go for speed, simplicity, and developer experience</p>
         </div>
         <div class="features-grid">
@@ -799,7 +797,7 @@
       <div class="container">
         <div class="code-container">
           <div>
-            <h2 style="font-size: 2rem; margin-bottom: 16px;">Simple CLI for LLM Conversations <a href="#cli" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+            <h2 style="font-size: 2rem; margin-bottom: 16px;">Simple CLI for LLM Conversations <a href="#cli" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
             <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 1.1rem;">
               Start LLM conversations, branch from any node in the conversation history, and manage your AI workflow DAGs with intuitive commands.
             </p>
@@ -812,7 +810,7 @@
               <span class="code-dot green"></span>
               <span class="code-title">terminal</span>
             </div>
-            <pre class="code-content"><span class="prompt">$</span> langdag prompt -m claude-sonnet-4-20250514 <span class="string">"What is LangDAG?"</span>
+            <pre class="code-content"><span class="prompt">$</span> langdag prompt -m claude-sonnet-4-6 <span class="string">"What is LangDAG?"</span>
 
 <span class="comment"># LangDAG responds with streaming output...</span>
 <span class="keyword">Assistant:</span> LangDAG is a high-performance tool that...
@@ -834,7 +832,7 @@
     <section class="features" id="demo">
       <div class="container">
         <div class="section-header">
-          <h2>LLM Orchestration SDK for Every Language <a href="#demo" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+          <h2>LLM Orchestration SDK for Every Language <a href="#demo" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
           <p>Build AI agents and LLM-powered applications with native SDKs for Python, Go, and TypeScript</p>
           <div class="lang-toggle" style="margin-top: 24px; display: inline-flex;">
             <button class="lang-btn active" data-lang="python">Python</button>
@@ -1121,7 +1119,7 @@ console.log(node.content);
     <section class="features" id="golib" style="padding-top: 48px;">
       <div class="container">
         <div class="section-header">
-          <h2>Use as a Go Module <a href="#golib" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+          <h2>Use as a Go Module <a href="#golib" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
           <p>Import langdag directly into your Go application — no server, no extra dependencies</p>
         </div>
         <div style="max-width: 860px; margin: 0 auto;">
@@ -1166,7 +1164,7 @@ result2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell m
     <section class="install" id="install">
       <div class="container">
         <div class="install-box">
-          <h2>Start Building AI Agents in Seconds <a href="#install" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+          <h2>Start Building AI Agents in Seconds <a href="#install" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
           <p>Install the LangDAG SDK for your language and start orchestrating LLM conversations</p>
 
           <div class="lang-toggle" style="margin-bottom: 24px; display: inline-flex;">
@@ -1224,7 +1222,7 @@ result2, _ := client.PromptFrom(ctx, result.NodeID, <span class="string">"Tell m
     <section class="features" id="compare">
       <div class="container">
         <div class="section-header">
-          <h2>Migrating from LangGraph? <a href="#compare" class="anchor-link" aria-label="Link to this section"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
+          <h2>Migrating from LangGraph? <a href="#compare" class="anchor-link" aria-label="Link to this section"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></a></h2>
           <p>LangDAG is a lightweight Go alternative to LangGraph, LangChain, and other Python-based LLM frameworks</p>
         </div>
         <div class="features-grid">

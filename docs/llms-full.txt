@@ -364,7 +364,7 @@ langdag prompt
 langdag prompt <node-id>
 
 # Flags
-langdag prompt -m claude-sonnet-4-20250514 "message"
+langdag prompt -m claude-sonnet-4-6 "message"
 langdag prompt -s "system prompt" "message"
 
 # Node management
