@@ -9,7 +9,7 @@
   <a href="https://github.com/aduermael/langdag/actions/workflows/test-python.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test-python.yml?style=flat-square&label=Python%20SDK" alt="Python SDK Tests"></a>
   <a href="https://github.com/aduermael/langdag/actions/workflows/test-typescript.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test-typescript.yml?style=flat-square&label=TypeScript%20SDK" alt="TypeScript SDK Tests"></a>
   <a href="https://github.com/aduermael/langdag/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/aduermael/langdag/test.yml?style=flat-square&label=E2E" alt="E2E Tests"></a>
-  <a href="https://github.com/aduermael/langdag/releases"><img src="https://img.shields.io/badge/version-0.2.0-00ADD8?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/aduermael/langdag/releases"><img src="https://img.shields.io/badge/version-0.3.0-00ADD8?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go"></a>
 </p>
@@ -52,6 +52,8 @@ LangDAG is a **high-performance Go tool** that persists LLM conversations as dir
 | 🏷️ **Node Aliases** | Human-readable names for any node |
 | 🔄 **Auto Retry** | Exponential backoff for transient LLM failures |
 | 💾 **Persistent Storage** | SQLite with WAL mode, full history replay |
+| 🔧 **Tool Use** | First-class tool definitions with tool_use/tool_result flows |
+| 🌐 **Multi-Provider** | Anthropic, OpenAI, Gemini, Grok — plus Azure, Vertex AI, Bedrock variants |
 
 ---
 
@@ -117,12 +119,11 @@ client, err := langdag.New(langdag.Config{
 | Field | Description |
 |-------|-------------|
 | `StoragePath` | Path to SQLite database file |
-| `APIKeys` | Map of provider name to API key (`"anthropic"`, `"openai"`, `"gemini"`) |
-| `DefaultModel` | Default model to use when not specified per-request |
-| `DefaultProvider` | Default provider when not using routing |
+| `APIKeys` | Map of provider name to API key (`"anthropic"`, `"openai"`, `"gemini"`, `"grok"`) |
+| `Provider` | Default provider name (anthropic, openai, gemini, grok) |
 | `Routing` | Weighted routing rules across multiple providers |
 | `FallbackOrder` | Provider fallback order on failure |
-| `RetryMax` | Maximum retry attempts (exponential backoff) |
+| `RetryConfig` | Retry settings (max retries, base/max delay) |
 
 ### Available Methods
 
@@ -329,10 +330,10 @@ See the [SDK source code](sdks/) and [example projects](examples/) for more deta
 ├──────────────────────────────────────────────────────────┤
 │                 Conversation Manager                     │
 ├──────────────────────────────────────────────────────────┤
-│                   Provider Layer                         │
-│   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
-│   │ Anthropic │   │  OpenAI   │   │  Gemini   │         │
-│   └───────────┘   └───────────┘   └───────────┘         │
+│                      Provider Layer                      │
+│   ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌──────┐ │
+│   │ Anthropic │  │  OpenAI   │  │  Gemini   │  │ Grok │ │
+│   └───────────┘  └───────────┘  └───────────┘  └──────┘ │
 ├──────────────────────────────────────────────────────────┤
 │                   Storage Layer                          │
 │   ┌───────────┐                                          │
@@ -362,6 +363,11 @@ See the [SDK source code](sdks/) and [example projects](examples/) for more deta
 - [x] Python, Go, TypeScript SDKs
 - [x] Node aliases
 - [x] Automatic retry with exponential backoff
+- [x] Tool use (WithTools, tool_use/tool_result flows)
+- [x] Grok (xAI) provider
+- [x] Model catalog with pricing and context windows
+- [x] LangGraph migration tooling (JSON + SQLite import)
+- [x] Prompt caching (Anthropic)
 - [ ] Web UI
 
 ---

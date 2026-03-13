@@ -10,7 +10,7 @@ LangDAG is designed as a lightweight, performant alternative to Python-based LLM
 
 - **Go performance**: ~1ms overhead per operation, single static binary, no Python runtime needed
 - **DAG-native data model**: Every conversation is inherently a tree; branching/forking is a first-class operation, not an afterthought
-- **Multi-provider**: Anthropic, OpenAI, Gemini -- plus Azure OpenAI, Google Vertex AI, AWS Bedrock variants
+- **Multi-provider**: Anthropic, OpenAI, Gemini, Grok -- plus Azure OpenAI, Google Vertex AI, AWS Bedrock variants
 - **Tool use support**: First-class support for tool definitions and tool_use/tool_result conversation flows
 - **SQLite storage**: Zero-setup persistent storage with full conversation replay
 - **Simple mental model**: One concept (nodes), one verb (prompt). No graphs, edges, or state machines to configure
@@ -436,6 +436,7 @@ Supported LLM providers:
 | Anthropic via Bedrock | `anthropic-bedrock` | (uses AWS credentials) |
 | OpenAI via Azure | `openai-azure` | (configured via AzureOpenAIConfig) |
 | Gemini via Vertex AI | `gemini-vertex` | (uses Google credentials) |
+| Grok (xAI) | `grok` | `GROK_API_KEY` |
 
 ### Multi-Provider Routing
 

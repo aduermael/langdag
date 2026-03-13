@@ -8,7 +8,7 @@ LangDAG is a high-performance Go library and CLI for managing LLM conversations 
 
 - **Go performance**: Pure Go, ~1ms overhead, single static binary, zero runtime dependencies
 - **DAG-native**: Every conversation is a tree; branch from any node to explore alternatives
-- **Multi-provider**: Anthropic, OpenAI, Gemini (plus Azure OpenAI, Google Vertex AI, AWS Bedrock)
+- **Multi-provider**: Anthropic, OpenAI, Gemini, Grok (plus Azure OpenAI, Google Vertex AI, AWS Bedrock)
 - **Tool use**: First-class support for tool definitions and tool_use/tool_result flows
 - **SQLite storage**: Persistent conversation history with full replay, zero setup
 - **Simple API**: One concept (nodes), one verb (prompt)
@@ -45,6 +45,12 @@ langdag show <id>                           # show node tree
 langdag rm <id>                             # delete node + subtree
 langdag import langgraph --file export.json # import from LangGraph
 ```
+
+## Model Catalog
+
+Built-in catalog of 200+ models with pricing and context windows.
+- `langdag models [--provider p] [--update] [--json]`
+- `DefaultModelCatalog()`, `LoadModelCatalog(path)`, `FetchModelCatalog(ctx, path)`
 
 ## REST API
 
