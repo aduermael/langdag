@@ -1868,6 +1868,105 @@ func TestStructuredToolResult_InConversation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Orphaned tool_use tests (DB-indexed detection)
+// ---------------------------------------------------------------------------
+
+func TestOrphanedToolUse_PublicAPI_ContinueWithoutResult(t *testing.T) {
+	// End-to-end via public API: Prompt returns tool_use, user continues
+	// without sending tool_result. PromptFrom should detect the orphan
+	// via DB index and inject a synthetic error tool_result so the
+	// provider call succeeds.
+	client := newTestClientWithConfig(t, mock.Config{
+		Mode:          "tool_use",
+		FixedResponse: "Let me check.",
+		ToolCalls: []mock.ToolCallConfig{
+			{Name: "weather", Input: json.RawMessage(`{"loc":"NYC"}`)},
+		},
+	})
+	ctx := context.Background()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"loc":{"type":"string"}}}`),
+		},
+	}
+
+	// Turn 1: get tool_use response.
+	r1, err := client.Prompt(ctx, "What's the weather?", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	nodeID1, _ := drainStream(t, r1)
+	if nodeID1 == "" {
+		t.Fatal("expected nodeID from turn 1")
+	}
+
+	// Turn 2: continue WITHOUT sending tool_result (the bug scenario).
+	// This should NOT fail — orphaned tool_use should be auto-resolved.
+	r2, err := client.PromptFrom(ctx, nodeID1, "Actually, never mind", langdag.WithTools(tools))
+	if err != nil {
+		t.Fatalf("PromptFrom without tool_result: %v", err)
+	}
+	nodeID2, _ := drainStream(t, r2)
+	if nodeID2 == "" {
+		t.Fatal("expected nodeID from turn 2 — orphan fix should have prevented failure")
+	}
+}
+
+func TestOrphanedToolUse_PublicAPI_PreIndexedOrphan(t *testing.T) {
+	// Simulate a conversation where tool_use IDs were indexed (either at write
+	// time or via migration backfill) but no tool_result exists.
+	// PromptFrom should detect the orphan via DB index and fix it.
+	dbPath := filepath.Join(t.TempDir(), "orphan.db")
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+
+	// Create an interrupted conversation and index the tool_use ID
+	// (simulating either write-time indexing or migration backfill).
+	now := time.Now()
+	nodes := []*types.Node{
+		{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "hi",
+			Model: "test", Title: "test", CreatedAt: now},
+		{ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1, NodeType: types.NodeTypeAssistant,
+			Content: `[{"type":"text","text":"checking"},{"type":"tool_use","id":"orphan_id","name":"search","input":{}}]`,
+			CreatedAt: now},
+	}
+	for _, n := range nodes {
+		if err := store.CreateNode(ctx, n); err != nil {
+			store.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := store.IndexToolIDs(ctx, "a1", []string{"orphan_id"}, "use"); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+
+	// Use public API — PromptFrom should detect orphan and inject synthetic result.
+	prov := mock.New(mock.Config{Mode: "echo"})
+	client := langdag.NewWithDeps(store, prov)
+	t.Cleanup(func() { client.Close() })
+
+	r, err := client.PromptFrom(ctx, "a1", "Never mind")
+	if err != nil {
+		t.Fatalf("PromptFrom with orphaned tool_use: %v", err)
+	}
+	nodeID, _ := drainStream(t, r)
+	if nodeID == "" {
+		t.Fatal("expected nodeID — orphan detection should have injected synthetic result")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Concurrency tests
 // ---------------------------------------------------------------------------
 

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"langdag.com/langdag/types"
 	_ "modernc.org/sqlite"
@@ -314,6 +315,87 @@ func (s *SQLiteStorage) ListAliases(ctx context.Context, nodeID string) ([]strin
 		aliases = append(aliases, alias)
 	}
 	return aliases, rows.Err()
+}
+
+// =============================================================================
+// Tool ID Index Operations
+// =============================================================================
+
+// IndexToolIDs saves tool_use or tool_result IDs for a node.
+// role must be "use" or "result".
+func (s *SQLiteStorage) IndexToolIDs(ctx context.Context, nodeID string, toolIDs []string, role string) error {
+	if len(toolIDs) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR IGNORE INTO node_tool_ids (node_id, tool_id, role) VALUES (?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert: %w", err)
+	}
+	defer stmt.Close()
+	for _, id := range toolIDs {
+		if _, err := stmt.ExecContext(ctx, nodeID, id, role); err != nil {
+			return fmt.Errorf("failed to index tool ID %s: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetOrphanedToolUses returns tool_use IDs among the given ancestor node IDs
+// that have no matching tool_result in the same ancestor path.
+// Returns map[node_id][]orphaned_tool_use_id.
+func (s *SQLiteStorage) GetOrphanedToolUses(ctx context.Context, ancestorIDs []string) (map[string][]string, error) {
+	if len(ancestorIDs) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholders for the IN clause.
+	placeholders := make([]string, len(ancestorIDs))
+	args := make([]interface{}, 0, len(ancestorIDs)*2)
+	for i, id := range ancestorIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	// Duplicate args for the subquery.
+	for _, id := range ancestorIDs {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT nti.node_id, nti.tool_id
+		FROM node_tool_ids nti
+		WHERE nti.node_id IN (`+inClause+`) AND nti.role = 'use'
+		AND nti.tool_id NOT IN (
+			SELECT tool_id FROM node_tool_ids
+			WHERE node_id IN (`+inClause+`) AND role = 'result'
+		)
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query orphaned tool uses: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]string)
+	for rows.Next() {
+		var nodeID, toolID string
+		if err := rows.Scan(&nodeID, &toolID); err != nil {
+			return nil, fmt.Errorf("failed to scan orphaned tool use: %w", err)
+		}
+		result[nodeID] = append(result[nodeID], toolID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
 }
 
 // nullString returns a sql.NullString from a string.

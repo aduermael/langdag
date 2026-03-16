@@ -31,4 +31,8 @@ type Storage interface {
 	DeleteAlias(ctx context.Context, alias string) error
 	GetNodeByAlias(ctx context.Context, alias string) (*types.Node, error)
 	ListAliases(ctx context.Context, nodeID string) ([]string, error)
+
+	// Tool ID index operations
+	IndexToolIDs(ctx context.Context, nodeID string, toolIDs []string, role string) error
+	GetOrphanedToolUses(ctx context.Context, ancestorIDs []string) (map[string][]string, error)
 }

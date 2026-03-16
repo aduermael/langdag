@@ -83,4 +83,39 @@ var migrations = []string{
 	CREATE INDEX IF NOT EXISTS idx_nodes_root_id ON nodes(root_id);
 	UPDATE schema_version SET version = 6;
 	`,
+
+	// Migration 7: Add tool ID index for O(1) orphaned tool_use detection.
+	// Tracks which nodes contain tool_use and tool_result blocks, so
+	// buildMessages can detect orphaned tool_use via a DB query instead
+	// of parsing every message's JSON content.
+	`
+	CREATE TABLE IF NOT EXISTS node_tool_ids (
+		node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+		tool_id TEXT NOT NULL,
+		role TEXT NOT NULL CHECK(role IN ('use', 'result')),
+		PRIMARY KEY (node_id, tool_id, role)
+	);
+	CREATE INDEX IF NOT EXISTS idx_tool_ids_tool ON node_tool_ids(tool_id);
+	CREATE INDEX IF NOT EXISTS idx_tool_ids_node ON node_tool_ids(node_id);
+
+	-- Backfill: index tool_use IDs from existing assistant nodes.
+	INSERT OR IGNORE INTO node_tool_ids (node_id, tool_id, role)
+	SELECT n.id, json_extract(j.value, '$.id'), 'use'
+	FROM nodes n, json_each(n.content) j
+	WHERE n.node_type = 'assistant'
+	AND json_valid(n.content)
+	AND json_extract(j.value, '$.type') = 'tool_use'
+	AND json_extract(j.value, '$.id') IS NOT NULL;
+
+	-- Backfill: index tool_result IDs from existing tool_result and user nodes.
+	INSERT OR IGNORE INTO node_tool_ids (node_id, tool_id, role)
+	SELECT n.id, json_extract(j.value, '$.tool_use_id'), 'result'
+	FROM nodes n, json_each(n.content) j
+	WHERE n.node_type IN ('tool_result', 'user')
+	AND json_valid(n.content)
+	AND json_extract(j.value, '$.type') = 'tool_result'
+	AND json_extract(j.value, '$.tool_use_id') IS NOT NULL;
+
+	UPDATE schema_version SET version = 7;
+	`,
 }

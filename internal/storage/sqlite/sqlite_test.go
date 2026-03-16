@@ -434,6 +434,166 @@ func TestAliasCascadeOnNodeDelete(t *testing.T) {
 	}
 }
 
+// --- Tool ID index tests ---
+
+func TestIndexToolIDs_AndGetOrphaned(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+
+	// Create nodes.
+	nodes := []*types.Node{
+		{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "hi", CreatedAt: time.Now()},
+		{ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1, NodeType: types.NodeTypeAssistant,
+			Content: `[{"type":"tool_use","id":"t1","name":"search","input":{}}]`, CreatedAt: time.Now()},
+	}
+	for _, n := range nodes {
+		if err := store.CreateNode(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Index tool_use ID.
+	if err := store.IndexToolIDs(ctx, "a1", []string{"t1"}, "use"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be orphaned (no result).
+	orphans, err := store.GetOrphanedToolUses(ctx, []string{"u1", "a1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 1 || orphans["a1"][0] != "t1" {
+		t.Errorf("expected orphan t1 on a1, got: %v", orphans)
+	}
+
+	// Now add a tool_result.
+	trNode := &types.Node{ID: "tr1", ParentID: "a1", RootID: "u1", Sequence: 2,
+		NodeType: types.NodeTypeToolResult, Content: `[{"type":"tool_result","tool_use_id":"t1","content":"done"}]`, CreatedAt: time.Now()}
+	if err := store.CreateNode(ctx, trNode); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexToolIDs(ctx, "tr1", []string{"t1"}, "result"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should no longer be orphaned.
+	orphans, err = store.GetOrphanedToolUses(ctx, []string{"u1", "a1", "tr1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Errorf("expected no orphans, got: %v", orphans)
+	}
+}
+
+func TestIndexToolIDs_EmptyList(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+	// Should be a no-op, not an error.
+	if err := store.IndexToolIDs(ctx, "any", nil, "use"); err != nil {
+		t.Errorf("IndexToolIDs with empty list: %v", err)
+	}
+}
+
+func TestGetOrphanedToolUses_EmptyAncestors(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+	orphans, err := store.GetOrphanedToolUses(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orphans != nil {
+		t.Errorf("expected nil for empty ancestors, got: %v", orphans)
+	}
+}
+
+func TestIndexToolIDs_DuplicateIsIdempotent(t *testing.T) {
+	store := setupTestDB(t)
+	ctx := context.Background()
+
+	node := &types.Node{ID: "a1", Sequence: 0, NodeType: types.NodeTypeAssistant, Content: "test", CreatedAt: time.Now()}
+	if err := store.CreateNode(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+
+	// Index same ID twice — should not error (INSERT OR IGNORE).
+	if err := store.IndexToolIDs(ctx, "a1", []string{"t1"}, "use"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.IndexToolIDs(ctx, "a1", []string{"t1"}, "use"); err != nil {
+		t.Errorf("duplicate IndexToolIDs should not error: %v", err)
+	}
+}
+
+func TestBackfillMigration_IndexesExistingNodes(t *testing.T) {
+	// Simulate upgrading from schema version 6 → 7.
+	// The migration backfill should index tool IDs from existing node content.
+	tmpFile, err := os.CreateTemp("", "langdag-backfill-test-*.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
+
+	store, err := New(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	// Run only first 6 migrations by Init, then manually insert data.
+	if err := store.Init(ctx); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+
+	// Insert nodes with tool_use/tool_result content.
+	nodes := []*types.Node{
+		{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "hi", CreatedAt: time.Now()},
+		{ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1, NodeType: types.NodeTypeAssistant,
+			Content: `[{"type":"tool_use","id":"backfill_t1","name":"x","input":{}}]`, CreatedAt: time.Now()},
+		{ID: "tr1", ParentID: "a1", RootID: "u1", Sequence: 2, NodeType: types.NodeTypeToolResult,
+			Content: `[{"type":"tool_result","tool_use_id":"backfill_t1","content":"done"}]`, CreatedAt: time.Now()},
+		// Orphaned tool_use (no result).
+		{ID: "a2", ParentID: "tr1", RootID: "u1", Sequence: 3, NodeType: types.NodeTypeAssistant,
+			Content: `[{"type":"tool_use","id":"backfill_t2","name":"y","input":{}}]`, CreatedAt: time.Now()},
+	}
+	for _, n := range nodes {
+		if err := store.CreateNode(ctx, n); err != nil {
+			store.Close()
+			t.Fatal(err)
+		}
+	}
+
+	// Simulate downgrade: clear the tool index and reset version to 6.
+	store.db.ExecContext(ctx, "DELETE FROM node_tool_ids")
+	store.db.ExecContext(ctx, "UPDATE schema_version SET version = 6")
+	store.Close()
+
+	// Re-open and Init → should run migration 7 with backfill.
+	store2, err := New(tmpFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store2.Close()
+	if err := store2.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// backfill_t1 has a result → not orphaned.
+	// backfill_t2 has no result → orphaned.
+	orphans, err := store2.GetOrphanedToolUses(ctx, []string{"u1", "a1", "tr1", "a2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan after backfill, got %d: %v", len(orphans), orphans)
+	}
+	if orphans["a2"][0] != "backfill_t2" {
+		t.Errorf("expected orphan backfill_t2, got: %v", orphans)
+	}
+}
+
 func TestDeleteNodePartialSubtree(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()

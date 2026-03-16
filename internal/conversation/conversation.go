@@ -92,6 +92,27 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		return nil, fmt.Errorf("failed to create user node: %w", err)
 	}
 
+	// Index any tool_result IDs in the new user message so future queries
+	// can detect orphaned tool_use blocks without parsing JSON content.
+	if resultIDs := extractToolResultIDsFromContent(message); len(resultIDs) > 0 {
+		_ = m.storage.IndexToolIDs(ctx, userNode.ID, resultIDs, "result")
+	}
+
+	// Fix orphaned tool_use blocks: query the DB index (not message JSON)
+	// for tool_use IDs among ancestors that have no matching tool_result.
+	// This is O(orphans), not O(messages).
+	ancestorIDs := make([]string, len(ancestors))
+	for i, a := range ancestors {
+		ancestorIDs[i] = a.ID
+	}
+	orphans, err := m.storage.GetOrphanedToolUses(ctx, ancestorIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check orphaned tool uses: %w", err)
+	}
+	if len(orphans) > 0 {
+		ancestors = injectSyntheticToolResults(ancestors, orphans)
+	}
+
 	// Build message history from ancestors + this new message.
 	// If the last message is already "user" (e.g. parent is a tool_result node),
 	// merge into that message to maintain role alternation.
@@ -107,6 +128,60 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 	}
 
 	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools)
+}
+
+// injectSyntheticToolResults inserts synthetic tool_result nodes into the
+// ancestor list for any orphaned tool_use blocks. The synthetic nodes are
+// not persisted — they exist only for message construction.
+func injectSyntheticToolResults(ancestors []*types.Node, orphans map[string][]string) []*types.Node {
+	var result []*types.Node
+	for _, node := range ancestors {
+		result = append(result, node)
+		toolIDs, ok := orphans[node.ID]
+		if !ok || len(toolIDs) == 0 {
+			continue
+		}
+		// Build synthetic tool_result content for orphaned IDs.
+		var blocks []map[string]interface{}
+		for _, id := range toolIDs {
+			blocks = append(blocks, map[string]interface{}{
+				"type":        "tool_result",
+				"tool_use_id": id,
+				"content":     "Tool call was not completed.",
+				"is_error":    true,
+			})
+		}
+		content, _ := json.Marshal(blocks)
+		result = append(result, &types.Node{
+			NodeType: types.NodeTypeToolResult,
+			Content:  string(content),
+			Sequence: node.Sequence, // same sequence for ordering
+		})
+	}
+	return result
+}
+
+// extractToolResultIDsFromContent extracts tool_result tool_use_id values
+// from a content string (used at write time for DB indexing).
+func extractToolResultIDsFromContent(content string) []string {
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) == 0 || trimmed[0] != '[' || !json.Valid([]byte(trimmed)) {
+		return nil
+	}
+	var blocks []struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+	}
+	if json.Unmarshal([]byte(trimmed), &blocks) != nil {
+		return nil
+	}
+	var ids []string
+	for _, b := range blocks {
+		if b.Type == "tool_result" && b.ToolUseID != "" {
+			ids = append(ids, b.ToolUseID)
+		}
+	}
+	return ids
 }
 
 // streamResponse sends messages to the LLM and wraps the provider events,
@@ -180,6 +255,18 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 					Error: fmt.Errorf("failed to save assistant node: %w", err),
 				}
 				return
+			}
+			// Index tool_use IDs so orphan detection uses DB queries, not JSON parsing.
+			if response != nil {
+				var toolUseIDs []string
+				for _, block := range response.Content {
+					if block.Type == "tool_use" && block.ID != "" {
+						toolUseIDs = append(toolUseIDs, block.ID)
+					}
+				}
+				if len(toolUseIDs) > 0 {
+					_ = m.storage.IndexToolIDs(ctx, assistantNode.ID, toolUseIDs, "use")
+				}
 			}
 			events <- types.StreamEvent{
 				Type:   types.StreamEventNodeSaved,
