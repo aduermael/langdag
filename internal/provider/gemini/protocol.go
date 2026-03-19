@@ -272,6 +272,7 @@ func convertResponse(resp *geminiResponse) *types.CompletionResponse {
 				args, _ := json.Marshal(p.FunctionCall.Args)
 				cr.Content = append(cr.Content, types.ContentBlock{
 					Type:  "tool_use",
+					ID:    p.FunctionCall.Name,
 					Name:  p.FunctionCall.Name,
 					Input: args,
 				})
@@ -352,6 +353,7 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 				args, _ := json.Marshal(p.FunctionCall.Args)
 				block := types.ContentBlock{
 					Type:  "tool_use",
+					ID:    p.FunctionCall.Name,
 					Name:  p.FunctionCall.Name,
 					Input: args,
 				}
