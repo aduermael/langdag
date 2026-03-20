@@ -55,6 +55,16 @@ func TestOllamaWithAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewOllamaWithAPIKey(t *testing.T) {
+	p := NewOllamaWithAPIKey("http://localhost:11434", "my-proxy-key")
+	if p.apiKey != "my-proxy-key" {
+		t.Errorf("expected API key 'my-proxy-key', got '%s'", p.apiKey)
+	}
+	if p.baseURL != "http://localhost:11434" {
+		t.Errorf("expected base URL 'http://localhost:11434', got '%s'", p.baseURL)
+	}
+}
+
 func TestOllamaModels_EmptyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/tags" {
@@ -85,7 +95,7 @@ func TestOllamaModels_SingleModel(t *testing.T) {
 		}
 		if r.URL.Path == "/api/show" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"capabilities": {"num_ctx": 8192}}`))
+			w.Write([]byte(`{"model_info": {"llama.context_length": 8192}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -118,7 +128,7 @@ func TestOllamaModels_MultipleModels(t *testing.T) {
 		}
 		if r.URL.Path == "/api/show" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"capabilities": {"num_ctx": 4096}}`))
+			w.Write([]byte(`{"model_info": {"llama.context_length": 4096}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -248,7 +258,7 @@ func TestOllamaContextWindowZero(t *testing.T) {
 		}
 		if r.URL.Path == "/api/show" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"capabilities": {"num_ctx": 0}}`))
+			w.Write([]byte(`{"model_info": {}}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -317,7 +327,7 @@ func TestOllamaModels_DifferentContextWindows(t *testing.T) {
 			json.NewDecoder(r.Body).Decode(&req)
 			ctx := modelCtx[req["name"]]
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(fmt.Sprintf(`{"capabilities": {"num_ctx": %d}}`, ctx)))
+			w.Write([]byte(fmt.Sprintf(`{"model_info": {"llama.context_length": %d}}`, ctx)))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
