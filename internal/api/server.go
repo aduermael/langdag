@@ -246,6 +246,9 @@ var providerRegistry = map[string]providerFactory{
 		if c.Providers.Ollama.BaseURL != "" {
 			baseURL = c.Providers.Ollama.BaseURL
 		}
+		if c.Providers.Ollama.APIKey != "" {
+			return openaiprovider.NewOllamaWithAPIKey(baseURL, c.Providers.Ollama.APIKey), nil
+		}
 		return openaiprovider.NewOllama(baseURL), nil
 	},
 	"gemini": func(_ context.Context, c *config.Config) (provider.Provider, error) {

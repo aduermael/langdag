@@ -151,6 +151,7 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.grok.api_key", "XAI_API_KEY")
 	v.BindEnv("providers.grok.base_url", "XAI_BASE_URL")
 	v.BindEnv("providers.ollama.base_url", "OLLAMA_BASE_URL")
+	v.BindEnv("providers.ollama.api_key", "OLLAMA_API_KEY")
 	v.BindEnv("providers.mock.mode", "LANGDAG_MOCK_MODE")
 	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
 	v.BindEnv("providers.mock.delay", "LANGDAG_MOCK_DELAY")

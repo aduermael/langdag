@@ -13,26 +13,35 @@ import (
 	"langdag.com/langdag/types"
 )
 
-// ollamaProvider implements the provider interface for Ollama.
+// OllamaProvider implements the provider interface for Ollama.
 // Ollama is a local LLM server with an OpenAI-compatible API at /v1/chat/completions.
-type ollamaProvider struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+type OllamaProvider struct {
+	baseURL            string
+	apiKey             string
+	client             *http.Client
+	contextWindowCache sync.Map
 }
 
-func NewOllama(baseURL string) *ollamaProvider {
+func NewOllama(baseURL string) *OllamaProvider {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
-	return &ollamaProvider{
+	return &OllamaProvider{
 		baseURL: baseURL,
 		client:  &http.Client{},
 	}
 }
 
-func (p *ollamaProvider) Name() string {
+// NewOllamaWithAPIKey creates an Ollama provider with an optional API key.
+// Useful when Ollama is deployed behind a reverse proxy that requires auth.
+func NewOllamaWithAPIKey(baseURL, apiKey string) *OllamaProvider {
+	p := NewOllama(baseURL)
+	p.apiKey = apiKey
+	return p
+}
+
+func (p *OllamaProvider) Name() string {
 	return "ollama"
 }
 
@@ -43,15 +52,12 @@ type ollamaTagsResponse struct {
 }
 
 type ollamaShowResponse struct {
-	Capabilities struct {
-		NumCtx int `json:"num_ctx"`
-	} `json:"capabilities"`
+	ModelInfo map[string]interface{} `json:"model_info"`
 }
 
-var contextWindowCache = sync.Map{}
 
-func (p *ollamaProvider) getContextWindow(modelName string) int {
-	if cached, ok := contextWindowCache.Load(modelName); ok {
+func (p *OllamaProvider) getContextWindow(modelName string) int {
+	if cached, ok := p.contextWindowCache.Load(modelName); ok {
 		return cached.(int)
 	}
 
@@ -80,12 +86,21 @@ func (p *ollamaProvider) getContextWindow(modelName string) int {
 		return 0
 	}
 
-	contextWindow := showResp.Capabilities.NumCtx
-	contextWindowCache.Store(modelName, contextWindow)
-	return contextWindow
+	// model_info uses architecture-prefixed keys like "llama.context_length"
+	// find any key ending in ".context_length"
+	for k, v := range showResp.ModelInfo {
+		if strings.HasSuffix(k, ".context_length") {
+			if f, ok := v.(float64); ok {
+				contextWindow := int(f)
+				p.contextWindowCache.Store(modelName, contextWindow)
+				return contextWindow
+			}
+		}
+	}
+	return 0
 }
 
-func (p *ollamaProvider) Models() []types.ModelInfo {
+func (p *OllamaProvider) Models() []types.ModelInfo {
 	ctx := context.Background()
 	url := p.baseURL + "/api/tags"
 
@@ -120,7 +135,7 @@ func (p *ollamaProvider) Models() []types.ModelInfo {
 	return models
 }
 
-func (p *ollamaProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
+func (p *OllamaProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	body := buildRequest(req, false, nil)
 
 	respBody, err := p.doRequest(ctx, body)
@@ -137,7 +152,7 @@ func (p *ollamaProvider) Complete(ctx context.Context, req *types.CompletionRequ
 	return convertResponse(&resp), nil
 }
 
-func (p *ollamaProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
+func (p *OllamaProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
 	body := buildRequest(req, true, nil)
 
 	respBody, err := p.doRequest(ctx, body)
@@ -155,7 +170,7 @@ func (p *ollamaProvider) Stream(ctx context.Context, req *types.CompletionReques
 	return events, nil
 }
 
-func (p *ollamaProvider) doRequest(ctx context.Context, body []byte) (io.ReadCloser, error) {
+func (p *OllamaProvider) doRequest(ctx context.Context, body []byte) (io.ReadCloser, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("ollama: failed to create request: %w", err)
