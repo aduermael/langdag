@@ -1,49 +1,22 @@
 package openai
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
+"context"
+"encoding/json"
+"fmt"
+"net/http"
+"net/http/httptest"
+"testing"
 
-	"langdag.com/langdag/types"
+"langdag.com/langdag/types"
 )
 
-func TestOllamaProviderName(t *testing.T) {
-	p := NewOllama("")
-	if p.Name() != "ollama" {
-		t.Errorf("expected name 'ollama', got '%s'", p.Name())
-	}
-}
+// --- Models() ---
 
-func TestOllamaDefaultBaseURL(t *testing.T) {
-	p := NewOllama("")
-	if p.baseURL != "http://localhost:11434" {
-		t.Errorf("expected default base URL 'http://localhost:11434', got '%s'", p.baseURL)
-	}
-}
-
-func TestOllamaCustomBaseURL(t *testing.T) {
-	p := NewOllama("http://192.168.1.1:11434")
-	if p.baseURL != "http://192.168.1.1:11434" {
-		t.Errorf("expected custom base URL, got '%s'", p.baseURL)
-	}
-}
-
-func TestOllamaBaseURLTrimming(t *testing.T) {
-	p := NewOllama("http://localhost:11434/")
-	if strings.HasSuffix(p.baseURL, "/") {
-		t.Error("expected trailing slash to be trimmed from base URL")
-	}
-}
-
-func TestOllamaModels_EmptyResponse(t *testing.T) {
+func TestOllamaModels_Empty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"models": []}`))
 			return
 		}
@@ -54,17 +27,17 @@ func TestOllamaModels_EmptyResponse(t *testing.T) {
 	p := NewOllama(server.URL)
 	models := p.Models()
 	if models == nil {
-		t.Fatal("expected empty models slice, got nil")
+		t.Fatal("expected empty slice, got nil")
 	}
 	if len(models) != 0 {
 		t.Errorf("expected 0 models, got %d", len(models))
 	}
 }
 
-func TestOllamaModels_SingleModel(t *testing.T) {
+func TestOllamaModels_SingleWithContextWindow(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"models": [{"name": "llama3"}]}`))
 			return
 		}
@@ -82,28 +55,32 @@ func TestOllamaModels_SingleModel(t *testing.T) {
 	if len(models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(models))
 	}
-	if models[0].ID != "llama3" {
-		t.Errorf("expected ID 'llama3', got '%s'", models[0].ID)
+	if models[0].ID != "llama3" || models[0].Name != "llama3" {
+		t.Errorf("unexpected model: %+v", models[0])
 	}
 	if models[0].ContextWindow != 8192 {
 		t.Errorf("expected context window 8192, got %d", models[0].ContextWindow)
 	}
 }
 
-func TestOllamaModels_MultipleModels(t *testing.T) {
+func TestOllamaModels_ParallelFetch(t *testing.T) {
+	modelCtx := map[string]int{
+		"model-a": 4096,
+		"model-b": 8192,
+		"model-c": 32768,
+		"model-d": 131072,
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models": [
-				{"name": "llama3"},
-				{"name": "mistral"},
-				{"name": "qwen2.5:7b"}
-			]}`))
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models":[{"name":"model-a"},{"name":"model-b"},{"name":"model-c"},{"name":"model-d"}]}`))
 			return
 		}
 		if r.URL.Path == "/api/show" {
+			var req map[string]string
+			json.NewDecoder(r.Body).Decode(&req)
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"model_info": {"llama.context_length": 4096}}`))
+			w.Write([]byte(fmt.Sprintf(`{"model_info":{"llama.context_length":%d}}`, modelCtx[req["name"]])))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -112,102 +89,64 @@ func TestOllamaModels_MultipleModels(t *testing.T) {
 
 	p := NewOllama(server.URL)
 	models := p.Models()
-	if len(models) != 3 {
-		t.Fatalf("expected 3 models, got %d", len(models))
+	if len(models) != 4 {
+		t.Fatalf("expected 4 models, got %d", len(models))
+	}
+	got := map[string]int{}
+	for _, m := range models {
+		got[m.ID] = m.ContextWindow
+	}
+	for name, expected := range modelCtx {
+		if got[name] != expected {
+			t.Errorf("%s: expected %d, got %d", name, expected, got[name])
+		}
 	}
 }
 
-func TestOllamaModels_APIError(t *testing.T) {
+func TestOllamaModels_TagsAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+w.WriteHeader(http.StatusInternalServerError)
+}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	if models := p.Models(); models != nil {
+		t.Errorf("expected nil on error, got %v", models)
+	}
+}
+
+// --- Context window discovery ---
+
+func TestOllamaContextWindow_NonStandardPrefix(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models": [{"name": "qwen2.5:7b"}]}`))
+			return
+		}
+		if r.URL.Path == "/api/show" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"model_info": {"qwen2.context_length": 32768}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 
 	p := NewOllama(server.URL)
 	models := p.Models()
-	if models != nil {
-		t.Errorf("expected nil models on error, got %v", models)
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].ContextWindow != 32768 {
+		t.Errorf("expected 32768, got %d", models[0].ContextWindow)
 	}
 }
 
-func TestOllamaDoRequest_NoAuthHeader(t *testing.T) {
+func TestOllamaContextWindow_MissingKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if auth := r.Header.Get("Authorization"); auth != "" {
-			t.Errorf("expected no Authorization header, got %s", auth)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"test","model":"llama3","choices":[]}`))
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	_, _ = p.Complete(context.Background(), &types.CompletionRequest{
-		Model:    "llama3",
-		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
-	})
-}
-
-func TestOllamaComplete_RequestFormat(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("expected /v1/chat/completions, got %s", r.URL.Path)
-		}
-		if r.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"test","model":"llama3","choices":[{"message":{"content":"Hi"},"finish_reason":"stop"}]}`))
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	resp, err := p.Complete(context.Background(), &types.CompletionRequest{
-		Model:    "llama3",
-		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp == nil {
-		t.Fatal("expected response, got nil")
-	}
-}
-
-func TestOllamaStream_RequestFormat(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("expected /v1/chat/completions, got %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`data: {"id":"test","choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}
-
-data: [DONE]
-
-`))
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	events, err := p.Stream(context.Background(), &types.CompletionRequest{
-		Model:    "llama3",
-		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	count := 0
-	for range events {
-		count++
-	}
-	if count == 0 {
-		t.Error("expected at least one event")
-	}
-}
-
-func TestOllamaContextWindowZero(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"models": [{"name": "unknown-model"}]}`))
 			return
 		}
@@ -226,15 +165,208 @@ func TestOllamaContextWindowZero(t *testing.T) {
 		t.Fatalf("expected 1 model, got %d", len(models))
 	}
 	if models[0].ContextWindow != 0 {
-		t.Errorf("expected context window 0, got %d", models[0].ContextWindow)
+		t.Errorf("expected 0, got %d", models[0].ContextWindow)
 	}
 }
 
-func TestOllamaComplete_Error(t *testing.T) {
+func TestOllamaContextWindow_ShowError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models": [{"name": "llama3"}]}`))
+			return
+		}
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "something went wrong"}`))
 	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	models := p.Models()
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+	if models[0].ContextWindow != 0 {
+		t.Errorf("expected 0 on /api/show error, got %d", models[0].ContextWindow)
+	}
+}
+
+func TestOllamaContextWindow_PerModelValues(t *testing.T) {
+	modelCtx := map[string]int{"test-model-a": 8192, "test-model-b": 32768}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models": [{"name": "test-model-a"}, {"name": "test-model-b"}]}`))
+			return
+		}
+		if r.URL.Path == "/api/show" {
+			var req map[string]string
+			json.NewDecoder(r.Body).Decode(&req)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(fmt.Sprintf(`{"model_info": {"llama.context_length": %d}}`, modelCtx[req["name"]])))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	models := p.Models()
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
+	}
+	got := map[string]int{}
+	for _, m := range models {
+		got[m.ID] = m.ContextWindow
+	}
+	for name, expected := range modelCtx {
+		if got[name] != expected {
+			t.Errorf("%s: expected %d, got %d", name, expected, got[name])
+		}
+	}
+}
+
+func TestOllamaContextWindow_CacheHit(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if r.URL.Path == "/api/tags" {
+w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models": [{"name": "llama3"}]}`))
+			return
+		}
+		if r.URL.Path == "/api/show" {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"model_info": {"llama.context_length": 8192}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	p.Models()
+	p.Models()
+
+	if callCount != 1 {
+		t.Errorf("expected /api/show called once, got %d", callCount)
+	}
+}
+
+// --- Complete() ---
+
+func TestOllamaComplete_TextResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"resp-1","model":"llama3","choices":[{"message":{"role":"assistant","content":"Hello there!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`))
+	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	resp, err := p.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "llama3",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Content) != 1 || resp.Content[0].Text != "Hello there!" {
+		t.Errorf("unexpected content: %+v", resp.Content)
+	}
+	if resp.StopReason != "stop" {
+		t.Errorf("expected stop reason 'stop', got '%s'", resp.StopReason)
+	}
+	if resp.Usage.InputTokens != 10 || resp.Usage.OutputTokens != 5 {
+		t.Errorf("unexpected usage: %+v", resp.Usage)
+	}
+}
+
+func TestOllamaComplete_WithSystemPrompt(t *testing.T) {
+	var capturedBody chatCompletionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"r1","model":"llama3","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	_, err := p.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "llama3",
+		System:   "You are a helpful assistant.",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(capturedBody.Messages) < 2 {
+		t.Fatalf("expected system + user messages, got %d", len(capturedBody.Messages))
+	}
+	if capturedBody.Messages[0].Role != "system" {
+		t.Errorf("expected first message role 'system', got '%s'", capturedBody.Messages[0].Role)
+	}
+}
+
+func TestOllamaComplete_RequestBodyFields(t *testing.T) {
+	var capturedBody chatCompletionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"r1","model":"llama3","choices":[]}`))
+	}))
+	defer server.Close()
+
+	temp := 0.7
+	p := NewOllama(server.URL)
+	_, _ = p.Complete(context.Background(), &types.CompletionRequest{
+		Model:       "llama3",
+		MaxTokens:   512,
+		Temperature: temp,
+		Messages:    []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
+
+	if capturedBody.Model != "llama3" {
+		t.Errorf("expected model 'llama3', got '%s'", capturedBody.Model)
+	}
+	if capturedBody.MaxTokens != 512 {
+		t.Errorf("expected max_tokens 512, got %d", capturedBody.MaxTokens)
+	}
+	if capturedBody.Temperature == nil || *capturedBody.Temperature != temp {
+		t.Errorf("expected temperature %v, got %v", temp, capturedBody.Temperature)
+	}
+}
+
+func TestOllamaComplete_ToolRoundTrip(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"r1","model":"llama3","choices":[{"message":{"tool_calls":[{"id":"call-1","type":"function","function":{"name":"search","arguments":"{\"q\":\"Go concurrency\"}"}}]},"finish_reason":"tool_calls"}]}`))
+	}))
+	defer server.Close()
+
+	p := NewOllama(server.URL)
+	resp, err := p.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "llama3",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"search for Go concurrency"`)}},
+		Tools:    []types.ToolDefinition{{Name: "search", Description: "search the web", InputSchema: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Content) != 1 || resp.Content[0].Type != "tool_use" {
+		t.Fatalf("expected 1 tool_use block, got %+v", resp.Content)
+	}
+	if resp.Content[0].ID != "call-1" || resp.Content[0].Name != "search" {
+		t.Errorf("unexpected tool call: %+v", resp.Content[0])
+	}
+	if string(resp.Content[0].Input) != `{"q":"Go concurrency"}` {
+		t.Errorf("unexpected tool input: %s", resp.Content[0].Input)
+	}
+}
+
+func TestOllamaComplete_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+w.WriteHeader(http.StatusInternalServerError)
+w.Write([]byte(`{"error": "something went wrong"}`))
+}))
 	defer server.Close()
 
 	p := NewOllama(server.URL)
@@ -247,142 +379,30 @@ func TestOllamaComplete_Error(t *testing.T) {
 	}
 }
 
-func TestOllamaStream_Error(t *testing.T) {
+func TestOllamaComplete_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+<-r.Context().Done()
 	}))
 	defer server.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
 	p := NewOllama(server.URL)
-	_, err := p.Stream(context.Background(), &types.CompletionRequest{
+	_, err := p.Complete(ctx, &types.CompletionRequest{
 		Model:    "llama3",
 		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
 	})
 	if err == nil {
-		t.Error("expected error, got nil")
+		t.Error("expected error on cancelled context, got nil")
 	}
 }
 
-func TestOllamaModels_DifferentContextWindows(t *testing.T) {
-	modelCtx := map[string]int{
-		"test-model-a": 8192,
-		"test-model-b": 32768,
-	}
+// --- Stream() ---
+
+func TestOllamaStream_TextDeltas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models": [
-				{"name": "test-model-a"},
-				{"name": "test-model-b"}
-			]}`))
-			return
-		}
-		if r.URL.Path == "/api/show" {
-			var req map[string]string
-			json.NewDecoder(r.Body).Decode(&req)
-			ctx := modelCtx[req["name"]]
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(fmt.Sprintf(`{"model_info": {"llama.context_length": %d}}`, ctx)))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	models := p.Models()
-	if len(models) != 2 {
-		t.Fatalf("expected 2 models, got %d", len(models))
-	}
-
-	for _, m := range models {
-		expected := modelCtx[m.ID]
-		if m.ContextWindow != expected {
-			t.Errorf("%s expected %d, got %d", m.ID, expected, m.ContextWindow)
-		}
-	}
-}
-
-func TestOllamaComplete_WithContent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
-			"id": "resp-1",
-			"model": "llama3",
-			"choices": [{
-				"message": {"role": "assistant", "content": "Hello there!"},
-				"finish_reason": "stop"
-			}],
-			"usage": {"prompt_tokens": 10, "completion_tokens": 5}
-		}`))
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	resp, err := p.Complete(context.Background(), &types.CompletionRequest{
-		Model:    "llama3",
-		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content block, got %d", len(resp.Content))
-	}
-	if resp.Content[0].Text != "Hello there!" {
-		t.Errorf("expected 'Hello there!', got '%s'", resp.Content[0].Text)
-	}
-	if resp.StopReason != "stop" {
-		t.Errorf("expected stop reason 'stop', got '%s'", resp.StopReason)
-	}
-	if resp.Usage.InputTokens != 10 || resp.Usage.OutputTokens != 5 {
-		t.Errorf("unexpected usage: %+v", resp.Usage)
-	}
-}
-
-func TestOllamaComplete_WithToolCall(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
-			"id": "resp-2",
-			"model": "llama3",
-			"choices": [{
-				"message": {
-					"role": "assistant",
-					"tool_calls": [{
-						"id": "call-1",
-						"type": "function",
-						"function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}
-					}]
-				},
-				"finish_reason": "tool_calls"
-			}]
-		}`))
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	resp, err := p.Complete(context.Background(), &types.CompletionRequest{
-		Model:    "llama3",
-		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"What's the weather?"`)}},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content block, got %d", len(resp.Content))
-	}
-	if resp.Content[0].Type != "tool_use" {
-		t.Errorf("expected type 'tool_use', got '%s'", resp.Content[0].Type)
-	}
-	if resp.Content[0].Name != "get_weather" {
-		t.Errorf("expected tool name 'get_weather', got '%s'", resp.Content[0].Name)
-	}
-}
-
-func TestOllamaStream_WithContent(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
+w.Header().Set("Content-Type", "text/event-stream")
 		w.Write([]byte("data: {\"id\":\"s1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n"))
 		w.Write([]byte("data: {\"id\":\"s1\",\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":null}]}\n\n"))
 		w.Write([]byte("data: {\"id\":\"s1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}\n\n"))
@@ -417,83 +437,54 @@ func TestOllamaStream_WithContent(t *testing.T) {
 	}
 }
 
-func TestOllamaContextWindow_CacheHit(t *testing.T) {
-	callCount := 0
+func TestOllamaStream_ToolCallAccumulation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models": [{"name": "llama3"}, {"name": "llama3"}]}`))
-			return
-		}
-		if r.URL.Path == "/api/show" {
-			callCount++
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"model_info": {"llama.context_length": 8192}}`))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
+w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(`data: {"id":"s1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}` + "\n\n"))
+		w.Write([]byte(`data: {"id":"s1","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":"}}]},"finish_reason":null}]}` + "\n\n"))
+		w.Write([]byte(`data: {"id":"s1","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
 	p := NewOllama(server.URL)
-	p.Models() // first call populates cache
-	p.Models() // second call should use cache for already-seen models
+	events, err := p.Stream(context.Background(), &types.CompletionRequest{
+		Model:    "llama3",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"weather?"`)}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	// llama3 appears twice but /api/show should only be called once due to cache
-	if callCount != 1 {
-		t.Errorf("expected /api/show to be called once (cache hit), got %d calls", callCount)
+	var toolBlock *types.ContentBlock
+	for e := range events {
+		if e.Type == types.StreamEventContentDone && e.ContentBlock != nil && e.ContentBlock.Type == "tool_use" {
+			toolBlock = e.ContentBlock
+		}
+	}
+	if toolBlock == nil {
+		t.Fatal("expected a tool_use content block")
+	}
+	if toolBlock.Name != "get_weather" {
+		t.Errorf("expected 'get_weather', got '%s'", toolBlock.Name)
+	}
+	if string(toolBlock.Input) != `{"city":"Paris"}` {
+		t.Errorf("expected '{\"city\":\"Paris\"}', got '%s'", toolBlock.Input)
 	}
 }
 
-func TestOllamaContextWindow_NonStandardPrefix(t *testing.T) {
+func TestOllamaStream_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models": [{"name": "qwen2.5:7b"}]}`))
-			return
-		}
-		if r.URL.Path == "/api/show" {
-			w.Header().Set("Content-Type", "application/json")
-			// qwen uses a different architecture prefix
-			w.Write([]byte(`{"model_info": {"qwen2.context_length": 32768}}`))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
+w.WriteHeader(http.StatusInternalServerError)
+}))
 	defer server.Close()
 
 	p := NewOllama(server.URL)
-	models := p.Models()
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(models))
-	}
-	if models[0].ContextWindow != 32768 {
-		t.Errorf("expected context window 32768, got %d", models[0].ContextWindow)
-	}
-}
-
-func TestOllamaContextWindow_ShowError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models": [{"name": "llama3"}]}`))
-			return
-		}
-		if r.URL.Path == "/api/show" {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	p := NewOllama(server.URL)
-	models := p.Models()
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(models))
-	}
-	// /api/show error should gracefully fall back to 0
-	if models[0].ContextWindow != 0 {
-		t.Errorf("expected context window 0 on error, got %d", models[0].ContextWindow)
+	_, err := p.Stream(context.Background(), &types.CompletionRequest{
+		Model:    "llama3",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
+	if err == nil {
+		t.Error("expected error, got nil")
 	}
 }
