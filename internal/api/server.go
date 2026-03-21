@@ -242,11 +242,7 @@ var providerRegistry = map[string]providerFactory{
 		return openaiprovider.NewGrok(c.Providers.Grok.APIKey, c.Providers.Grok.BaseURL), nil
 	},
 	"ollama": func(_ context.Context, c *config.Config) (provider.Provider, error) {
-		baseURL := "http://localhost:11434"
-		if c.Providers.Ollama.BaseURL != "" {
-			baseURL = c.Providers.Ollama.BaseURL
-		}
-		return openaiprovider.NewOllama(baseURL), nil
+		return openaiprovider.NewOllama(c.Providers.Ollama.BaseURL), nil
 	},
 	"gemini": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		if c.Providers.Gemini.APIKey == "" {

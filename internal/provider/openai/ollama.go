@@ -21,6 +21,7 @@ type OllamaProvider struct {
 	contextWindowCache sync.Map
 }
 
+// NewOllama creates a new Ollama provider.
 func NewOllama(baseURL string) *OllamaProvider {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
@@ -32,6 +33,7 @@ func NewOllama(baseURL string) *OllamaProvider {
 	}
 }
 
+// Name returns the provider name.
 func (p *OllamaProvider) Name() string {
 	return "ollama"
 }
@@ -46,12 +48,11 @@ type ollamaShowResponse struct {
 	ModelInfo map[string]interface{} `json:"model_info"`
 }
 
-func (p *OllamaProvider) getContextWindow(modelName string) int {
+func (p *OllamaProvider) getContextWindow(ctx context.Context, modelName string) int {
 	if cached, ok := p.contextWindowCache.Load(modelName); ok {
 		return cached.(int)
 	}
 
-	ctx := context.Background()
 	url := p.baseURL + "/api/show"
 
 	body, _ := json.Marshal(map[string]string{"name": modelName})
@@ -125,7 +126,7 @@ func (p *OllamaProvider) Models() []types.ModelInfo {
 			models[i] = types.ModelInfo{
 				ID:            name,
 				Name:          name,
-				ContextWindow: p.getContextWindow(name),
+				ContextWindow: p.getContextWindow(ctx, name),
 			}
 		}(i, m.Name)
 	}
@@ -133,6 +134,7 @@ func (p *OllamaProvider) Models() []types.ModelInfo {
 	return models
 }
 
+// Complete performs a synchronous completion request.
 func (p *OllamaProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	body := buildRequest(req, false, nil)
 
@@ -150,6 +152,7 @@ func (p *OllamaProvider) Complete(ctx context.Context, req *types.CompletionRequ
 	return convertResponse(&resp), nil
 }
 
+// Stream performs a streaming completion request.
 func (p *OllamaProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
 	body := buildRequest(req, true, nil)
 
