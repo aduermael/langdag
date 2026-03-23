@@ -12,23 +12,31 @@ type filterProvider struct {
 	inner Provider
 	// modelTools maps model ID → set of supported server tool names.
 	modelTools map[string]map[string]bool
+	// providerFallback is the union of all server tools across the
+	// provider's known models. Used for models not in modelTools (e.g.
+	// catalog model IDs that differ from the hardcoded Models() list).
+	providerFallback map[string]bool
 }
 
 // WithServerToolFilter wraps a Provider so that unsupported server tools are
 // silently stripped from CompletionRequests before they reach the inner provider.
 // Capability data comes from the inner provider's Models() method.
+//
+// Models explicitly listed by the provider use their declared ServerTools.
+// Models not in the list (e.g. catalog IDs) fall back to the union of all
+// server tools the provider's known models support.
 func WithServerToolFilter(p Provider) Provider {
 	modelTools := map[string]map[string]bool{}
+	providerFallback := map[string]bool{}
 	for _, m := range p.Models() {
-		if len(m.ServerTools) > 0 {
-			set := make(map[string]bool, len(m.ServerTools))
-			for _, st := range m.ServerTools {
-				set[st] = true
-			}
-			modelTools[m.ID] = set
+		set := make(map[string]bool, len(m.ServerTools))
+		for _, st := range m.ServerTools {
+			set[st] = true
+			providerFallback[st] = true
 		}
+		modelTools[m.ID] = set
 	}
-	return &filterProvider{inner: p, modelTools: modelTools}
+	return &filterProvider{inner: p, modelTools: modelTools, providerFallback: providerFallback}
 }
 
 func (f *filterProvider) Name() string              { return f.inner.Name() }
@@ -49,7 +57,10 @@ func (f *filterProvider) filterTools(req *types.CompletionRequest) *types.Comple
 		return req
 	}
 
-	supported := f.modelTools[req.Model] // nil means no server tools supported
+	supported, known := f.modelTools[req.Model]
+	if !known {
+		supported = f.providerFallback
+	}
 
 	// Fast path: check if any filtering is needed.
 	needsFilter := false

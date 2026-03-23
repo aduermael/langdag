@@ -133,7 +133,7 @@ func TestFilterProvider_NoToolsInRequest(t *testing.T) {
 	}
 }
 
-func TestFilterProvider_UnknownModel(t *testing.T) {
+func TestFilterProvider_UnknownModelUsesProviderFallback(t *testing.T) {
 	inner := &stubProvider{
 		models: []types.ModelInfo{
 			{ID: "model-a", ServerTools: []string{"web_search"}},
@@ -141,7 +141,8 @@ func TestFilterProvider_UnknownModel(t *testing.T) {
 	}
 	fp := WithServerToolFilter(inner)
 
-	// Unknown model — all server tools should be stripped (safe default)
+	// Unknown model — falls back to provider-level capabilities (union of
+	// all known models' server tools), so web_search is preserved.
 	req := &types.CompletionRequest{
 		Model: "unknown-model",
 		Tools: []types.ToolDefinition{
@@ -151,8 +152,40 @@ func TestFilterProvider_UnknownModel(t *testing.T) {
 	}
 	fp.Complete(context.Background(), req)
 
-	if len(inner.lastReq.Tools) != 1 {
-		t.Errorf("expected 1 tool (my_func only), got %d", len(inner.lastReq.Tools))
+	if len(inner.lastReq.Tools) != 2 {
+		t.Errorf("expected 2 tools (web_search + my_func), got %d", len(inner.lastReq.Tools))
+	}
+}
+
+func TestFilterProvider_CatalogModelIDFallback(t *testing.T) {
+	// Simulates the real bug: Provider.Models() uses IDs like
+	// "claude-sonnet-4-20250514" but callers use catalog IDs like
+	// "claude-sonnet-4-6". The filter should fall back to provider-level
+	// capabilities for unrecognized IDs.
+	inner := &stubProvider{
+		models: []types.ModelInfo{
+			{ID: "claude-sonnet-4-20250514", ServerTools: []string{"web_search"}},
+			{ID: "claude-opus-4-20250514", ServerTools: []string{"web_search"}},
+		},
+	}
+	fp := WithServerToolFilter(inner)
+
+	req := &types.CompletionRequest{
+		Model: "claude-sonnet-4-6", // catalog ID, not in Models()
+		Tools: []types.ToolDefinition{
+			serverTool("web_search"),
+			clientTool("my_func"),
+		},
+	}
+	fp.Complete(context.Background(), req)
+
+	if len(inner.lastReq.Tools) != 2 {
+		t.Errorf("expected 2 tools (web_search + my_func), got %d", len(inner.lastReq.Tools))
+	}
+	for _, tool := range inner.lastReq.Tools {
+		if tool.Name != "web_search" && tool.Name != "my_func" {
+			t.Errorf("unexpected tool: %s", tool.Name)
+		}
 	}
 }
 
