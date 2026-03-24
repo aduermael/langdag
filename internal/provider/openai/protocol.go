@@ -24,6 +24,7 @@ type chatCompletionRequest struct {
 	Tools         []requestTool    `json:"tools,omitempty"`
 	Stream        bool             `json:"stream,omitempty"`
 	StreamOptions *streamOptions   `json:"stream_options,omitempty"`
+	Think         *bool            `json:"think,omitempty"`
 }
 
 type streamOptions struct {
@@ -145,6 +146,9 @@ func buildRequest(req *types.CompletionRequest, stream bool, toolMapping map[str
 	}
 	if len(req.Tools) > 0 {
 		cr.Tools = convertTools(req.Tools, toolMapping)
+	}
+	if req.Think != nil {
+		cr.Think = req.Think
 	}
 	if stream {
 		cr.StreamOptions = &streamOptions{IncludeUsage: true}

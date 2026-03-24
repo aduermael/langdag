@@ -35,7 +35,19 @@ func buildParams(req *types.CompletionRequest) (anthropic.MessageNewParams, erro
 		}
 	}
 
-	if req.Temperature > 0 {
+	// Extended thinking: when explicitly enabled, set the thinking config
+	// and adjust max_tokens so the budget fits within the limit.
+	if req.Think != nil && *req.Think {
+		const thinkingBudget int64 = 10240
+		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(thinkingBudget)
+		// Anthropic requires max_tokens > budget_tokens; ensure enough room
+		// for actual output on top of the thinking budget.
+		if minTokens := thinkingBudget + 4096; params.MaxTokens < minTokens {
+			params.MaxTokens = minTokens
+		}
+		// Temperature must NOT be set when thinking is enabled.
+		// Skip the temperature block below.
+	} else if req.Temperature > 0 {
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
 

@@ -117,6 +117,74 @@ func TestConvertTools_WebSearchWithSchemaIsClientTool(t *testing.T) {
 	}
 }
 
+// --- Think field wiring tests ---
+
+func TestBuildRequest_ThinkTrue(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model: "qwen3:8b",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+		Think: &think,
+	}
+	body := buildRequest(req, false, nil)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	v, ok := m["think"]
+	if !ok {
+		t.Fatal("expected 'think' key in JSON")
+	}
+	if v != true {
+		t.Errorf("think = %v, want true", v)
+	}
+}
+
+func TestBuildRequest_ThinkFalse(t *testing.T) {
+	think := false
+	req := &types.CompletionRequest{
+		Model: "qwen3:8b",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+		Think: &think,
+	}
+	body := buildRequest(req, false, nil)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	v, ok := m["think"]
+	if !ok {
+		t.Fatal("expected 'think' key in JSON when set to false")
+	}
+	if v != false {
+		t.Errorf("think = %v, want false", v)
+	}
+}
+
+func TestBuildRequest_ThinkNil(t *testing.T) {
+	req := &types.CompletionRequest{
+		Model: "gpt-4",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+	body := buildRequest(req, false, nil)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if _, ok := m["think"]; ok {
+		t.Errorf("expected 'think' key to be absent when nil, got JSON: %s", string(body))
+	}
+}
+
 // --- Responses API tool conversion tests (used by Grok) ---
 
 func TestConvertResponsesTools_ServerToolWebSearch(t *testing.T) {

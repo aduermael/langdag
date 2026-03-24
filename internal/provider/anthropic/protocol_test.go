@@ -197,6 +197,114 @@ func TestBuildParams_SystemAndToolsBothCached(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// buildParams — extended thinking
+// ---------------------------------------------------------------------------
+
+func boolPtr(v bool) *bool { return &v }
+
+func TestBuildParams_ThinkEnabled(t *testing.T) {
+	req := &types.CompletionRequest{
+		Model:       "claude-sonnet-4-20250514",
+		Messages:    []types.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		MaxTokens:   1024,
+		Temperature: 0.7,
+		Think:       boolPtr(true),
+	}
+	params, err := buildParams(req)
+	if err != nil {
+		t.Fatalf("buildParams: %v", err)
+	}
+
+	// Thinking should be enabled with the default budget.
+	if params.Thinking.OfEnabled == nil {
+		t.Fatal("expected Thinking.OfEnabled to be set")
+	}
+	if params.Thinking.OfEnabled.BudgetTokens != 10240 {
+		t.Errorf("BudgetTokens = %d, want 10240", params.Thinking.OfEnabled.BudgetTokens)
+	}
+
+	// MaxTokens must be bumped to at least budget + 4096.
+	if params.MaxTokens < 10240+4096 {
+		t.Errorf("MaxTokens = %d, want >= %d", params.MaxTokens, 10240+4096)
+	}
+
+	// Temperature must NOT be set when thinking is enabled.
+	if params.Temperature.Value != 0 {
+		t.Errorf("Temperature should be unset when thinking is enabled, got %v", params.Temperature.Value)
+	}
+}
+
+func TestBuildParams_ThinkEnabled_LargeMaxTokens(t *testing.T) {
+	// When the caller already provides a MaxTokens larger than budget + 4096,
+	// it should be left unchanged.
+	req := &types.CompletionRequest{
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []types.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		MaxTokens: 32768,
+		Think:     boolPtr(true),
+	}
+	params, err := buildParams(req)
+	if err != nil {
+		t.Fatalf("buildParams: %v", err)
+	}
+	if params.MaxTokens != 32768 {
+		t.Errorf("MaxTokens = %d, want 32768 (should not be reduced)", params.MaxTokens)
+	}
+}
+
+func TestBuildParams_ThinkFalse(t *testing.T) {
+	req := &types.CompletionRequest{
+		Model:       "claude-sonnet-4-20250514",
+		Messages:    []types.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		MaxTokens:   1024,
+		Temperature: 0.5,
+		Think:       boolPtr(false),
+	}
+	params, err := buildParams(req)
+	if err != nil {
+		t.Fatalf("buildParams: %v", err)
+	}
+
+	// Thinking should not be configured.
+	if params.Thinking.OfEnabled != nil {
+		t.Error("expected Thinking.OfEnabled to be nil when Think=false")
+	}
+
+	// Temperature should still be set.
+	if params.Temperature.Value != 0.5 {
+		t.Errorf("Temperature = %v, want 0.5", params.Temperature.Value)
+	}
+
+	// MaxTokens should remain as-is.
+	if params.MaxTokens != 1024 {
+		t.Errorf("MaxTokens = %d, want 1024", params.MaxTokens)
+	}
+}
+
+func TestBuildParams_ThinkNil(t *testing.T) {
+	req := &types.CompletionRequest{
+		Model:       "claude-sonnet-4-20250514",
+		Messages:    []types.Message{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		MaxTokens:   2048,
+		Temperature: 0.9,
+	}
+	params, err := buildParams(req)
+	if err != nil {
+		t.Fatalf("buildParams: %v", err)
+	}
+
+	// Thinking should not be configured.
+	if params.Thinking.OfEnabled != nil {
+		t.Error("expected Thinking.OfEnabled to be nil when Think is nil")
+	}
+
+	// Temperature should be set normally.
+	if params.Temperature.Value != 0.9 {
+		t.Errorf("Temperature = %v, want 0.9", params.Temperature.Value)
+	}
+}
+
 func TestConvertTools_FunctionOnly(t *testing.T) {
 	tools := []types.ToolDefinition{
 		{

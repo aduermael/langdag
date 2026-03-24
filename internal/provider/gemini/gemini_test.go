@@ -547,3 +547,85 @@ func TestBuildRequest_SystemInstruction(t *testing.T) {
 		t.Errorf("expected max_output_tokens=1000")
 	}
 }
+
+func TestBuildRequest_ThinkTrue(t *testing.T) {
+	thinkTrue := true
+	req := &types.CompletionRequest{
+		Model:    "gemini-2.5-flash",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Think:    &thinkTrue,
+	}
+
+	body := buildRequest(req)
+
+	// Verify via struct unmarshaling
+	var gr geminiRequest
+	if err := json.Unmarshal(body, &gr); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if gr.GenerationConfig == nil {
+		t.Fatal("expected generation_config to be set")
+	}
+	if gr.GenerationConfig.ThinkingConfig == nil {
+		t.Fatal("expected thinkingConfig to be set")
+	}
+	if gr.GenerationConfig.ThinkingConfig.ThinkingBudget != 8192 {
+		t.Errorf("expected thinkingBudget=8192, got %d", gr.GenerationConfig.ThinkingConfig.ThinkingBudget)
+	}
+
+	// Verify thinkingBudget appears in serialized JSON
+	if !strings.Contains(string(body), `"thinkingBudget"`) {
+		t.Errorf("expected thinkingBudget in JSON, got: %s", string(body))
+	}
+}
+
+func TestBuildRequest_ThinkFalse(t *testing.T) {
+	thinkFalse := false
+	req := &types.CompletionRequest{
+		Model:    "gemini-2.5-flash",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Think:    &thinkFalse,
+	}
+
+	body := buildRequest(req)
+
+	// Verify via struct unmarshaling
+	var gr geminiRequest
+	if err := json.Unmarshal(body, &gr); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if gr.GenerationConfig == nil {
+		t.Fatal("expected generation_config to be set")
+	}
+	if gr.GenerationConfig.ThinkingConfig == nil {
+		t.Fatal("expected thinkingConfig to be set when Think=false")
+	}
+	if gr.GenerationConfig.ThinkingConfig.ThinkingBudget != 0 {
+		t.Errorf("expected thinkingBudget=0, got %d", gr.GenerationConfig.ThinkingConfig.ThinkingBudget)
+	}
+
+	// Verify thinkingBudget:0 appears in serialized JSON
+	if !strings.Contains(string(body), `"thinkingBudget":0`) {
+		t.Errorf("expected thinkingBudget:0 in JSON, got: %s", string(body))
+	}
+}
+
+func TestBuildRequest_ThinkNil(t *testing.T) {
+	req := &types.CompletionRequest{
+		Model:    "gemini-2.5-flash",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		// Think is nil (not set)
+	}
+
+	body := buildRequest(req)
+
+	// Verify thinkingConfig is NOT in serialized JSON
+	if strings.Contains(string(body), `"thinkingConfig"`) {
+		t.Errorf("expected no thinkingConfig in JSON when Think is nil, got: %s", string(body))
+	}
+
+	// Also verify no generation_config at all (no other config fields set)
+	if strings.Contains(string(body), `"generation_config"`) {
+		t.Errorf("expected no generation_config when no config fields set, got: %s", string(body))
+	}
+}

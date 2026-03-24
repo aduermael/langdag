@@ -86,10 +86,15 @@ type functionDeclaration struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
+type thinkingConfig struct {
+	ThinkingBudget int `json:"thinkingBudget"`
+}
+
 type generationConfig struct {
-	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
-	Temperature     *float64 `json:"temperature,omitempty"`
-	StopSequences   []string `json:"stop_sequences,omitempty"`
+	MaxOutputTokens int              `json:"max_output_tokens,omitempty"`
+	Temperature     *float64         `json:"temperature,omitempty"`
+	StopSequences   []string         `json:"stop_sequences,omitempty"`
+	ThinkingConfig  *thinkingConfig  `json:"thinkingConfig,omitempty"`
 }
 
 // --- Response types ---
@@ -140,6 +145,14 @@ func buildRequest(req *types.CompletionRequest) []byte {
 	}
 	if len(req.StopSeqs) > 0 {
 		gc.StopSequences = req.StopSeqs
+		hasConfig = true
+	}
+	if req.Think != nil {
+		if *req.Think {
+			gc.ThinkingConfig = &thinkingConfig{ThinkingBudget: 8192}
+		} else {
+			gc.ThinkingConfig = &thinkingConfig{ThinkingBudget: 0}
+		}
 		hasConfig = true
 	}
 	if hasConfig {
