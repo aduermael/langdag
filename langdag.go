@@ -236,6 +236,7 @@ type promptOptions struct {
 	maxTokens    int
 	maxTurns     int
 	tools        []types.ToolDefinition
+	think        *bool
 }
 
 // WithModel sets the model for the prompt.
@@ -275,6 +276,15 @@ func WithMaxTurns(n int) PromptOption {
 func WithTools(tools []types.ToolDefinition) PromptOption {
 	return func(o *promptOptions) {
 		o.tools = tools
+	}
+}
+
+// WithThink controls whether the model should use extended thinking.
+// true = enable thinking, false = disable thinking. Omitting this option
+// leaves the decision to the provider/model default.
+func WithThink(enabled bool) PromptOption {
+	return func(o *promptOptions) {
+		o.think = &enabled
 	}
 }
 
@@ -350,7 +360,7 @@ type StreamChunk struct {
 // Returns a PromptResult with the streaming response.
 func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools)
+	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools, o.think)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +372,7 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 // PromptFrom continues a conversation from an existing node.
 func (c *Client) PromptFrom(ctx context.Context, nodeID string, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools)
+	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools, o.think)
 	if err != nil {
 		return nil, err
 	}

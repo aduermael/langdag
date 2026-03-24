@@ -31,7 +31,7 @@ func NewManager(store storage.Storage, prov provider.Provider) *Manager {
 // Prompt creates a new conversation tree with the given message.
 // It creates a root user node, sends to the LLM, and streams the response.
 // The assistant node is saved when the stream completes.
-func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
+func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition, think *bool) (<-chan types.StreamEvent, error) {
 	rootID := uuid.New().String()
 	rootNode := &types.Node{
 		ID:           rootID,
@@ -53,13 +53,13 @@ func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt strin
 		{Role: "user", Content: contentToRawMessage(message)},
 	}
 
-	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools)
+	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools, think)
 }
 
 // PromptFrom continues a conversation from an existing node.
 // It creates a user child node, builds message history by walking to the root,
 // sends to the LLM, and streams the response.
-func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
+func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition, think *bool) (<-chan types.StreamEvent, error) {
 	// Get ancestors (path from root to parentNode)
 	ancestors, err := m.storage.GetAncestors(ctx, parentNodeID)
 	if err != nil {
@@ -128,7 +128,7 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		})
 	}
 
-	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools)
+	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools, think)
 }
 
 // injectSyntheticToolResults inserts synthetic tool_result nodes into the
@@ -187,13 +187,14 @@ func extractToolResultIDsFromContent(content string) []string {
 
 // streamResponse sends messages to the LLM and wraps the provider events,
 // saving the assistant node when the stream completes.
-func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition) (<-chan types.StreamEvent, error) {
+func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition, think *bool) (<-chan types.StreamEvent, error) {
 	req := &types.CompletionRequest{
 		Model:     model,
 		Messages:  messages,
 		System:    systemPrompt,
 		MaxTokens: 4096,
 		Tools:     tools,
+		Think:     think,
 	}
 
 	providerEvents, err := m.provider.Stream(ctx, req)

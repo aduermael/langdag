@@ -31,7 +31,8 @@ type ToolCallConfig struct {
 
 // Provider implements the provider interface with mock responses.
 type Provider struct {
-	cfg Config
+	cfg         Config
+	LastRequest *types.CompletionRequest // captures the most recent request for testing
 }
 
 // New creates a new mock provider.
@@ -54,6 +55,7 @@ func (p *Provider) Models() []types.ModelInfo {
 
 // Complete performs a mock completion request.
 func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
+	p.LastRequest = req
 	if p.cfg.Delay > 0 {
 		select {
 		case <-time.After(p.cfg.Delay):
@@ -88,6 +90,7 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 
 // Stream performs a mock streaming completion request.
 func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
+	p.LastRequest = req
 	if p.cfg.Delay > 0 {
 		select {
 		case <-time.After(p.cfg.Delay):

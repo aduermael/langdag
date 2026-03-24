@@ -139,6 +139,7 @@ type CompletionRequest struct {
 	Temperature float64          `json:"temperature,omitempty"`
 	StopSeqs    []string         `json:"stop_sequences,omitempty"`
 	Tools       []ToolDefinition `json:"tools,omitempty"`
+	Think       *bool            `json:"think,omitempty"` // nil = provider default, true = enable, false = disable
 }
 
 // CompletionResponse represents a response from an LLM provider.

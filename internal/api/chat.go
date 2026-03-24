@@ -49,7 +49,7 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, err := s.convMgr.Prompt(r.Context(), req.Message, req.Model, req.SystemPrompt, req.Tools)
+	events, err := s.convMgr.Prompt(r.Context(), req.Message, req.Model, req.SystemPrompt, req.Tools, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -98,7 +98,7 @@ func (s *Server) handleNodePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, err := s.convMgr.PromptFrom(r.Context(), node.ID, req.Message, req.Model, req.Tools)
+	events, err := s.convMgr.PromptFrom(r.Context(), node.ID, req.Message, req.Model, req.Tools, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -152,9 +152,9 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 	var err error
 
 	if parentNodeID == "" {
-		events, err = s.convMgr.Prompt(ctx, message, model, systemPrompt, tools)
+		events, err = s.convMgr.Prompt(ctx, message, model, systemPrompt, tools, nil)
 	} else {
-		events, err = s.convMgr.PromptFrom(ctx, parentNodeID, message, model, tools)
+		events, err = s.convMgr.PromptFrom(ctx, parentNodeID, message, model, tools, nil)
 	}
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())

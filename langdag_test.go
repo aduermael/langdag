@@ -2212,3 +2212,91 @@ func TestWithMaxTurns_PromptFrom(t *testing.T) {
 		t.Error("expected non-empty nodeID from PromptFrom")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// WithThink — thinking toggle
+// ---------------------------------------------------------------------------
+
+// newTestClientWithProvider returns both the Client and the underlying mock
+// provider so tests can inspect the CompletionRequest it received.
+func newTestClientWithProvider(t *testing.T, fixedResponse string) (*langdag.Client, *mock.Provider) {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	if err := store.Init(context.Background()); err != nil {
+		store.Close()
+		t.Fatalf("store.Init: %v", err)
+	}
+
+	prov := mock.New(mock.Config{
+		Mode:          "fixed",
+		FixedResponse: fixedResponse,
+	})
+	client := langdag.NewWithDeps(store, prov)
+	t.Cleanup(func() { client.Close() })
+	return client, prov
+}
+
+func TestWithThink_True(t *testing.T) {
+	client, prov := newTestClientWithProvider(t, "thinking response")
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello", langdag.WithThink(true))
+	if err != nil {
+		t.Fatalf("Prompt with WithThink(true): %v", err)
+	}
+	drainStream(t, result)
+
+	if prov.LastRequest == nil {
+		t.Fatal("expected provider to receive a request")
+	}
+	if prov.LastRequest.Think == nil {
+		t.Fatal("expected Think to be non-nil")
+	}
+	if *prov.LastRequest.Think != true {
+		t.Errorf("Think = %v, want true", *prov.LastRequest.Think)
+	}
+}
+
+func TestWithThink_False(t *testing.T) {
+	client, prov := newTestClientWithProvider(t, "no thinking response")
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello", langdag.WithThink(false))
+	if err != nil {
+		t.Fatalf("Prompt with WithThink(false): %v", err)
+	}
+	drainStream(t, result)
+
+	if prov.LastRequest == nil {
+		t.Fatal("expected provider to receive a request")
+	}
+	if prov.LastRequest.Think == nil {
+		t.Fatal("expected Think to be non-nil")
+	}
+	if *prov.LastRequest.Think != false {
+		t.Errorf("Think = %v, want false", *prov.LastRequest.Think)
+	}
+}
+
+func TestWithThink_Omitted(t *testing.T) {
+	client, prov := newTestClientWithProvider(t, "default response")
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello")
+	if err != nil {
+		t.Fatalf("Prompt without WithThink: %v", err)
+	}
+	drainStream(t, result)
+
+	if prov.LastRequest == nil {
+		t.Fatal("expected provider to receive a request")
+	}
+	if prov.LastRequest.Think != nil {
+		t.Errorf("Think = %v, want nil", *prov.LastRequest.Think)
+	}
+}
