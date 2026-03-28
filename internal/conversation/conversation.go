@@ -185,8 +185,20 @@ func extractToolResultIDsFromContent(content string) []string {
 	return ids
 }
 
+// defaultOutputGroupBudgetMultiplier is the multiplier applied to maxTokens
+// to derive the default output group token budget when none is specified.
+const defaultOutputGroupBudgetMultiplier = 4
+
 // streamResponse sends messages to the LLM and wraps the provider events,
 // saving the assistant node when the stream completes.
+//
+// When the model hits max_tokens with usable text-only content, streamResponse
+// automatically continues generation: it saves the partial node with a shared
+// OutputGroupID, issues a continuation call with the accumulated text as
+// assistant prefill, and keeps streaming on the same channel. Each continuation
+// node stores all accumulated content (self-contained). Continuation stops when
+// the model finishes (end_turn/tool_use), when the cumulative output tokens
+// exceed the group budget, or when a continuation produces no new content.
 func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	if maxTokens <= 0 {
 		maxTokens = 4096
@@ -205,58 +217,99 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 		return nil, fmt.Errorf("failed to stream response: %w", err)
 	}
 
+	groupBudget := maxOutputGroupTokens
+	if groupBudget <= 0 {
+		groupBudget = maxTokens * defaultOutputGroupBudgetMultiplier
+	}
+
 	events := make(chan types.StreamEvent, 100)
 	go func() {
 		defer close(events)
 
-		var fullText string
-		var response *types.CompletionResponse
-		startTime := time.Now()
+		var (
+			groupID              string
+			accumulatedText      string
+			cumulativeOutputToks int
+			currentParent        = parentNode
+			lastSavedNodeID      string
+			currentStream        = providerEvents
+		)
 
-		for event := range providerEvents {
-			events <- event
-			switch event.Type {
-			case types.StreamEventDelta:
-				fullText += event.Content
-			case types.StreamEventDone:
-				response = event.Response
+		for {
+			var fullText string
+			var response *types.CompletionResponse
+			startTime := time.Now()
+
+			for event := range currentStream {
+				events <- event
+				switch event.Type {
+				case types.StreamEventDelta:
+					fullText += event.Content
+				case types.StreamEventDone:
+					response = event.Response
+				}
 			}
-		}
 
-		if response != nil || fullText != "" {
-			// Determine the content to store: if the response contains
-			// non-text content blocks (e.g. tool_use), store the full
-			// JSON-encoded content blocks so callers can parse them.
-			nodeContent := fullText
+			// Empty stream — nothing to save.
+			if response == nil && fullText == "" {
+				if lastSavedNodeID != "" {
+					events <- types.StreamEvent{Type: types.StreamEventNodeSaved, NodeID: lastSavedNodeID}
+				}
+				return
+			}
+
+			// max_tokens with no usable content.
+			if response != nil && response.StopReason == "max_tokens" && !hasUsableContent(response, fullText) {
+				if lastSavedNodeID != "" {
+					// A previous continuation saved content — emit it as final.
+					events <- types.StreamEvent{Type: types.StreamEventNodeSaved, NodeID: lastSavedNodeID}
+				} else {
+					events <- types.StreamEvent{
+						Type:  types.StreamEventError,
+						Error: fmt.Errorf("response truncated at max_tokens with no usable content"),
+					}
+				}
+				return
+			}
+
+			accumulatedText += fullText
+			if response != nil {
+				cumulativeOutputToks += response.Usage.OutputTokens
+			}
+
+			// Decide whether to continue: max_tokens, text-only, within budget.
+			shouldContinue := response != nil &&
+				response.StopReason == "max_tokens" &&
+				!hasNonTextBlocks(response.Content) &&
+				cumulativeOutputToks < groupBudget
+
+			// Assign a group ID on the first continuation.
+			if shouldContinue && groupID == "" {
+				groupID = uuid.New().String()
+			}
+
+			// Determine stored content. Continuation nodes store accumulated
+			// text (self-contained). Non-continuation nodes with tool_use store
+			// the JSON-encoded content blocks from this call.
+			nodeContent := accumulatedText
 			if response != nil && hasNonTextBlocks(response.Content) {
 				if encoded, err := json.Marshal(response.Content); err == nil {
 					nodeContent = string(encoded)
 				}
 			}
 
-			// When the model hit max_tokens and produced no usable content
-			// (no text, no tool_use blocks), skip node creation entirely.
-			// Saving an empty node would corrupt the conversation — subsequent
-			// calls would send {"type":"text","text":""} which the API rejects.
-			if response != nil && response.StopReason == "max_tokens" && !hasUsableContent(response, fullText) {
-				events <- types.StreamEvent{
-					Type:  types.StreamEventError,
-					Error: fmt.Errorf("response truncated at max_tokens with no usable content"),
-				}
-				return
-			}
-
 			assistantNode := &types.Node{
-				ID:        uuid.New().String(),
-				ParentID:  parentNode.ID,
-				RootID:    parentNode.RootID,
-				Sequence:  parentNode.Sequence + 1,
-				NodeType:  types.NodeTypeAssistant,
-				Content:   nodeContent,
-				Model:     model,
-				Status:    "completed",
-				LatencyMs: int(time.Since(startTime).Milliseconds()),
-				CreatedAt: time.Now(),
+				ID:            uuid.New().String(),
+				ParentID:      currentParent.ID,
+				RootID:        currentParent.RootID,
+				Sequence:      currentParent.Sequence + 1,
+				NodeType:      types.NodeTypeAssistant,
+				Content:       nodeContent,
+				OutputGroupID: groupID,
+				Model:         model,
+				Status:        "completed",
+				LatencyMs:     int(time.Since(startTime).Milliseconds()),
+				CreatedAt:     time.Now(),
 			}
 			if response != nil {
 				assistantNode.Provider = response.Provider
@@ -274,6 +327,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 				}
 				return
 			}
+
 			// Index tool_use IDs so orphan detection uses DB queries, not JSON parsing.
 			if response != nil {
 				var toolUseIDs []string
@@ -286,9 +340,48 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 					_ = m.storage.IndexToolIDs(ctx, assistantNode.ID, toolUseIDs, "use")
 				}
 			}
-			events <- types.StreamEvent{
-				Type:   types.StreamEventNodeSaved,
-				NodeID: assistantNode.ID,
+
+			lastSavedNodeID = assistantNode.ID
+
+			if !shouldContinue {
+				events <- types.StreamEvent{
+					Type:   types.StreamEventNodeSaved,
+					NodeID: assistantNode.ID,
+				}
+				return
+			}
+
+			// --- Continuation: issue a new provider call ---
+
+			currentParent = assistantNode
+
+			// Build continuation messages: original messages + assistant prefill
+			// with the full accumulated text so the model continues from there.
+			contMessages := make([]types.Message, len(messages), len(messages)+1)
+			copy(contMessages, messages)
+			contMessages = append(contMessages, types.Message{
+				Role:    "assistant",
+				Content: contentToRawMessage(accumulatedText),
+			})
+
+			contReq := &types.CompletionRequest{
+				Model:     model,
+				Messages:  contMessages,
+				System:    systemPrompt,
+				MaxTokens: maxTokens,
+				Tools:     tools,
+				Think:     think,
+			}
+
+			var contErr error
+			currentStream, contErr = m.provider.Stream(ctx, contReq)
+			if contErr != nil {
+				// Continuation failed — emit the last saved node as final.
+				events <- types.StreamEvent{
+					Type:   types.StreamEventNodeSaved,
+					NodeID: lastSavedNodeID,
+				}
+				return
 			}
 		}
 	}()
