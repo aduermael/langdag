@@ -92,6 +92,9 @@ func convertMessages(messages []types.Message) ([]anthropic.MessageParam, error)
 			for _, block := range blocks {
 				switch block.Type {
 				case "text":
+					if block.Text == "" {
+						continue
+					}
 					anthropicBlocks = append(anthropicBlocks, anthropic.NewTextBlock(block.Text))
 				case "image":
 					if block.Data != "" {
@@ -143,11 +146,21 @@ func convertMessages(messages []types.Message) ([]anthropic.MessageParam, error)
 				}
 			}
 
-			result = append(result, anthropic.MessageParam{
-				Role:    anthropic.MessageParamRole(msg.Role),
-				Content: anthropicBlocks,
-			})
+			// Skip messages with no usable content blocks (e.g. all empty text blocks
+			// filtered out). Sending an empty content array causes a 400 API error.
+			if len(anthropicBlocks) > 0 {
+				result = append(result, anthropic.MessageParam{
+					Role:    anthropic.MessageParamRole(msg.Role),
+					Content: anthropicBlocks,
+				})
+			}
 		} else {
+			// Skip empty-text assistant messages — these arise from max_tokens
+			// truncation saving an empty node. Sending {"type":"text","text":""}
+			// causes a 400 API error.
+			if content == "" && msg.Role == "assistant" {
+				continue
+			}
 			if msg.Role == "assistant" {
 				result = append(result, anthropic.NewAssistantMessage(anthropic.NewTextBlock(content)))
 			} else {

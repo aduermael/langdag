@@ -344,10 +344,14 @@ func toContentBlockArray(raw json.RawMessage) []json.RawMessage {
 			return arr
 		}
 	}
-	// It's a JSON string — wrap as a text content block.
+	// It's a JSON string — wrap as a text content block, but skip empty text
+	// to avoid producing {"type":"text","text":""} which the Anthropic API rejects.
 	var text string
 	if json.Unmarshal(raw, &text) != nil {
 		text = string(raw)
+	}
+	if text == "" {
+		return nil
 	}
 	block, _ := json.Marshal(map[string]string{"type": "text", "text": text})
 	return []json.RawMessage{json.RawMessage(block)}

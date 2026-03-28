@@ -935,3 +935,97 @@ func TestProcessStreamEvents_TextDeltaUsesTextField(t *testing.T) {
 		t.Errorf("streamed text = %q, want %q", textContent, "Hello world!")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// convertMessages — empty text block filtering
+// ---------------------------------------------------------------------------
+
+func TestConvertMessages_EmptyTextBlockSkipped(t *testing.T) {
+	// An assistant message with content blocks that include an empty text block
+	// should omit the empty text block from the Anthropic params.
+	blocks := []types.ContentBlock{
+		{Type: "text", Text: ""},
+		{Type: "text", Text: "Hello"},
+	}
+	blocksJSON, _ := json.Marshal(blocks)
+
+	messages := []types.Message{
+		{Role: "assistant", Content: blocksJSON},
+	}
+	result, err := convertMessages(messages)
+	if err != nil {
+		t.Fatalf("convertMessages: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	if len(result[0].Content) != 1 {
+		t.Fatalf("expected 1 content block (empty text filtered), got %d", len(result[0].Content))
+	}
+	if result[0].Content[0].OfText == nil || result[0].Content[0].OfText.Text != "Hello" {
+		t.Errorf("expected text block with 'Hello', got %+v", result[0].Content[0])
+	}
+}
+
+func TestConvertMessages_AllEmptyBlocksOmitsMessage(t *testing.T) {
+	// An assistant message with only empty text blocks should be omitted entirely.
+	blocks := []types.ContentBlock{
+		{Type: "text", Text: ""},
+	}
+	blocksJSON, _ := json.Marshal(blocks)
+
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		{Role: "assistant", Content: blocksJSON},
+		{Role: "user", Content: json.RawMessage(`"Follow up"`)},
+	}
+	result, err := convertMessages(messages)
+	if err != nil {
+		t.Fatalf("convertMessages: %v", err)
+	}
+	// The assistant message with all-empty blocks should be omitted.
+	if len(result) != 2 {
+		t.Fatalf("expected 2 messages (assistant omitted), got %d", len(result))
+	}
+	if result[0].Role != "user" || result[1].Role != "user" {
+		t.Errorf("expected user/user roles, got %s/%s", result[0].Role, result[1].Role)
+	}
+}
+
+func TestConvertMessages_EmptyStringAssistantSkipped(t *testing.T) {
+	// An assistant message with empty string content (from max_tokens truncation)
+	// should be skipped to avoid sending {"type":"text","text":""}.
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		{Role: "assistant", Content: json.RawMessage(`""`)},
+		{Role: "user", Content: json.RawMessage(`"Follow up"`)},
+	}
+	result, err := convertMessages(messages)
+	if err != nil {
+		t.Fatalf("convertMessages: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 messages (empty assistant skipped), got %d", len(result))
+	}
+	if result[0].Role != "user" || result[1].Role != "user" {
+		t.Errorf("expected user/user roles, got %s/%s", result[0].Role, result[1].Role)
+	}
+}
+
+func TestConvertMessages_NonEmptyStringAssistantKept(t *testing.T) {
+	// A normal assistant message with text should still be included.
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		{Role: "assistant", Content: json.RawMessage(`"I can help."`)},
+	}
+	result, err := convertMessages(messages)
+	if err != nil {
+		t.Fatalf("convertMessages: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(result))
+	}
+	if result[1].Role != "assistant" {
+		t.Errorf("expected assistant role, got %s", result[1].Role)
+	}
+}

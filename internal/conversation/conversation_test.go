@@ -1110,3 +1110,96 @@ func TestPromptFrom_MaxTokensPropagated(t *testing.T) {
 		t.Errorf("MaxTokens = %d, want 9999", prov.LastRequest.MaxTokens)
 	}
 }
+
+// --- Empty text block filtering tests ---
+
+func TestToContentBlockArray_EmptyStringReturnsEmptySlice(t *testing.T) {
+	// An empty JSON string should produce no content blocks, not a
+	// {"type":"text","text":""} block that the Anthropic API rejects.
+	raw := json.RawMessage(`""`)
+	blocks := toContentBlockArray(raw)
+	if len(blocks) != 0 {
+		t.Errorf("expected 0 blocks for empty string, got %d: %s", len(blocks), blocks)
+	}
+}
+
+func TestToContentBlockArray_NonEmptyStringReturnsTextBlock(t *testing.T) {
+	raw := json.RawMessage(`"hello"`)
+	blocks := toContentBlockArray(raw)
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	var block map[string]string
+	if err := json.Unmarshal(blocks[0], &block); err != nil {
+		t.Fatalf("unmarshal block: %v", err)
+	}
+	if block["type"] != "text" || block["text"] != "hello" {
+		t.Errorf("unexpected block: %v", block)
+	}
+}
+
+func TestToContentBlockArray_ArrayPassesThrough(t *testing.T) {
+	raw := json.RawMessage(`[{"type":"text","text":"ok"}]`)
+	blocks := toContentBlockArray(raw)
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+}
+
+func TestBuildMessages_EmptyAssistantContentMergedAway(t *testing.T) {
+	// When an empty assistant node is followed by another assistant node (via
+	// mergeContent), the empty text is filtered by toContentBlockArray.
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "hello"},
+		{NodeType: types.NodeTypeAssistant, Content: ""},
+		{NodeType: types.NodeTypeAssistant, Content: "actual response"},
+	}
+
+	messages := buildMessages(ancestors)
+	// The two assistant nodes should be merged. The empty text from the first
+	// should be filtered out by toContentBlockArray, leaving only the second.
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages (user + merged assistant), got %d", len(messages))
+	}
+	if messages[1].Role != "assistant" {
+		t.Fatalf("expected assistant role, got %s", messages[1].Role)
+	}
+	// Verify no empty text blocks in the merged content.
+	var blocks []map[string]string
+	if err := json.Unmarshal(messages[1].Content, &blocks); err != nil {
+		t.Fatalf("merged content should be a JSON array: %v", err)
+	}
+	for _, block := range blocks {
+		if block["type"] == "text" && block["text"] == "" {
+			t.Errorf("merged content contains empty text block: %v", block)
+		}
+	}
+	if len(blocks) != 1 {
+		t.Errorf("expected 1 content block after filtering, got %d", len(blocks))
+	}
+}
+
+func TestBuildMessages_StandaloneEmptyAssistantPassesThrough(t *testing.T) {
+	// A standalone empty assistant message passes through buildMessages — this
+	// is safe because convertMessages (in the Anthropic provider) filters it
+	// before it reaches the API. buildMessages is provider-agnostic.
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "hello"},
+		{NodeType: types.NodeTypeAssistant, Content: ""},
+		{NodeType: types.NodeTypeUser, Content: "follow up"},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
+	}
+	// The empty assistant message exists but has an empty JSON string content.
+	// convertMessages will filter this out at the provider level.
+	var content string
+	if err := json.Unmarshal(messages[1].Content, &content); err != nil {
+		t.Fatalf("expected JSON string content: %v", err)
+	}
+	if content != "" {
+		t.Errorf("expected empty content, got %q", content)
+	}
+}
