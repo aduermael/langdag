@@ -231,12 +231,13 @@ func (c *Client) Provider() Provider {
 type PromptOption func(*promptOptions)
 
 type promptOptions struct {
-	model        string
-	systemPrompt string
-	maxTokens    int
-	maxTurns     int
-	tools        []types.ToolDefinition
-	think        *bool
+	model                string
+	systemPrompt         string
+	maxTokens            int
+	maxOutputGroupTokens int
+	maxTurns             int
+	tools                []types.ToolDefinition
+	think                *bool
 }
 
 // WithModel sets the model for the prompt.
@@ -257,6 +258,17 @@ func WithSystemPrompt(prompt string) PromptOption {
 func WithMaxTokens(n int) PromptOption {
 	return func(o *promptOptions) {
 		o.maxTokens = n
+	}
+}
+
+// WithMaxOutputGroupTokens sets the maximum total output tokens across all
+// continuation calls in an output group. When a response hits max_tokens and
+// is continued, langdag tracks cumulative output tokens; if they exceed this
+// budget the continuation stops. A value of 0 (the default) means 4× the
+// per-call max_tokens.
+func WithMaxOutputGroupTokens(n int) PromptOption {
+	return func(o *promptOptions) {
+		o.maxOutputGroupTokens = n
 	}
 }
 
@@ -360,7 +372,7 @@ type StreamChunk struct {
 // Returns a PromptResult with the streaming response.
 func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools, o.think, o.maxTokens)
+	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +384,7 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 // PromptFrom continues a conversation from an existing node.
 func (c *Client) PromptFrom(ctx context.Context, nodeID string, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools, o.think, o.maxTokens)
+	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
 	if err != nil {
 		return nil, err
 	}

@@ -118,4 +118,19 @@ var migrations = []string{
 
 	UPDATE schema_version SET version = 7;
 	`,
+
+	// Migration 8: Add stop_reason column for tracking why the LLM stopped generating
+	`
+	ALTER TABLE nodes ADD COLUMN stop_reason TEXT;
+	UPDATE schema_version SET version = 8;
+	`,
+
+	// Migration 9: Add output_group_id column for linking continuation nodes
+	// When a response hits max_tokens and is continued, all nodes in the
+	// continuation chain share the same output_group_id.
+	`
+	ALTER TABLE nodes ADD COLUMN output_group_id TEXT;
+	CREATE INDEX IF NOT EXISTS idx_nodes_output_group ON nodes(output_group_id) WHERE output_group_id IS NOT NULL;
+	UPDATE schema_version SET version = 9;
+	`,
 }

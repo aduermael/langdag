@@ -86,6 +86,8 @@ type Node struct {
 	TokensCacheCreation  int    `json:"tokens_cache_creation,omitempty"`
 	TokensReasoning      int    `json:"tokens_reasoning,omitempty"`
 	LatencyMs            int    `json:"latency_ms,omitempty"`
+	StopReason           string `json:"stop_reason,omitempty"`
+	OutputGroupID        string `json:"output_group_id,omitempty"`
 	Status               string `json:"status,omitempty"`
 
 	// Root node metadata (empty on non-root nodes)

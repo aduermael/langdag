@@ -565,8 +565,12 @@ func TestBackfillMigration_IndexesExistingNodes(t *testing.T) {
 		}
 	}
 
-	// Simulate downgrade: clear the tool index and reset version to 6.
+	// Simulate downgrade: clear the tool index, drop columns added after
+	// migration 6, and reset version to 6.
 	store.db.ExecContext(ctx, "DELETE FROM node_tool_ids")
+	store.db.ExecContext(ctx, "ALTER TABLE nodes DROP COLUMN stop_reason")
+	store.db.ExecContext(ctx, "DROP INDEX IF EXISTS idx_nodes_output_group")
+	store.db.ExecContext(ctx, "ALTER TABLE nodes DROP COLUMN output_group_id")
 	store.db.ExecContext(ctx, "UPDATE schema_version SET version = 6")
 	store.Close()
 

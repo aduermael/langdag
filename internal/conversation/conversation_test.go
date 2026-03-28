@@ -89,7 +89,7 @@ func TestStreamResponse_EmptyProviderStream(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0)
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestOrphanedToolUse_DBIndexed_OrphanedAtEnd(t *testing.T) {
 
 	// Now call PromptFrom — it should inject synthetic tool_result.
 	mgr := NewManager(store, mock.New(mock.Config{Mode: "echo"}))
-	events, err := mgr.PromptFrom(ctx, "a1", "Actually, nevermind", "", nil, nil, 0)
+	events, err := mgr.PromptFrom(ctx, "a1", "Actually, nevermind", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom: %v", err)
 	}
@@ -592,7 +592,7 @@ func TestOrphanedToolUse_PromptFromIndexesToolResult(t *testing.T) {
 	// PromptFrom with a tool_result message should index the result.
 	mgr := NewManager(store, mock.New(mock.Config{Mode: "echo"}))
 	toolResult := `[{"type":"tool_result","tool_use_id":"t1","content":"done"}]`
-	events, err := mgr.PromptFrom(ctx, "a1", toolResult, "", nil, nil, 0)
+	events, err := mgr.PromptFrom(ctx, "a1", toolResult, "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom: %v", err)
 	}
@@ -653,7 +653,7 @@ func TestOrphanedToolUse_NoDuplicateWhenResultSent(t *testing.T) {
 	// so we can inspect the echo to verify no duplicate was injected.
 	mgr := NewManager(store, mock.New(mock.Config{Mode: "echo"}))
 	toolResult := `[{"type":"tool_result","tool_use_id":"t1","content":"done"}]`
-	events, err := mgr.PromptFrom(ctx, "a1", toolResult, "", nil, nil, 0)
+	events, err := mgr.PromptFrom(ctx, "a1", toolResult, "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom: %v", err)
 	}
@@ -842,7 +842,7 @@ func TestStreamResponse_CreateNodeFailure_DoesNotHang(t *testing.T) {
 	defer store.Close()
 
 	ctx := context.Background()
-	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0)
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -889,7 +889,7 @@ func TestStreamResponse_IndexesToolUseIDs(t *testing.T) {
 	}))
 
 	// Prompt creates a user node + assistant node (with tool_use).
-	events, err := mgr.Prompt(ctx, "find it", "", "", nil, nil, 0)
+	events, err := mgr.Prompt(ctx, "find it", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -941,7 +941,7 @@ func TestOrphanedToolUse_E2E_PromptThenContinueWithoutResult(t *testing.T) {
 	ctx := context.Background()
 
 	// Turn 1: user → assistant (with tool_use). tool_use ID indexed by streamResponse.
-	events1, err := mgr.Prompt(ctx, "What's the weather?", "", "", nil, nil, 0)
+	events1, err := mgr.Prompt(ctx, "What's the weather?", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -957,7 +957,7 @@ func TestOrphanedToolUse_E2E_PromptThenContinueWithoutResult(t *testing.T) {
 
 	// Turn 2: user continues WITHOUT sending tool_result (the bug scenario).
 	// PromptFrom should detect the orphan via DB index and inject synthetic result.
-	events2, err := mgr.PromptFrom(ctx, assistantNodeID, "Actually, never mind", "", nil, nil, 0)
+	events2, err := mgr.PromptFrom(ctx, assistantNodeID, "Actually, never mind", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom: %v", err)
 	}
@@ -992,7 +992,7 @@ func TestPromptFrom_ToolResultParent_RolesMerged(t *testing.T) {
 	ctx := context.Background()
 
 	// Turn 1: user → assistant (with tool_use)
-	events1, err := mgr.Prompt(ctx, "Search for test", "", "", nil, nil, 0)
+	events1, err := mgr.Prompt(ctx, "Search for test", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -1008,7 +1008,7 @@ func TestPromptFrom_ToolResultParent_RolesMerged(t *testing.T) {
 
 	// Turn 2: send tool_result → assistant
 	toolResult := `[{"type":"tool_result","tool_use_id":"toolu_000000","content":"found it"}]`
-	events2, err := mgr.PromptFrom(ctx, assistantNodeID, toolResult, "", nil, nil, 0)
+	events2, err := mgr.PromptFrom(ctx, assistantNodeID, toolResult, "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom with tool_result: %v", err)
 	}
@@ -1023,7 +1023,7 @@ func TestPromptFrom_ToolResultParent_RolesMerged(t *testing.T) {
 	}
 
 	// Turn 3: plain text continuing from assistant.
-	events3, err := mgr.PromptFrom(ctx, secondNodeID, "What did you find?", "", nil, nil, 0)
+	events3, err := mgr.PromptFrom(ctx, secondNodeID, "What did you find?", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom (turn 3): %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestPrompt_MaxTokensPropagated(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 12345)
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 12345, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -1062,7 +1062,7 @@ func TestPrompt_MaxTokensDefaultsTo4096(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0)
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -1082,7 +1082,7 @@ func TestPromptFrom_MaxTokensPropagated(t *testing.T) {
 
 	ctx := context.Background()
 	// Create initial conversation
-	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0)
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -1097,7 +1097,7 @@ func TestPromptFrom_MaxTokensPropagated(t *testing.T) {
 	}
 
 	// Continue with custom maxTokens
-	events, err = mgr.PromptFrom(ctx, nodeID, "follow up", "", nil, nil, 9999)
+	events, err = mgr.PromptFrom(ctx, nodeID, "follow up", "", nil, nil, 9999, 0)
 	if err != nil {
 		t.Fatalf("PromptFrom: %v", err)
 	}

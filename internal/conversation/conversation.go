@@ -31,7 +31,7 @@ func NewManager(store storage.Storage, prov provider.Provider) *Manager {
 // Prompt creates a new conversation tree with the given message.
 // It creates a root user node, sends to the LLM, and streams the response.
 // The assistant node is saved when the stream completes.
-func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens int) (<-chan types.StreamEvent, error) {
+func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	rootID := uuid.New().String()
 	rootNode := &types.Node{
 		ID:           rootID,
@@ -53,13 +53,13 @@ func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt strin
 		{Role: "user", Content: contentToRawMessage(message)},
 	}
 
-	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools, think, maxTokens)
+	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
 }
 
 // PromptFrom continues a conversation from an existing node.
 // It creates a user child node, builds message history by walking to the root,
 // sends to the LLM, and streams the response.
-func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition, think *bool, maxTokens int) (<-chan types.StreamEvent, error) {
+func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	// Get ancestors (path from root to parentNode)
 	ancestors, err := m.storage.GetAncestors(ctx, parentNodeID)
 	if err != nil {
@@ -128,7 +128,7 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		})
 	}
 
-	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools, think, maxTokens)
+	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
 }
 
 // injectSyntheticToolResults inserts synthetic tool_result nodes into the
@@ -187,7 +187,7 @@ func extractToolResultIDsFromContent(content string) []string {
 
 // streamResponse sends messages to the LLM and wraps the provider events,
 // saving the assistant node when the stream completes.
-func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens int) (<-chan types.StreamEvent, error) {
+func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	if maxTokens <= 0 {
 		maxTokens = 4096
 	}
@@ -234,6 +234,18 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 				}
 			}
 
+			// When the model hit max_tokens and produced no usable content
+			// (no text, no tool_use blocks), skip node creation entirely.
+			// Saving an empty node would corrupt the conversation — subsequent
+			// calls would send {"type":"text","text":""} which the API rejects.
+			if response != nil && response.StopReason == "max_tokens" && !hasUsableContent(response, fullText) {
+				events <- types.StreamEvent{
+					Type:  types.StreamEventError,
+					Error: fmt.Errorf("response truncated at max_tokens with no usable content"),
+				}
+				return
+			}
+
 			assistantNode := &types.Node{
 				ID:        uuid.New().String(),
 				ParentID:  parentNode.ID,
@@ -248,6 +260,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 			}
 			if response != nil {
 				assistantNode.Provider = response.Provider
+				assistantNode.StopReason = response.StopReason
 				assistantNode.TokensIn = response.Usage.InputTokens
 				assistantNode.TokensOut = response.Usage.OutputTokens
 				assistantNode.TokensCacheRead = response.Usage.CacheReadInputTokens
@@ -433,6 +446,23 @@ func (m *Manager) UpdateTitle(ctx context.Context, nodeID, title string) error {
 	}
 	node.Title = title
 	return m.storage.UpdateNode(ctx, node)
+}
+
+// hasUsableContent reports whether a response contains content worth saving.
+// Usable content is any non-empty text or any tool_use block.
+func hasUsableContent(response *types.CompletionResponse, fullText string) bool {
+	if strings.TrimSpace(fullText) != "" {
+		return true
+	}
+	for _, block := range response.Content {
+		if block.Type == "tool_use" {
+			return true
+		}
+		if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // hasNonTextBlocks returns true if content contains any non-text blocks (e.g. tool_use).

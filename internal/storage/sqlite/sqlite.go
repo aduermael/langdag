@@ -13,11 +13,11 @@ import (
 )
 
 // nodeColumns is the column list for node queries (unqualified).
-const nodeColumns = `id, parent_id, root_id, sequence, node_type, content, provider, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, status, title, system_prompt, created_at, metadata`
+const nodeColumns = `id, parent_id, root_id, sequence, node_type, content, provider, model, tokens_in, tokens_out, tokens_cache_read, tokens_cache_creation, tokens_reasoning, latency_ms, stop_reason, output_group_id, status, title, system_prompt, created_at, metadata`
 
 // nodeColumnsQ returns the column list qualified with a table alias.
 func nodeColumnsQ(alias string) string {
-	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.root_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.provider, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at, ` + alias + `.metadata`
+	return alias + `.id, ` + alias + `.parent_id, ` + alias + `.root_id, ` + alias + `.sequence, ` + alias + `.node_type, ` + alias + `.content, ` + alias + `.provider, ` + alias + `.model, ` + alias + `.tokens_in, ` + alias + `.tokens_out, ` + alias + `.tokens_cache_read, ` + alias + `.tokens_cache_creation, ` + alias + `.tokens_reasoning, ` + alias + `.latency_ms, ` + alias + `.stop_reason, ` + alias + `.output_group_id, ` + alias + `.status, ` + alias + `.title, ` + alias + `.system_prompt, ` + alias + `.created_at, ` + alias + `.metadata`
 }
 
 // SQLiteStorage implements the Storage interface using SQLite.
@@ -70,13 +70,13 @@ func (s *SQLiteStorage) Close() error {
 // scanNode scans a node from a SQL row.
 func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	var node types.Node
-	var parentID, rootID, providerName, model, status, title, systemPrompt, metadata sql.NullString
+	var parentID, rootID, providerName, model, stopReason, outputGroupID, status, title, systemPrompt, metadata sql.NullString
 	var tokensIn, tokensOut, tokensCacheRead, tokensCacheCreation, tokensReasoning, latencyMs sql.NullInt64
 
 	err := scanner.Scan(
 		&node.ID, &parentID, &rootID, &node.Sequence, &node.NodeType, &node.Content,
 		&providerName, &model, &tokensIn, &tokensOut, &tokensCacheRead, &tokensCacheCreation, &tokensReasoning,
-		&latencyMs, &status,
+		&latencyMs, &stopReason, &outputGroupID, &status,
 		&title, &systemPrompt, &node.CreatedAt, &metadata,
 	)
 	if err != nil {
@@ -93,6 +93,8 @@ func scanNode(scanner interface{ Scan(...any) error }) (*types.Node, error) {
 	node.TokensCacheCreation = int(tokensCacheCreation.Int64)
 	node.TokensReasoning = int(tokensReasoning.Int64)
 	node.LatencyMs = int(latencyMs.Int64)
+	node.StopReason = stopReason.String
+	node.OutputGroupID = outputGroupID.String
 	node.Status = status.String
 	node.Title = title.String
 	node.SystemPrompt = systemPrompt.String
@@ -120,10 +122,10 @@ func scanNodes(rows *sql.Rows) ([]*types.Node, error) {
 func (s *SQLiteStorage) CreateNode(ctx context.Context, node *types.Node) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO nodes (`+nodeColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, node.ID, nullString(node.ParentID), nullString(node.RootID), node.Sequence, node.NodeType, node.Content,
 		nullString(node.Provider), nullString(node.Model), node.TokensIn, node.TokensOut, node.TokensCacheRead, node.TokensCacheCreation, node.TokensReasoning,
-		node.LatencyMs, nullString(node.Status),
+		node.LatencyMs, nullString(node.StopReason), nullString(node.OutputGroupID), nullString(node.Status),
 		nullString(node.Title), nullString(node.SystemPrompt), node.CreatedAt, nullRawMessage(node.Metadata))
 	if err != nil {
 		return fmt.Errorf("failed to create node: %w", err)
