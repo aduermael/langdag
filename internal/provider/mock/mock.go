@@ -14,13 +14,25 @@ import (
 
 // Config holds mock provider configuration.
 type Config struct {
-	Mode          string        // random, echo, fixed, tool_use
+	Mode          string        // random, echo, fixed, tool_use, error, stream_error, partial_max_tokens
 	FixedResponse string        // response text for fixed mode
 	Delay         time.Duration // delay before responding
 	ChunkDelay    time.Duration // delay between stream chunks
 	// ToolCalls configures tool_use responses when Mode is "tool_use".
 	// Each entry produces a tool_use content block in the response.
 	ToolCalls []ToolCallConfig
+	// StopReason overrides the default stop reason ("end_turn" or "tool_use").
+	// When set with Mode "fixed" and empty FixedResponse, the response has no content.
+	StopReason string
+	// Error is returned by Complete() and Stream() when Mode is "error".
+	// Also used as the error returned during the FailUntilCall transient-failure window.
+	Error error
+	// ErrorAfterChunks controls "stream_error" mode: Stream() sends this many
+	// delta chunks before emitting a StreamEventError with Config.Error.
+	ErrorAfterChunks int
+	// FailUntilCall enables call-counting: calls 1..N return Config.Error,
+	// call N+1 onwards use the normal mode. 0 disables (default).
+	FailUntilCall int
 }
 
 // ToolCallConfig defines a mock tool call response.
@@ -33,6 +45,7 @@ type ToolCallConfig struct {
 type Provider struct {
 	cfg         Config
 	LastRequest *types.CompletionRequest // captures the most recent request for testing
+	callCount   int                      // tracks number of Complete/Stream calls for FailUntilCall
 }
 
 // New creates a new mock provider.
@@ -53,9 +66,28 @@ func (p *Provider) Models() []types.ModelInfo {
 	}
 }
 
+// shouldFail increments the call counter and returns true if the current call
+// should return an error (either because Mode is "error" or because the call
+// is within the FailUntilCall transient-failure window).
+func (p *Provider) shouldFail() bool {
+	p.callCount++
+	if p.cfg.FailUntilCall > 0 && p.callCount <= p.cfg.FailUntilCall {
+		return true
+	}
+	return p.cfg.Mode == "error"
+}
+
+// CallCount returns the number of Complete/Stream calls made so far.
+func (p *Provider) CallCount() int {
+	return p.callCount
+}
+
 // Complete performs a mock completion request.
 func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	p.LastRequest = req
+	if p.shouldFail() {
+		return nil, p.cfg.Error
+	}
 	if p.cfg.Delay > 0 {
 		select {
 		case <-time.After(p.cfg.Delay):
@@ -67,10 +99,7 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 	text := p.generateResponse(req)
 	contentBlocks := p.generateContentBlocks(text)
 
-	stopReason := "end_turn"
-	if p.cfg.Mode == "tool_use" && len(p.cfg.ToolCalls) > 0 {
-		stopReason = "tool_use"
-	}
+	stopReason := p.resolveStopReason()
 
 	inputTokens := estimateTokens(req)
 	return &types.CompletionResponse{
@@ -91,6 +120,9 @@ func (p *Provider) Complete(ctx context.Context, req *types.CompletionRequest) (
 // Stream performs a mock streaming completion request.
 func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
 	p.LastRequest = req
+	if p.shouldFail() {
+		return nil, p.cfg.Error
+	}
 	if p.cfg.Delay > 0 {
 		select {
 		case <-time.After(p.cfg.Delay):
@@ -108,6 +140,25 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 
 		// Start event
 		events <- types.StreamEvent{Type: types.StreamEventStart}
+
+		// stream_error mode: send ErrorAfterChunks deltas, then an error event
+		if p.cfg.Mode == "stream_error" {
+			for i := 0; i < p.cfg.ErrorAfterChunks && i < len(words); i++ {
+				chunk := words[i]
+				if i < len(words)-1 {
+					chunk += " "
+				}
+				events <- types.StreamEvent{
+					Type:    types.StreamEventDelta,
+					Content: chunk,
+				}
+				if p.cfg.ChunkDelay > 0 {
+					time.Sleep(p.cfg.ChunkDelay)
+				}
+			}
+			events <- types.StreamEvent{Type: types.StreamEventError, Error: p.cfg.Error}
+			return
+		}
 
 		// Delta events - word by word
 		for i, word := range words {
@@ -148,10 +199,7 @@ func (p *Provider) Stream(ctx context.Context, req *types.CompletionRequest) (<-
 		}
 
 		contentBlocks := p.generateContentBlocks(text)
-		stopReason := "end_turn"
-		if p.cfg.Mode == "tool_use" && len(p.cfg.ToolCalls) > 0 {
-			stopReason = "tool_use"
-		}
+		stopReason := p.resolveStopReason()
 
 		// Done event
 		inputTokens := estimateTokens(req)
@@ -180,17 +228,44 @@ func (p *Provider) generateResponse(req *types.CompletionRequest) string {
 	switch p.cfg.Mode {
 	case "echo":
 		return echoLastMessage(req)
-	case "fixed":
+	case "fixed", "partial_max_tokens":
 		if p.cfg.FixedResponse != "" {
 			return p.cfg.FixedResponse
+		}
+		// When StopReason is explicitly set, respect empty FixedResponse literally
+		// (e.g. simulating max_tokens with no content).
+		if p.cfg.StopReason != "" || p.cfg.Mode == "partial_max_tokens" {
+			return ""
 		}
 		return "This is a mock response."
 	case "tool_use":
 		// In tool_use mode, text is optional; tool calls come via content blocks.
 		return p.cfg.FixedResponse
+	case "stream_error":
+		// stream_error uses FixedResponse to generate chunks before the error.
+		if p.cfg.FixedResponse != "" {
+			return p.cfg.FixedResponse
+		}
+		return "This is a mock response that will be interrupted."
+	case "error":
+		return ""
 	default: // random
 		return randomResponse()
 	}
+}
+
+// resolveStopReason returns the stop reason for the response.
+func (p *Provider) resolveStopReason() string {
+	if p.cfg.StopReason != "" {
+		return p.cfg.StopReason
+	}
+	if p.cfg.Mode == "partial_max_tokens" {
+		return "max_tokens"
+	}
+	if p.cfg.Mode == "tool_use" && len(p.cfg.ToolCalls) > 0 {
+		return "tool_use"
+	}
+	return "end_turn"
 }
 
 // generateContentBlocks returns the content blocks for a response.
@@ -210,7 +285,7 @@ func (p *Provider) generateContentBlocks(text string) []types.ContentBlock {
 			})
 		}
 	}
-	if len(blocks) == 0 {
+	if len(blocks) == 0 && p.cfg.StopReason == "" {
 		blocks = append(blocks, types.ContentBlock{Type: "text", Text: text})
 	}
 	return blocks
