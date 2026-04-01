@@ -326,6 +326,79 @@ func TestDeleteNode(t *testing.T) {
 	}
 }
 
+// --- 9c: HTTP 5xx during streaming ---
+
+func TestStreamRequest_HTTP200WithErrorEvent(t *testing.T) {
+	// Server returns HTTP 200 with SSE content, then sends error event
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		w.Write([]byte("event: start\ndata: {}\n\n"))
+		flusher.Flush()
+		w.Write([]byte("event: delta\ndata: {\"content\":\"partial\"}\n\n"))
+		flusher.Flush()
+		w.Write([]byte("event: error\ndata: provider crashed\n\n"))
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	stream, err := c.PromptStream(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("PromptStream should not error for HTTP 200: %v", err)
+	}
+
+	for range stream.Events() {
+	}
+
+	// Err() should be a *StreamError
+	sErr := stream.Err()
+	if sErr == nil {
+		t.Fatal("expected stream error after error event")
+	}
+	streamErr, ok := sErr.(*StreamError)
+	if !ok {
+		t.Fatalf("expected *StreamError, got %T: %v", sErr, sErr)
+	}
+	if streamErr.Message != "provider crashed" {
+		t.Errorf("expected 'provider crashed', got %q", streamErr.Message)
+	}
+
+	// Content should have the partial delta
+	if stream.Content() != "partial" {
+		t.Errorf("expected 'partial', got %q", stream.Content())
+	}
+}
+
+func TestStreamRequest_HTTP500BeforeStreaming(t *testing.T) {
+	// Server returns HTTP 500 with JSON error body before streaming starts
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "provider unavailable"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	_, err := c.PromptStream(context.Background(), "test")
+	if err == nil {
+		t.Fatal("expected error for HTTP 500")
+	}
+
+	// Should be an *APIError, not *StreamError
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != 500 {
+		t.Errorf("expected status 500, got %d", apiErr.StatusCode)
+	}
+	if apiErr.Message != "provider unavailable" {
+		t.Errorf("expected 'provider unavailable', got %q", apiErr.Message)
+	}
+}
+
 // --- 2b: WithHTTPClient, combined options, context cancellation ---
 
 func TestWithHTTPClient(t *testing.T) {
