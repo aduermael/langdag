@@ -832,3 +832,82 @@ func TestNonStreamingMidStreamError(t *testing.T) {
 		t.Errorf("error = %q, want to contain %q", errResp["error"], "connection reset")
 	}
 }
+
+// --- Phase 8d: Invalid request validation ---
+
+func TestPromptEmptyBody(t *testing.T) {
+	_, mux := testServer(t, "")
+
+	req := httptest.NewRequest("POST", "/prompt", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty body: status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp map[string]string
+	json.NewDecoder(w.Body).Decode(&errResp)
+	if errResp["error"] == "" {
+		t.Error("error field is empty for nil body")
+	}
+}
+
+func TestPromptMissingMessageField(t *testing.T) {
+	_, mux := testServer(t, "")
+
+	// Valid JSON but no "message" field
+	body := `{"model":"test"}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("missing message: status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+
+	var errResp map[string]string
+	json.NewDecoder(w.Body).Decode(&errResp)
+	if errResp["error"] != "message is required" {
+		t.Errorf("error = %q, want %q", errResp["error"], "message is required")
+	}
+}
+
+func TestPromptLargeMessage(t *testing.T) {
+	_, mux := testServer(t, "")
+
+	// 1MB+ message — should succeed (no server-side limit)
+	largeMsg := strings.Repeat("x", 1<<20+1)
+	body := `{"message":"` + largeMsg + `"}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("large message: status = %d, want %d; body = %s", w.Code, http.StatusOK, w.Body.String()[:200])
+	}
+
+	var resp PromptResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.NodeID == "" {
+		t.Error("node_id is empty for large message")
+	}
+}
+
+func TestPromptStreamingEmptyBody(t *testing.T) {
+	_, mux := testServer(t, "")
+
+	// Streaming request with no body
+	req := httptest.NewRequest("POST", "/prompt", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	// Should get 400 (validation happens before streaming starts)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("streaming empty body: status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
