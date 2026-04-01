@@ -911,3 +911,91 @@ func TestPromptStreamingEmptyBody(t *testing.T) {
 		t.Fatalf("streaming empty body: status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
+
+// --- Phase 8e: Auth edge cases ---
+
+func TestAuthEmptyAPIKeyHeader(t *testing.T) {
+	_, mux := testServer(t, "test-secret")
+
+	req := httptest.NewRequest("GET", "/nodes", nil)
+	req.Header.Set("X-API-Key", "")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("empty X-API-Key: status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAuthMalformedBearerTokens(t *testing.T) {
+	_, mux := testServer(t, "test-secret")
+
+	tests := []struct {
+		name string
+		auth string
+		want int
+	}{
+		{"Bearer with trailing space only", "Bearer ", http.StatusUnauthorized},
+		{"Bearer without space", "Bearer", http.StatusUnauthorized},
+		{"Basic auth scheme", "Basic dGVzdC1zZWNyZXQ=", http.StatusUnauthorized},
+		{"Wrong key", "Bearer wrong-key", http.StatusUnauthorized},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/nodes", nil)
+			req.Header.Set("Authorization", tc.auth)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			if w.Code != tc.want {
+				t.Fatalf("status = %d, want %d", w.Code, tc.want)
+			}
+
+			var errResp map[string]string
+			json.NewDecoder(w.Body).Decode(&errResp)
+			if errResp["error"] != "unauthorized" {
+				t.Errorf("error = %q, want %q", errResp["error"], "unauthorized")
+			}
+		})
+	}
+}
+
+func TestAuthHealthBypassesWithWrongKey(t *testing.T) {
+	_, mux := testServer(t, "test-secret")
+
+	// Health endpoint works even with wrong credentials
+	req := httptest.NewRequest("GET", "/health", nil)
+	req.Header.Set("X-API-Key", "wrong-key")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("health with wrong key: status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestAuthNoConfigAllEndpointsOpen(t *testing.T) {
+	_, mux := testServer(t, "") // no API key configured
+
+	// All endpoints should be accessible without auth
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/nodes"},
+		{"GET", "/health"},
+	}
+
+	for _, ep := range endpoints {
+		t.Run(ep.method+" "+ep.path, func(t *testing.T) {
+			req := httptest.NewRequest(ep.method, ep.path, nil)
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			if w.Code == http.StatusUnauthorized {
+				t.Errorf("%s %s returned 401 with no API key configured", ep.method, ep.path)
+			}
+		})
+	}
+}
