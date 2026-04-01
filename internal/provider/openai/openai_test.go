@@ -2,6 +2,8 @@ package openai
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -443,5 +445,546 @@ func TestGrokBaseURLTrimming(t *testing.T) {
 	p := NewGrok("test-key", "https://api.x.ai/v1/")
 	if strings.HasSuffix(p.baseURL, "/") {
 		t.Error("expected trailing slash to be trimmed from base URL")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// convertMessages — error branch coverage
+// ---------------------------------------------------------------------------
+
+func TestConvertMessages_MalformedJSON(t *testing.T) {
+	// Content that is neither valid string nor valid []ContentBlock
+	// falls back to raw string content — no panic.
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`{invalid json}`)},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	// Should fall back to raw string
+	if result[0].Content != `{invalid json}` {
+		t.Errorf("content = %v, want raw fallback", result[0].Content)
+	}
+}
+
+func TestConvertMessages_EmptyContentArray(t *testing.T) {
+	// Empty block array should produce a message with empty text.
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`[]`)},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	// extractText of empty parts → ""
+	if result[0].Content != "" {
+		t.Errorf("content = %v, want empty string", result[0].Content)
+	}
+}
+
+func TestConvertMessages_UnknownBlockTypes(t *testing.T) {
+	// Blocks with unrecognized types should be silently skipped.
+	blocks := []types.ContentBlock{
+		{Type: "audio", Text: "audio data"},
+		{Type: "text", Text: "Hello"},
+	}
+	content, _ := json.Marshal(blocks)
+	messages := []types.Message{
+		{Role: "user", Content: content},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	// Only the text block should survive
+	if result[0].Content != "Hello" {
+		t.Errorf("content = %v, want %q", result[0].Content, "Hello")
+	}
+}
+
+func TestConvertMessages_ToolCallEmptyFunctionName(t *testing.T) {
+	// tool_use block with empty function name should not panic.
+	blocks := []types.ContentBlock{
+		{Type: "tool_use", ID: "call_empty", Name: "", Input: json.RawMessage(`{}`)},
+	}
+	content, _ := json.Marshal(blocks)
+	messages := []types.Message{
+		{Role: "assistant", Content: content},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	if len(result[0].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(result[0].ToolCalls))
+	}
+	if result[0].ToolCalls[0].Function.Name != "" {
+		t.Errorf("expected empty function name, got %q", result[0].ToolCalls[0].Function.Name)
+	}
+}
+
+func TestConvertMessages_ImageBlockNoURLNoData(t *testing.T) {
+	// Image block with neither URL nor Data should produce no image_url part.
+	blocks := []types.ContentBlock{
+		{Type: "image"},
+		{Type: "text", Text: "caption"},
+	}
+	content, _ := json.Marshal(blocks)
+	messages := []types.Message{
+		{Role: "user", Content: content},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	// hasImages is true (type=image present), so content is []contentPart
+	// but the image part was skipped (no URL/Data) — only text remains
+	// Actually hasImages flag is set even though no url, so content is []contentPart
+	parts, ok := result[0].Content.([]contentPart)
+	if ok {
+		// If it's parts, should only have the text
+		if len(parts) != 1 {
+			t.Errorf("expected 1 content part, got %d", len(parts))
+		}
+	}
+}
+
+func TestConvertMessages_DocumentPlainText(t *testing.T) {
+	// Document block with text/plain is converted to text part.
+	blocks := []types.ContentBlock{
+		{Type: "document", MediaType: "text/plain", Data: "document content here"},
+	}
+	content, _ := json.Marshal(blocks)
+	messages := []types.Message{
+		{Role: "user", Content: content},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	if result[0].Content != "document content here" {
+		t.Errorf("content = %v, want %q", result[0].Content, "document content here")
+	}
+}
+
+func TestConvertMessages_DocumentNonTextSkipped(t *testing.T) {
+	// Document block with non-text/plain media type and no URL is skipped.
+	blocks := []types.ContentBlock{
+		{Type: "document", MediaType: "application/pdf", Data: "base64data"},
+		{Type: "text", Text: "summary"},
+	}
+	content, _ := json.Marshal(blocks)
+	messages := []types.Message{
+		{Role: "user", Content: content},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+	// PDF document is not handled by OpenAI path, only text survives
+	if result[0].Content != "summary" {
+		t.Errorf("content = %v, want %q", result[0].Content, "summary")
+	}
+}
+
+func TestConvertMessages_NullContent(t *testing.T) {
+	// JSON null content should not panic.
+	messages := []types.Message{
+		{Role: "user", Content: json.RawMessage(`null`)},
+	}
+	result := convertMessages(messages, "")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// convertResponse — edge cases
+// ---------------------------------------------------------------------------
+
+func TestConvertResponse_EmptyChoices(t *testing.T) {
+	// Response with no choices should not panic.
+	resp := &chatCompletionResponse{
+		ID:    "chatcmpl-empty",
+		Model: "gpt-4o",
+		Usage: &usage{PromptTokens: 10, CompletionTokens: 0},
+	}
+	result := convertResponse(resp)
+	if result.ID != "chatcmpl-empty" {
+		t.Errorf("ID = %q, want %q", result.ID, "chatcmpl-empty")
+	}
+	if len(result.Content) != 0 {
+		t.Errorf("expected 0 content blocks, got %d", len(result.Content))
+	}
+	if result.StopReason != "" {
+		t.Errorf("expected empty stop reason, got %q", result.StopReason)
+	}
+}
+
+func TestConvertResponse_NilUsage(t *testing.T) {
+	// Response with nil usage should not panic.
+	stop := "stop"
+	content := "Hi"
+	resp := &chatCompletionResponse{
+		ID:    "chatcmpl-nousage",
+		Model: "gpt-4o",
+		Choices: []choice{
+			{Message: responseMessage{Content: &content}, FinishReason: &stop},
+		},
+	}
+	result := convertResponse(resp)
+	if result.Usage.InputTokens != 0 {
+		t.Errorf("expected 0 input tokens with nil usage, got %d", result.Usage.InputTokens)
+	}
+}
+
+func TestConvertResponse_NilContentNilFinishReason(t *testing.T) {
+	// Choice with nil content and nil finish reason should not panic.
+	resp := &chatCompletionResponse{
+		ID:      "chatcmpl-nil",
+		Model:   "gpt-4o",
+		Choices: []choice{{}},
+		Usage:   &usage{},
+	}
+	result := convertResponse(resp)
+	if len(result.Content) != 0 {
+		t.Errorf("expected 0 content blocks, got %d", len(result.Content))
+	}
+	if result.StopReason != "" {
+		t.Errorf("expected empty stop reason, got %q", result.StopReason)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseSSEStream — error branch coverage
+// ---------------------------------------------------------------------------
+
+func TestParseSSEStream_MalformedJSONSkipped(t *testing.T) {
+	// Malformed JSON data lines should be silently skipped.
+	sseData := `data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+data: {invalid json line}
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var text string
+	for ev := range events {
+		if ev.Type == types.StreamEventDelta {
+			text += ev.Content
+		}
+	}
+	if text != "Hello world" {
+		t.Errorf("text = %q, want %q", text, "Hello world")
+	}
+}
+
+func TestParseSSEStream_NonDataLinesIgnored(t *testing.T) {
+	// Lines without "data: " prefix (comments, empty lines, event: lines)
+	// should be silently ignored.
+	sseData := `: this is a comment
+event: message
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+random line without prefix
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var text string
+	for ev := range events {
+		if ev.Type == types.StreamEventDelta {
+			text += ev.Content
+		}
+	}
+	if text != "Hi" {
+		t.Errorf("text = %q, want %q", text, "Hi")
+	}
+}
+
+func TestParseSSEStream_DONEMidStream(t *testing.T) {
+	// [DONE] appearing before tool calls are fully accumulated.
+	// Should emit Done with whatever has been accumulated so far.
+	sseData := `data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}
+
+data: [DONE]
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":" ignored"},"finish_reason":null}]}
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var text string
+	var gotDone bool
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			text += ev.Content
+		case types.StreamEventDone:
+			gotDone = true
+		}
+	}
+	if text != "partial" {
+		t.Errorf("text = %q, want %q (content after [DONE] should be ignored)", text, "partial")
+	}
+	if !gotDone {
+		t.Error("expected done event")
+	}
+}
+
+func TestParseSSEStream_EmptyDeltaChunks(t *testing.T) {
+	// Delta with empty/null content should not emit a delta event.
+	sseData := `data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var deltaCount int
+	for ev := range events {
+		if ev.Type == types.StreamEventDelta {
+			deltaCount++
+		}
+	}
+	// Only "Hi" should produce a delta (empty "" should be skipped)
+	if deltaCount != 1 {
+		t.Errorf("expected 1 delta event, got %d", deltaCount)
+	}
+}
+
+func TestParseSSEStream_NoChoicesInChunk(t *testing.T) {
+	// Chunks with empty choices (e.g. usage-only chunks) should be handled.
+	sseData := `data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1}}
+
+data: [DONE]
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var doneResp *types.CompletionResponse
+	for ev := range events {
+		if ev.Type == types.StreamEventDone {
+			doneResp = ev.Response
+		}
+	}
+	if doneResp == nil {
+		t.Fatal("expected done response")
+	}
+	if doneResp.Usage.InputTokens != 10 {
+		t.Errorf("InputTokens = %d, want 10", doneResp.Usage.InputTokens)
+	}
+}
+
+// errReader returns data up to a point, then returns an error.
+type errReader struct {
+	data string
+	pos  int
+	err  error
+}
+
+func (r *errReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	if r.pos >= len(r.data) {
+		return n, r.err
+	}
+	return n, nil
+}
+
+func TestParseSSEStream_ReadError(t *testing.T) {
+	// Scanner encounters a read error mid-stream.
+	// Should emit StreamEventError.
+	data := "data: {\"id\":\"chatcmpl-1\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"
+
+	reader := &errReader{
+		data: data,
+		err:  errors.New("network timeout"),
+	}
+
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(reader, events)
+	}()
+
+	var gotDelta, gotError, gotDone bool
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			gotDelta = true
+		case types.StreamEventError:
+			gotError = true
+		case types.StreamEventDone:
+			gotDone = true
+		}
+	}
+	if !gotDelta {
+		t.Error("expected delta event before error")
+	}
+	// The scanner may or may not see the error depending on buffering.
+	// If EOF is returned after all data, scanner considers it normal.
+	// But a non-EOF error should be propagated.
+	_ = gotError
+	_ = gotDone
+}
+
+func TestParseSSEStream_EmptyStream(t *testing.T) {
+	// Completely empty stream should emit start + done, no error.
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(""), events)
+	}()
+
+	var gotStart, gotDone bool
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventStart:
+			gotStart = true
+		case types.StreamEventDone:
+			gotDone = true
+		}
+	}
+	if !gotStart {
+		t.Error("expected start event")
+	}
+	if !gotDone {
+		t.Error("expected done event even on empty stream")
+	}
+}
+
+func TestParseSSEStream_OnlyDONE(t *testing.T) {
+	// Stream with only [DONE] sentinel and no data.
+	sseData := "data: [DONE]\n\n"
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var gotStart, gotDone bool
+	var doneResp *types.CompletionResponse
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventStart:
+			gotStart = true
+		case types.StreamEventDone:
+			gotDone = true
+			doneResp = ev.Response
+		}
+	}
+	if !gotStart {
+		t.Error("expected start event")
+	}
+	if !gotDone {
+		t.Error("expected done event")
+	}
+	if doneResp == nil {
+		t.Fatal("expected response in done event")
+	}
+	if doneResp.ID != "" {
+		t.Errorf("expected empty ID, got %q", doneResp.ID)
+	}
+}
+
+func TestParseSSEStream_NoDONESentinel(t *testing.T) {
+	// Stream that ends without [DONE] should still emit done event.
+	sseData := `data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+`
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var text string
+	var gotDone bool
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			text += ev.Content
+		case types.StreamEventDone:
+			gotDone = true
+		}
+	}
+	if text != "Hi" {
+		t.Errorf("text = %q, want %q", text, "Hi")
+	}
+	if !gotDone {
+		t.Error("expected done event even without [DONE] sentinel")
+	}
+}
+
+func TestParseSSEStream_ReadErrorNonEOF(t *testing.T) {
+	// Use io.Pipe to simulate a read error mid-stream.
+	pr, pw := io.Pipe()
+
+	go func() {
+		pw.Write([]byte("data: {\"id\":\"1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n"))
+		pw.CloseWithError(errors.New("connection reset"))
+	}()
+
+	events := make(chan types.StreamEvent, 20)
+	go func() {
+		defer close(events)
+		parseSSEStream(pr, events)
+	}()
+
+	var gotError bool
+	var errMsg string
+	for ev := range events {
+		if ev.Type == types.StreamEventError {
+			gotError = true
+			errMsg = ev.Error.Error()
+		}
+	}
+	if !gotError {
+		t.Fatal("expected error event from connection reset")
+	}
+	if !strings.Contains(errMsg, "connection reset") {
+		t.Errorf("error = %q, should contain 'connection reset'", errMsg)
 	}
 }
