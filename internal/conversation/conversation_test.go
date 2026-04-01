@@ -1935,3 +1935,266 @@ func TestContentToRawMessage_NullByte(t *testing.T) {
 		t.Errorf("null byte content should produce valid JSON: %s", raw)
 	}
 }
+
+// --- 3d: Output group budget boundary ---
+
+func TestOutputGroupContinuation_ExactBudgetBoundary(t *testing.T) {
+	// When cumulative output tokens land exactly at the budget limit,
+	// continuation should stop (cumulativeOutputToks < groupBudget is false).
+	mgr, store, cleanup := newTestManagerWithSequence(t, []sequenceResponse{
+		{text: "first", stopReason: "max_tokens", outputToks: 500},
+		{text: " second", stopReason: "max_tokens", outputToks: 500}, // cumulative=1000, exactly at budget
+		{text: " third", stopReason: "end_turn", outputToks: 100},    // should NOT be reached
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	// maxOutputGroupTokens=1000, so after 2 calls (500+500=1000), should stop.
+	events, err := mgr.Prompt(ctx, "write", "", "", nil, nil, 500, 1000)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var allText string
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventDelta {
+			allText += ev.Content
+		}
+		if ev.Type == types.StreamEventError {
+			t.Fatalf("unexpected error: %v", ev.Error)
+		}
+	}
+
+	// Only text from first two calls.
+	if allText != "first second" {
+		t.Errorf("text = %q, want %q", allText, "first second")
+	}
+
+	// Verify only 2 assistant nodes created (not 3).
+	var nodeID string
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventNodeSaved {
+			nodeID = ev.NodeID
+		}
+	}
+	ancestors, err := store.GetAncestors(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1 user + 2 assistant = 3 ancestors
+	if len(ancestors) != 3 {
+		t.Errorf("expected 3 ancestors (1 user + 2 assistant), got %d", len(ancestors))
+	}
+}
+
+func TestOutputGroupContinuation_OneBelowBudget(t *testing.T) {
+	// When cumulative tokens are 1 below the budget, one more continuation
+	// should be attempted.
+	mgr, store, cleanup := newTestManagerWithSequence(t, []sequenceResponse{
+		{text: "first", stopReason: "max_tokens", outputToks: 499},
+		{text: " second", stopReason: "max_tokens", outputToks: 1}, // cumulative=500, exactly at budget, but < check was before this call
+		{text: " third", stopReason: "end_turn", outputToks: 100},  // reached because 499 < 500
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "write", "", "", nil, nil, 500, 500)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var allText string
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventDelta {
+			allText += ev.Content
+		}
+	}
+
+	// After first call: cumulative=499 < budget=500 → continue.
+	// After second call: cumulative=500, not < 500 → stop.
+	// Third response is NOT reached.
+	if allText != "first second" {
+		t.Errorf("text = %q, want %q", allText, "first second")
+	}
+
+	var nodeID string
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventNodeSaved {
+			nodeID = ev.NodeID
+		}
+	}
+	ancestors, err := store.GetAncestors(ctx, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ancestors) != 3 {
+		t.Errorf("expected 3 ancestors (1 user + 2 assistant), got %d", len(ancestors))
+	}
+}
+
+func TestOutputGroupContinuation_DefaultBudgetMultiplier(t *testing.T) {
+	// When maxOutputGroupTokens=0, budget = maxTokens * 4.
+	// With maxTokens=100, budget=400. First call uses 300 (< 400 → continue),
+	// second uses 200 (cumulative=500 ≥ 400 → stop).
+	mgr, _, cleanup := newTestManagerWithSequence(t, []sequenceResponse{
+		{text: "first", stopReason: "max_tokens", outputToks: 300},
+		{text: " second", stopReason: "max_tokens", outputToks: 200},
+		{text: " third", stopReason: "end_turn", outputToks: 50}, // NOT reached
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "write", "", "", nil, nil, 100, 0) // budget = 100*4 = 400
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var allText string
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventDelta {
+			allText += ev.Content
+		}
+	}
+
+	if allText != "first second" {
+		t.Errorf("text = %q, want %q", allText, "first second")
+	}
+}
+
+func TestOutputGroupContinuation_ProviderFailsDuringContinuation(t *testing.T) {
+	// When the continuation provider.Stream() call fails, should emit
+	// the last saved node ID as NodeSaved (graceful degradation).
+	prov := &sequenceProvider{responses: []sequenceResponse{
+		{text: "partial content", stopReason: "max_tokens", outputToks: 100},
+		// No second response — sequenceProvider will return error.
+	}}
+
+	dbPath := t.TempDir() + "/test.db"
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Init(context.Background()); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	mgr := NewManager(store, prov)
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "generate", "", "", nil, nil, 1000, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var allText string
+	var gotNodeSaved bool
+	var savedNodeID string
+	for _, ev := range evs {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			allText += ev.Content
+		case types.StreamEventNodeSaved:
+			gotNodeSaved = true
+			savedNodeID = ev.NodeID
+		case types.StreamEventError:
+			t.Errorf("should not get error event — continuation failure is graceful: %v", ev.Error)
+		}
+	}
+
+	// The partial content from the first call should still be visible.
+	if allText != "partial content" {
+		t.Errorf("text = %q, want %q", allText, "partial content")
+	}
+
+	// The first node should be emitted as NodeSaved (graceful fallback).
+	if !gotNodeSaved {
+		t.Fatal("expected NodeSaved event with the last successfully saved node")
+	}
+
+	// Verify the saved node exists and has the partial content.
+	node, err := store.GetNode(ctx, savedNodeID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if node == nil {
+		t.Fatal("saved node not found in DB")
+	}
+	if node.Content != "partial content" {
+		t.Errorf("saved node content = %q, want %q", node.Content, "partial content")
+	}
+}
+
+func TestOutputGroupContinuation_MaxTokensEmptyContent_NoPriorSave(t *testing.T) {
+	// max_tokens with no usable content and no prior continuation →
+	// should emit error event (not hang or crash).
+	mgr, cleanup := newTestManager(t, mock.Config{
+		Mode: "partial_max_tokens",
+		// Empty FixedResponse + max_tokens stop reason → no usable content.
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 100, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var gotError bool
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventError {
+			gotError = true
+			if ev.Error == nil || !strings.Contains(ev.Error.Error(), "max_tokens") {
+				t.Errorf("expected error about max_tokens, got: %v", ev.Error)
+			}
+		}
+		if ev.Type == types.StreamEventNodeSaved {
+			t.Error("should not have NodeSaved when max_tokens with no content")
+		}
+	}
+	if !gotError {
+		t.Error("expected error event for max_tokens with no usable content")
+	}
+}
+
+func TestOutputGroupContinuation_MaxTokensEmptyContent_WithPriorSave(t *testing.T) {
+	// max_tokens with no usable content but prior continuation saved →
+	// should emit NodeSaved with the prior node ID (not error).
+	mgr, _, cleanup := newTestManagerWithSequence(t, []sequenceResponse{
+		{text: "good content", stopReason: "max_tokens", outputToks: 100},
+		{text: "", stopReason: "max_tokens", outputToks: 0}, // empty continuation
+	})
+	defer cleanup()
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "write", "", "", nil, nil, 1000, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var gotNodeSaved bool
+	var gotError bool
+	for _, ev := range evs {
+		switch ev.Type {
+		case types.StreamEventNodeSaved:
+			gotNodeSaved = true
+		case types.StreamEventError:
+			gotError = true
+		}
+	}
+
+	// Should emit NodeSaved (the prior saved node), not error.
+	if !gotNodeSaved {
+		t.Error("expected NodeSaved with prior continuation node")
+	}
+	if gotError {
+		t.Error("should not get error when prior continuation exists")
+	}
+}
