@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -502,6 +504,99 @@ func TestStreamRequest_HTTP500BeforeStreaming(t *testing.T) {
 	}
 	if apiErr.Message != "provider unavailable" {
 		t.Errorf("expected 'provider unavailable', got %q", apiErr.Message)
+	}
+}
+
+func TestStreamRequest_ConcurrentStreams(t *testing.T) {
+	// Server sends unique content per stream based on the message
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req promptRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+
+		w.Write([]byte("event: start\ndata: {}\n\n"))
+		flusher.Flush()
+
+		// Each stream gets content based on its message
+		for i := 0; i < 5; i++ {
+			chunk := fmt.Sprintf("event: delta\ndata: {\"content\":\"%s-%d \"}\n\n", req.Message, i)
+			w.Write([]byte(chunk))
+			flusher.Flush()
+		}
+
+		nodeID := fmt.Sprintf("node-%s", req.Message)
+		done := fmt.Sprintf("event: done\ndata: {\"node_id\":\"%s\"}\n\n", nodeID)
+		w.Write([]byte(done))
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	streamCount := 5
+
+	type result struct {
+		idx     int
+		content string
+		nodeID  string
+		err     error
+	}
+
+	results := make(chan result, streamCount)
+
+	for i := 0; i < streamCount; i++ {
+		go func(idx int) {
+			msg := fmt.Sprintf("stream%d", idx)
+			stream, err := c.PromptStream(context.Background(), msg)
+			if err != nil {
+				results <- result{idx: idx, err: err}
+				return
+			}
+
+			for range stream.Events() {
+			}
+
+			node, err := stream.Node()
+			if err != nil {
+				results <- result{idx: idx, content: stream.Content(), err: err}
+				return
+			}
+
+			results <- result{idx: idx, content: stream.Content(), nodeID: node.ID}
+		}(i)
+	}
+
+	seen := make(map[string]bool)
+	for i := 0; i < streamCount; i++ {
+		select {
+		case r := <-results:
+			if r.err != nil {
+				t.Errorf("stream %d error: %v", r.idx, r.err)
+				continue
+			}
+
+			// Each stream should have unique content and nodeID
+			expectedNodeID := fmt.Sprintf("node-stream%d", r.idx)
+			if r.nodeID != expectedNodeID {
+				t.Errorf("stream %d: expected nodeID %q, got %q", r.idx, expectedNodeID, r.nodeID)
+			}
+
+			if seen[r.content] {
+				t.Errorf("stream %d: duplicate content %q", r.idx, r.content)
+			}
+			seen[r.content] = true
+
+			// Content should contain the stream index
+			expected := fmt.Sprintf("stream%d-0", r.idx)
+			if !strings.Contains(r.content, expected) {
+				t.Errorf("stream %d: content %q doesn't contain %q", r.idx, r.content, expected)
+			}
+
+		case <-time.After(10 * time.Second):
+			t.Fatal("timeout waiting for concurrent streams")
+		}
 	}
 }
 
