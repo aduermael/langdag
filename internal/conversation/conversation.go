@@ -491,7 +491,15 @@ func contentToRawMessage(content string) json.RawMessage {
 	if len(trimmed) > 0 && trimmed[0] == '[' && json.Valid([]byte(trimmed)) {
 		return json.RawMessage(trimmed)
 	}
-	return json.RawMessage(fmt.Sprintf("%q", content))
+	// Use json.Marshal instead of fmt.Sprintf("%q") to ensure valid JSON encoding.
+	// fmt.Sprintf("%q") uses Go string escaping (e.g. \x00) which is not valid JSON;
+	// json.Marshal produces proper JSON escapes (e.g. \u0000).
+	encoded, err := json.Marshal(content)
+	if err != nil {
+		// Fallback: this should never happen for a Go string, but be safe.
+		return json.RawMessage(fmt.Sprintf("%q", content))
+	}
+	return json.RawMessage(encoded)
 }
 
 // ResolveNode finds a node by exact ID, prefix match, or alias.

@@ -1779,3 +1779,159 @@ func TestStreamResponse_CreateNodeFailure_FirstCall_NoHang(t *testing.T) {
 		t.Error("expected error event when assistant CreateNode fails")
 	}
 }
+
+// --- 3c: Malformed node content in buildMessages ---
+
+func TestBuildMessages_PlainTextContent(t *testing.T) {
+	// Node content that is plain text (not JSON) should be wrapped as a
+	// JSON string by contentToRawMessage — never panic or produce invalid JSON.
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "Hello, how are you?"},
+		{NodeType: types.NodeTypeAssistant, Content: "I'm doing well, thanks!"},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// Each message content should be valid JSON.
+	for i, msg := range messages {
+		if !json.Valid(msg.Content) {
+			t.Errorf("message[%d] content is not valid JSON: %s", i, msg.Content)
+		}
+	}
+
+	// Verify the text survives round-trip.
+	var text string
+	if err := json.Unmarshal(messages[1].Content, &text); err != nil {
+		t.Fatalf("expected JSON string for assistant content: %v", err)
+	}
+	if text != "I'm doing well, thanks!" {
+		t.Errorf("got %q, want %q", text, "I'm doing well, thanks!")
+	}
+}
+
+func TestBuildMessages_UnknownBlockTypes(t *testing.T) {
+	// Content that is a JSON array with unknown block types should pass
+	// through without error. buildMessages is provider-agnostic.
+	unknownContent := `[{"type":"unknown_fancy_block","data":"xyz"},{"type":"text","text":"normal"}]`
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "hello"},
+		{NodeType: types.NodeTypeAssistant, Content: unknownContent},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// The JSON array should pass through intact.
+	if string(messages[1].Content) != unknownContent {
+		t.Errorf("unknown block types should pass through:\ngot:  %s\nwant: %s", messages[1].Content, unknownContent)
+	}
+}
+
+func TestBuildMessages_NullAndEmptyContent(t *testing.T) {
+	// Nodes with empty or whitespace-only content should not cause panics.
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: ""},
+		{NodeType: types.NodeTypeAssistant, Content: "   "},
+		{NodeType: types.NodeTypeUser, Content: "follow up"},
+	}
+
+	// This must not panic.
+	messages := buildMessages(ancestors)
+
+	// All three should produce messages (buildMessages doesn't filter empty content).
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
+	}
+
+	// Each content should be valid JSON.
+	for i, msg := range messages {
+		if !json.Valid(msg.Content) {
+			t.Errorf("message[%d] content is not valid JSON: %s", i, msg.Content)
+		}
+	}
+}
+
+func TestBuildMessages_LargeContent(t *testing.T) {
+	// Very large content (>1MB) should be handled without panic.
+	largeText := strings.Repeat("x", 1024*1024+1) // 1MB + 1 byte
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "hello"},
+		{NodeType: types.NodeTypeAssistant, Content: largeText},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// Verify the large content survived.
+	var text string
+	if err := json.Unmarshal(messages[1].Content, &text); err != nil {
+		t.Fatalf("expected JSON string for large content: %v", err)
+	}
+	if len(text) != 1024*1024+1 {
+		t.Errorf("large content length = %d, want %d", len(text), 1024*1024+1)
+	}
+}
+
+func TestBuildMessages_InvalidJSONArrayContent(t *testing.T) {
+	// Content that starts with '[' but isn't valid JSON should be treated as
+	// plain text (JSON-encoded string), not cause a panic.
+	brokenArray := `[{"type":"text","text":"unclosed`
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: "hello"},
+		{NodeType: types.NodeTypeAssistant, Content: brokenArray},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// contentToRawMessage detects invalid JSON and wraps as string.
+	if !json.Valid(messages[1].Content) {
+		t.Errorf("message content should be valid JSON even with broken input: %s", messages[1].Content)
+	}
+
+	// The broken array should be treated as a plain text string.
+	var text string
+	if err := json.Unmarshal(messages[1].Content, &text); err != nil {
+		t.Fatalf("expected JSON string fallback: %v", err)
+	}
+	if text != brokenArray {
+		t.Errorf("got %q, want %q", text, brokenArray)
+	}
+}
+
+func TestBuildMessages_SpecialCharsInContent(t *testing.T) {
+	// Content with special characters (newlines, tabs, quotes, backslashes,
+	// unicode, null bytes) should be safely encoded.
+	specialContent := "line1\nline2\ttab \"quotes\" \\back null:\x00 emoji:🎉"
+	ancestors := []*types.Node{
+		{NodeType: types.NodeTypeUser, Content: specialContent},
+		{NodeType: types.NodeTypeAssistant, Content: "ok"},
+	}
+
+	messages := buildMessages(ancestors)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	if !json.Valid(messages[0].Content) {
+		t.Errorf("message with special chars should produce valid JSON: %s", messages[0].Content)
+	}
+}
+
+func TestContentToRawMessage_NullByte(t *testing.T) {
+	// Null bytes in content should be safely encoded.
+	input := "before\x00after"
+	raw := contentToRawMessage(input)
+	if !json.Valid(raw) {
+		t.Errorf("null byte content should produce valid JSON: %s", raw)
+	}
+}
