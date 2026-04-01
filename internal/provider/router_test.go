@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"langdag.com/langdag/types"
 )
@@ -211,5 +213,248 @@ func TestRouterFallbackOnly(t *testing.T) {
 	}
 	if resp.ID != "resp-fb" {
 		t.Errorf("expected resp-fb, got %s", resp.ID)
+	}
+}
+
+// TestRouterConcurrentComplete verifies no data races when calling Complete
+// from multiple goroutines simultaneously. Run with -race.
+func TestRouterConcurrentComplete(t *testing.T) {
+	p1 := &configurableProvider{name: "p1"}
+	p2 := &configurableProvider{name: "p2"}
+	fb := &configurableProvider{name: "fb"}
+	r, err := NewRouter(
+		[]RouteEntry{
+			{Provider: p1, Weight: 50},
+			{Provider: p2, Weight: 50},
+		},
+		[]Provider{fb},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := r.Complete(context.Background(), integrationReq())
+			if err != nil {
+				errs <- err
+				return
+			}
+			if resp.Provider != "p1" && resp.Provider != "p2" {
+				errs <- fmt.Errorf("unexpected provider: %s", resp.Provider)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
+// TestRouterConcurrentStream verifies no data races when calling Stream
+// from multiple goroutines simultaneously. Run with -race.
+func TestRouterConcurrentStream(t *testing.T) {
+	p1 := &configurableProvider{name: "p1"}
+	p2 := &configurableProvider{name: "p2"}
+	fb := &configurableProvider{name: "fb"}
+	r, err := NewRouter(
+		[]RouteEntry{
+			{Provider: p1, Weight: 50},
+			{Provider: p2, Weight: 50},
+		},
+		[]Provider{fb},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ch, err := r.Stream(context.Background(), integrationReq())
+			if err != nil {
+				errs <- err
+				return
+			}
+			var doneEvent types.StreamEvent
+			for e := range ch {
+				if e.Type == types.StreamEventDone {
+					doneEvent = e
+				}
+			}
+			if doneEvent.Response == nil {
+				errs <- fmt.Errorf("missing done response")
+				return
+			}
+			if doneEvent.Response.Provider != "p1" && doneEvent.Response.Provider != "p2" {
+				errs <- fmt.Errorf("unexpected provider: %s", doneEvent.Response.Provider)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
+// TestRouterConcurrentWithFailures verifies no races when some providers fail
+// and fallback is exercised concurrently.
+func TestRouterConcurrentWithFailures(t *testing.T) {
+	// Primary fails half the time (odd calls fail via high failCount + atomic)
+	primary := &configurableProvider{
+		name:      "primary",
+		failCount: 25, // first 25 calls fail
+		failErr:   fmt.Errorf("primary: intentional failure"),
+	}
+	fallback := &configurableProvider{name: "fallback"}
+	r, err := NewRouter(
+		[]RouteEntry{{Provider: primary, Weight: 100}},
+		[]Provider{fallback},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := r.Complete(context.Background(), integrationReq())
+			if err != nil {
+				errs <- err
+				return
+			}
+			if resp.Provider != "primary" && resp.Provider != "fallback" {
+				errs <- fmt.Errorf("unexpected provider: %s", resp.Provider)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
+// TestRouterFallbackContextCanceled verifies that when context is canceled,
+// the router still tries fallbacks but they also fail due to canceled context.
+func TestRouterFallbackContextCanceled(t *testing.T) {
+	// Primary always fails.
+	primary := &configurableProvider{
+		name:      "primary",
+		failCount: 100,
+		failErr:   fmt.Errorf("status 503: unavailable"),
+	}
+	// Fallback has a response delay, so it checks ctx.Done().
+	fallback := &configurableProvider{
+		name:          "fallback",
+		responseDelay: 5 * time.Second,
+	}
+
+	r, _ := NewRouter(
+		[]RouteEntry{{Provider: primary, Weight: 100}},
+		[]Provider{fallback},
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel
+
+	start := time.Now()
+	_, err := r.Complete(ctx, integrationReq())
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error with canceled context")
+	}
+	// Should fail fast — fallback sees canceled context and exits immediately.
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("took %v — should fail fast with canceled context", elapsed)
+	}
+}
+
+// TestRouterFallbackTransientError verifies that transient errors from the
+// primary trigger a successful fallback (context remains valid).
+func TestRouterFallbackTransientError(t *testing.T) {
+	primary := &configurableProvider{
+		name:      "primary",
+		failCount: 100,
+		failErr:   fmt.Errorf("status 503: unavailable"),
+	}
+	fallback := &configurableProvider{name: "fallback"}
+
+	r, _ := NewRouter(
+		[]RouteEntry{{Provider: primary, Weight: 100}},
+		[]Provider{fallback},
+	)
+
+	resp, err := r.Complete(context.Background(), integrationReq())
+	if err != nil {
+		t.Fatalf("expected fallback success, got: %v", err)
+	}
+	if resp.Provider != "fallback" {
+		t.Errorf("expected provider 'fallback', got %q", resp.Provider)
+	}
+}
+
+// TestRouterStreamConcurrentWithFallback verifies no races on the streaming
+// path when fallbacks are exercised concurrently.
+func TestRouterStreamConcurrentWithFallback(t *testing.T) {
+	primary := &configurableProvider{
+		name:      "primary",
+		failCount: 25,
+		failErr:   fmt.Errorf("primary: stream failure"),
+	}
+	fallback := &configurableProvider{name: "fallback"}
+	r, err := NewRouter(
+		[]RouteEntry{{Provider: primary, Weight: 100}},
+		[]Provider{fallback},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ch, err := r.Stream(context.Background(), integrationReq())
+			if err != nil {
+				errs <- err
+				return
+			}
+			for range ch {
+				// drain
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }
