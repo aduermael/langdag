@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"sync"
 )
 
 // SSEEvent represents a Server-Sent Event.
@@ -17,11 +18,13 @@ type SSEEvent struct {
 
 // Stream wraps an SSE response and provides a channel-based API.
 type Stream struct {
-	events chan SSEEvent
-	body   io.ReadCloser
-	client *Client
-	nodeID string
-	err    error
+	events  chan SSEEvent
+	body    io.ReadCloser
+	client  *Client
+	nodeID  string
+	err     error
+	content strings.Builder
+	done    sync.WaitGroup
 }
 
 // newStream creates a new Stream from an HTTP response body.
@@ -31,6 +34,7 @@ func newStream(body io.ReadCloser, client *Client) *Stream {
 		body:   body,
 		client: client,
 	}
+	s.done.Add(1)
 	go s.read()
 	return s
 }
@@ -56,8 +60,22 @@ func (s *Stream) Node() (*Node, error) {
 	}, nil
 }
 
+// Content returns the accumulated text content from all delta events.
+// Safe to call after draining Events() or after Node() returns.
+func (s *Stream) Content() string {
+	return s.content.String()
+}
+
+// Err returns the stream-level error, if any. This includes errors from
+// SSE error events and I/O errors from the underlying connection.
+// Safe to call after draining Events().
+func (s *Stream) Err() error {
+	return s.err
+}
+
 // read parses SSE events from the body and sends them on the channel.
 func (s *Stream) read() {
+	defer s.done.Done()
 	defer close(s.events)
 	defer s.body.Close()
 
@@ -71,6 +89,9 @@ func (s *Stream) read() {
 		if line == "" {
 			if eventType != "" && len(dataLines) > 0 {
 				event := s.parseEvent(eventType, strings.Join(dataLines, "\n"))
+				if event.Type == "delta" {
+					s.content.WriteString(event.Content)
+				}
 				if event.Type == "done" {
 					s.nodeID = event.NodeID
 				}
@@ -98,6 +119,9 @@ func (s *Stream) read() {
 	// Handle any remaining event without trailing newline
 	if eventType != "" && len(dataLines) > 0 {
 		event := s.parseEvent(eventType, strings.Join(dataLines, "\n"))
+		if event.Type == "delta" {
+			s.content.WriteString(event.Content)
+		}
 		if event.Type == "done" {
 			s.nodeID = event.NodeID
 		}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStream_StartDeltaDone(t *testing.T) {
@@ -298,6 +299,83 @@ func TestStream_MultilineDataField(t *testing.T) {
 	}
 	if events[0].Type != "delta" {
 		t.Errorf("expected delta, got %s", events[0].Type)
+	}
+}
+
+func TestStream_NoDoneEvent(t *testing.T) {
+	// Server sends start + deltas, then connection closes without done event
+	input := `event: start
+data: {}
+
+event: delta
+data: {"content":"Hello "}
+
+event: delta
+data: {"content":"world!"}
+
+`
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	// Should have received start + 2 deltas
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	// Node() should return error (no done event)
+	_, err := stream.Node()
+	if err == nil {
+		t.Fatal("expected error from Node() without done event")
+	}
+	streamErr, ok := err.(*StreamError)
+	if !ok {
+		t.Fatalf("expected *StreamError, got %T", err)
+	}
+	if streamErr.Message != "stream completed without node_id" {
+		t.Errorf("unexpected error message: %q", streamErr.Message)
+	}
+
+	// Content() should still return accumulated text
+	if stream.Content() != "Hello world!" {
+		t.Errorf("expected 'Hello world!', got %q", stream.Content())
+	}
+}
+
+func TestStream_NoDoneEvent_ConnectionClose(t *testing.T) {
+	// Simulates abrupt connection close after partial deltas (no trailing newline)
+	input := "event: start\ndata: {}\n\nevent: delta\ndata: {\"content\":\"partial\"}"
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	done := make(chan struct{})
+	go func() {
+		for range stream.Events() {
+		}
+		close(done)
+	}()
+
+	// Verify it doesn't hang — completes within timeout
+	select {
+	case <-done:
+		// good
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream hung — Events() channel not closed after connection drop")
+	}
+
+	// Content should have the accumulated partial delta
+	if stream.Content() != "partial" {
+		t.Errorf("expected 'partial', got %q", stream.Content())
+	}
+
+	// Node() should return error
+	_, err := stream.Node()
+	if err == nil {
+		t.Fatal("expected error from Node()")
 	}
 }
 
