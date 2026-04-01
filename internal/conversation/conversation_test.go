@@ -1671,3 +1671,111 @@ func TestStreamResponse_StreamEventError_EmittedAndChannelClosed(t *testing.T) {
 	}
 	// Channel should be closed (drainEvents completed without timeout).
 }
+
+// --- 3b: Database failure mid-stream ---
+
+func TestStreamResponse_CreateNodeFailure_DuringContinuation(t *testing.T) {
+	// First continuation saves successfully, second CreateNode call fails.
+	// failAfter=2: user node (1) + first assistant (2) succeed, second assistant (3) fails.
+	dbPath := t.TempDir() + "/test.db"
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Init(context.Background()); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	fs := &failingStorage{inner: store, failAfter: 2}
+	prov := &sequenceProvider{responses: []sequenceResponse{
+		{text: "part1", stopReason: "max_tokens", outputToks: 100},
+		{text: " part2", stopReason: "end_turn", outputToks: 100},
+	}}
+	mgr := NewManager(fs, prov)
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "generate", "", "", nil, nil, 1000, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+
+	evs := drainEvents(t, events, 5*time.Second)
+
+	// Should get delta events from both calls plus an error event.
+	var allText string
+	var gotError bool
+	var gotNodeSaved bool
+	for _, ev := range evs {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			allText += ev.Content
+		case types.StreamEventError:
+			gotError = true
+			if ev.Error == nil {
+				t.Error("error event has nil Error")
+			} else if !strings.Contains(ev.Error.Error(), "failed to save assistant node") {
+				t.Errorf("expected 'failed to save assistant node' error, got: %v", ev.Error)
+			}
+		case types.StreamEventNodeSaved:
+			gotNodeSaved = true
+		}
+	}
+
+	// We should have received deltas from the first call at least.
+	if allText == "" {
+		t.Error("expected some delta text before the DB failure")
+	}
+	if !gotError {
+		t.Error("expected an error event when CreateNode fails during continuation")
+	}
+	// No NodeSaved for the second call (it failed to save).
+	// The first node was saved successfully, but since the continuation failed,
+	// no NodeSaved event is emitted for it either (the error terminates the goroutine).
+	if gotNodeSaved {
+		t.Error("should not have NodeSaved when the continuation CreateNode fails")
+	}
+}
+
+func TestStreamResponse_CreateNodeFailure_FirstCall_NoHang(t *testing.T) {
+	// Verify that when CreateNode fails on the very first assistant node,
+	// the stream emits an error and closes without hanging — even when the
+	// provider sends a valid response with content.
+	dbPath := t.TempDir() + "/test.db"
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Init(context.Background()); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// failAfter=1: user node succeeds, assistant node fails.
+	fs := &failingStorage{inner: store, failAfter: 1}
+	prov := mock.New(mock.Config{Mode: "fixed", FixedResponse: "This should not be saved"})
+	mgr := NewManager(fs, prov)
+
+	ctx := context.Background()
+	events, err := mgr.Prompt(ctx, "hello", "", "", nil, nil, 0, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+
+	evs := drainEvents(t, events, 5*time.Second)
+
+	var gotError bool
+	for _, ev := range evs {
+		if ev.Type == types.StreamEventError {
+			gotError = true
+		}
+		if ev.Type == types.StreamEventNodeSaved {
+			t.Error("should not have NodeSaved when CreateNode fails")
+		}
+	}
+	if !gotError {
+		t.Error("expected error event when assistant CreateNode fails")
+	}
+}
