@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"langdag.com/langdag/types"
 )
@@ -157,8 +158,7 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 		events, err = s.convMgr.PromptFrom(ctx, parentNodeID, message, model, tools, nil, 0, 0)
 	}
 	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-		flusher.Flush()
+		writeSSEError(w, flusher, err.Error())
 		return
 	}
 
@@ -178,8 +178,22 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 			flusher.Flush()
 
 		case types.StreamEventError:
-			fmt.Fprintf(w, "event: error\ndata: %s\n\n", event.Error.Error())
-			flusher.Flush()
+			errMsg := "unknown error"
+			if event.Error != nil {
+				errMsg = event.Error.Error()
+			}
+			writeSSEError(w, flusher, errMsg)
 		}
 	}
+}
+
+// writeSSEError writes an SSE error event, properly handling multi-line
+// messages by writing each line with its own "data:" prefix per the SSE spec.
+func writeSSEError(w http.ResponseWriter, flusher http.Flusher, message string) {
+	fmt.Fprintf(w, "event: error\n")
+	for _, line := range strings.Split(message, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprintf(w, "\n")
+	flusher.Flush()
 }

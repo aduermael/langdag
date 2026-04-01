@@ -999,3 +999,79 @@ func TestAuthNoConfigAllEndpointsOpen(t *testing.T) {
 		})
 	}
 }
+
+// --- Phase 8f: Bug fix tests ---
+
+func TestStreamingErrorWithNewlines(t *testing.T) {
+	// Error messages with newlines must not break SSE format.
+	// Each line needs its own "data:" prefix per the SSE spec.
+	_, mux := testServerWithMock(t, "", mockprovider.Config{
+		Mode:  "error",
+		Error: fmt.Errorf("line one\nline two\nline three"),
+	})
+
+	reqBody := `{"message":"Hello","stream":true}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	events := parseSSEEvents(w.Body.String())
+	if len(events) == 0 {
+		t.Fatal("no SSE events parsed")
+	}
+
+	// The full multi-line error should be preserved in the parsed event data
+	var found bool
+	for _, e := range events {
+		if e.Type == "error" {
+			found = true
+			if !strings.Contains(e.Data, "line one") {
+				t.Errorf("error data missing 'line one': %q", e.Data)
+			}
+			if !strings.Contains(e.Data, "line two") {
+				t.Errorf("error data missing 'line two': %q", e.Data)
+			}
+			if !strings.Contains(e.Data, "line three") {
+				t.Errorf("error data missing 'line three': %q", e.Data)
+			}
+		}
+	}
+	if !found {
+		t.Error("no error event found")
+	}
+}
+
+func TestStreamingMidStreamErrorWithNewlines(t *testing.T) {
+	// Mid-stream error with newlines in error message
+	_, mux := testServerWithMock(t, "", mockprovider.Config{
+		Mode:             "stream_error",
+		FixedResponse:    "hello world",
+		ErrorAfterChunks: 1,
+		Error:            fmt.Errorf("server error\ndetails: connection reset"),
+	})
+
+	reqBody := `{"message":"Hello","stream":true}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	events := parseSSEEvents(w.Body.String())
+
+	var found bool
+	for _, e := range events {
+		if e.Type == "error" {
+			found = true
+			if !strings.Contains(e.Data, "server error") {
+				t.Errorf("error data missing 'server error': %q", e.Data)
+			}
+			if !strings.Contains(e.Data, "details: connection reset") {
+				t.Errorf("error data missing 'details: connection reset': %q", e.Data)
+			}
+		}
+	}
+	if !found {
+		t.Error("no error event found")
+	}
+}
