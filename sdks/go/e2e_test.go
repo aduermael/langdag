@@ -22,6 +22,24 @@ func e2eURL(t *testing.T) string {
 	return url
 }
 
+func e2eErrorURL(t *testing.T) string {
+	t.Helper()
+	url := os.Getenv("LANGDAG_E2E_ERROR_URL")
+	if url == "" {
+		t.Skip("LANGDAG_E2E_ERROR_URL not set, skipping E2E streaming error test")
+	}
+	return url
+}
+
+func e2eStreamErrorURL(t *testing.T) string {
+	t.Helper()
+	url := os.Getenv("LANGDAG_E2E_STREAM_ERROR_URL")
+	if url == "" {
+		t.Skip("LANGDAG_E2E_STREAM_ERROR_URL not set, skipping E2E streaming error test")
+	}
+	return url
+}
+
 func TestE2E_Health(t *testing.T) {
 	url := e2eURL(t)
 	c := NewClient(url, WithTimeout(10*time.Second))
@@ -407,5 +425,111 @@ func TestE2E_NodeMetadata(t *testing.T) {
 	roots2, _ := c.ListRoots(ctx)
 	for _, r := range roots2 {
 		c.DeleteNode(ctx, r.ID)
+	}
+}
+
+// TestE2E_StreamingError_Immediate tests that the Go SDK surfaces an error
+// when the server returns an immediate error (error mode, no start event).
+func TestE2E_StreamingError_Immediate(t *testing.T) {
+	url := e2eErrorURL(t)
+	c := NewClient(url, WithTimeout(10*time.Second))
+	ctx := context.Background()
+
+	stream, err := c.PromptStream(ctx, "Hello")
+	if err != nil {
+		t.Fatalf("PromptStream should return a stream even on error: %v", err)
+	}
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	// Must have at least one error event
+	var errorMsg string
+	for _, e := range events {
+		if e.Type == "error" {
+			errorMsg = e.Error
+		}
+	}
+	if errorMsg == "" {
+		t.Fatalf("expected error event, got events: %v", events)
+	}
+	if !strings.Contains(errorMsg, "test error") {
+		t.Errorf("error message should contain 'test error', got %q", errorMsg)
+	}
+
+	// Err() should be non-nil
+	if stream.Err() == nil {
+		t.Error("expected non-nil Err()")
+	}
+	streamErr, ok := stream.Err().(*StreamError)
+	if !ok {
+		t.Fatalf("expected *StreamError, got %T", stream.Err())
+	}
+	if !strings.Contains(streamErr.Message, "test error") {
+		t.Errorf("StreamError should contain 'test error', got %q", streamErr.Message)
+	}
+
+	// Content should be empty (no deltas)
+	if stream.Content() != "" {
+		t.Errorf("expected empty content, got %q", stream.Content())
+	}
+}
+
+// TestE2E_StreamingError_MidStream tests that the Go SDK surfaces an error
+// when the server sends deltas then an error (stream_error mode).
+func TestE2E_StreamingError_MidStream(t *testing.T) {
+	url := e2eStreamErrorURL(t)
+	c := NewClient(url, WithTimeout(10*time.Second))
+	ctx := context.Background()
+
+	stream, err := c.PromptStream(ctx, "Hello")
+	if err != nil {
+		t.Fatalf("PromptStream failed: %v", err)
+	}
+
+	var events []SSEEvent
+	for event := range stream.Events() {
+		events = append(events, event)
+	}
+
+	// Should have: start, delta(s), error, done
+	hasStart := false
+	hasDelta := false
+	hasError := false
+	var errorMsg string
+	for _, e := range events {
+		switch e.Type {
+		case "start":
+			hasStart = true
+		case "delta":
+			hasDelta = true
+		case "error":
+			hasError = true
+			errorMsg = e.Error
+		}
+	}
+	if !hasStart {
+		t.Error("expected start event")
+	}
+	if !hasDelta {
+		t.Error("expected at least one delta event")
+	}
+	if !hasError {
+		t.Error("expected error event")
+	}
+	if !strings.Contains(errorMsg, "test stream error") {
+		t.Errorf("error should contain 'test stream error', got %q", errorMsg)
+	}
+
+	// Content should have accumulated deltas
+	if stream.Content() == "" {
+		t.Error("expected non-empty Content() from deltas before error")
+	}
+
+	// Err() should return the error
+	if stream.Err() == nil {
+		t.Error("expected non-nil Err()")
 	}
 }

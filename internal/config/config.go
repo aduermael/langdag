@@ -83,10 +83,12 @@ type RoutingEntry struct {
 
 // MockProviderConfig represents mock provider configuration.
 type MockProviderConfig struct {
-	Mode          string `mapstructure:"mode"`           // random, echo, fixed
-	FixedResponse string `mapstructure:"fixed_response"` // response for fixed mode
-	Delay         string `mapstructure:"delay"`          // delay before responding
-	ChunkDelay    string `mapstructure:"chunk_delay"`    // delay between stream chunks
+	Mode             string `mapstructure:"mode"`               // random, echo, fixed, error, stream_error
+	FixedResponse    string `mapstructure:"fixed_response"`     // response for fixed mode
+	Delay            string `mapstructure:"delay"`              // delay before responding
+	ChunkDelay       string `mapstructure:"chunk_delay"`        // delay between stream chunks
+	ErrorMessage     string `mapstructure:"error_message"`      // error text for error/stream_error modes
+	ErrorAfterChunks int    `mapstructure:"error_after_chunks"` // chunks before error in stream_error mode
 }
 
 // ServerConfig represents server configuration.
@@ -155,6 +157,8 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
 	v.BindEnv("providers.mock.delay", "LANGDAG_MOCK_DELAY")
 	v.BindEnv("providers.mock.chunk_delay", "LANGDAG_MOCK_CHUNK_DELAY")
+	v.BindEnv("providers.mock.error_message", "LANGDAG_MOCK_ERROR_MESSAGE")
+	v.BindEnv("providers.mock.error_after_chunks", "LANGDAG_MOCK_ERROR_AFTER_CHUNKS")
 	v.BindEnv("storage.path", "LANGDAG_STORAGE_PATH")
 	v.BindEnv("retry.max_retries", "LANGDAG_RETRY_MAX")
 	v.BindEnv("retry.base_delay", "LANGDAG_RETRY_BASE_DELAY")

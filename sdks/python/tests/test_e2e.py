@@ -17,6 +17,8 @@ from langdag.models import NodeType, PromptResponse, SSEEventType
 
 
 E2E_URL = os.environ.get("LANGDAG_E2E_URL")
+E2E_ERROR_URL = os.environ.get("LANGDAG_E2E_ERROR_URL")
+E2E_STREAM_ERROR_URL = os.environ.get("LANGDAG_E2E_STREAM_ERROR_URL")
 
 pytestmark = pytest.mark.skipif(
     E2E_URL is None,
@@ -351,3 +353,73 @@ class TestE2EAsync:
                 if node.parent_id is None:
                     await client.delete_node(node.id)
                     break
+
+
+@pytest.mark.skipif(
+    E2E_ERROR_URL is None,
+    reason="LANGDAG_E2E_ERROR_URL not set",
+)
+class TestE2EStreamingError:
+    """E2E tests against a server configured with mock error mode."""
+
+    def test_sync_immediate_error(self):
+        with LangDAGClient(base_url=E2E_ERROR_URL, timeout=10.0) as client:
+            events = list(client.prompt("Hello", stream=True))
+            # Should have at least one error event
+            error_events = [e for e in events if e.event == SSEEventType.ERROR]
+            assert len(error_events) >= 1, f"expected error event, got {[e.event for e in events]}"
+            assert "test error" in error_events[0].data.get("message", "")
+
+    async def test_async_immediate_error(self):
+        async with AsyncLangDAGClient(base_url=E2E_ERROR_URL, timeout=10.0) as client:
+            events = []
+            async for event in client.prompt("Hello", stream=True):
+                events.append(event)
+            error_events = [e for e in events if e.event == SSEEventType.ERROR]
+            assert len(error_events) >= 1
+            assert "test error" in error_events[0].data.get("message", "")
+
+
+@pytest.mark.skipif(
+    E2E_STREAM_ERROR_URL is None,
+    reason="LANGDAG_E2E_STREAM_ERROR_URL not set",
+)
+class TestE2EStreamingMidStreamError:
+    """E2E tests against a server configured with mock stream_error mode."""
+
+    def test_sync_mid_stream_error(self):
+        with LangDAGClient(base_url=E2E_STREAM_ERROR_URL, timeout=10.0) as client:
+            events = list(client.prompt("Hello", stream=True))
+
+            types_seen = [e.event for e in events]
+            assert SSEEventType.START in types_seen, f"expected start, got {types_seen}"
+            assert SSEEventType.DELTA in types_seen, f"expected delta, got {types_seen}"
+            assert SSEEventType.ERROR in types_seen, f"expected error, got {types_seen}"
+
+            # Content from deltas should be available
+            content = "".join(
+                e.content for e in events
+                if e.event == SSEEventType.DELTA and e.content
+            )
+            assert len(content) > 0, "expected non-empty content from deltas"
+
+            # Error message should contain expected text
+            error_events = [e for e in events if e.event == SSEEventType.ERROR]
+            assert "test stream error" in error_events[0].data.get("message", "")
+
+    async def test_async_mid_stream_error(self):
+        async with AsyncLangDAGClient(base_url=E2E_STREAM_ERROR_URL, timeout=10.0) as client:
+            events = []
+            async for event in client.prompt("Hello", stream=True):
+                events.append(event)
+
+            types_seen = [e.event for e in events]
+            assert SSEEventType.START in types_seen
+            assert SSEEventType.DELTA in types_seen
+            assert SSEEventType.ERROR in types_seen
+
+            content = "".join(
+                e.content for e in events
+                if e.event == SSEEventType.DELTA and e.content
+            )
+            assert len(content) > 0

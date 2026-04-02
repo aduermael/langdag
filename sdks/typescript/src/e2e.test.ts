@@ -6,10 +6,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { LangDAGClient, Node, Stream } from './client.js';
-import { NotFoundError } from './errors.js';
+import { NotFoundError, SSEParseError } from './errors.js';
 import type { SSEEvent } from './types.js';
 
 const E2E_URL = process.env.LANGDAG_E2E_URL;
+const E2E_ERROR_URL = process.env.LANGDAG_E2E_ERROR_URL;
+const E2E_STREAM_ERROR_URL = process.env.LANGDAG_E2E_STREAM_ERROR_URL;
 
 describe.skipIf(!E2E_URL)('E2E Tests', () => {
   function getClient() {
@@ -229,5 +231,57 @@ describe.skipIf(!E2E_URL)('E2E Tests', () => {
     if (rootNode) {
       await client.deleteNode(rootNode.id);
     }
+  });
+});
+
+describe.skipIf(!E2E_ERROR_URL)('E2E Streaming Error: Immediate', () => {
+  function getClient() {
+    return new LangDAGClient({ baseUrl: E2E_ERROR_URL! });
+  }
+
+  it('surfaces error event from server', async () => {
+    const client = getClient();
+    const stream = await client.promptStream('Hello');
+
+    const events: SSEEvent[] = [];
+    for await (const event of stream.events()) {
+      events.push(event);
+    }
+
+    // Should have at least one error event
+    const errors = events.filter(e => e.type === 'error');
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect((errors[0] as { error: string }).error).toContain('test error');
+
+    // Content should be empty (no deltas)
+    expect(stream.content).toBe('');
+  });
+});
+
+describe.skipIf(!E2E_STREAM_ERROR_URL)('E2E Streaming Error: Mid-Stream', () => {
+  function getClient() {
+    return new LangDAGClient({ baseUrl: E2E_STREAM_ERROR_URL! });
+  }
+
+  it('surfaces error with partial content preserved', async () => {
+    const client = getClient();
+    const stream = await client.promptStream('Hello');
+
+    const events: SSEEvent[] = [];
+    for await (const event of stream.events()) {
+      events.push(event);
+    }
+
+    const types = events.map(e => e.type);
+    expect(types).toContain('start');
+    expect(types).toContain('delta');
+    expect(types).toContain('error');
+
+    // Content should have accumulated deltas
+    expect(stream.content.length).toBeGreaterThan(0);
+
+    // Error message should contain expected text
+    const errors = events.filter(e => e.type === 'error');
+    expect((errors[0] as { error: string }).error).toContain('test stream error');
   });
 });

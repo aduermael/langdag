@@ -259,8 +259,12 @@ var providerRegistry = map[string]providerFactory{
 	},
 	"mock": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		cfg := mockprovider.Config{
-			Mode:          c.Providers.Mock.Mode,
-			FixedResponse: c.Providers.Mock.FixedResponse,
+			Mode:             c.Providers.Mock.Mode,
+			FixedResponse:    c.Providers.Mock.FixedResponse,
+			ErrorAfterChunks: c.Providers.Mock.ErrorAfterChunks,
+		}
+		if c.Providers.Mock.ErrorMessage != "" {
+			cfg.Error = fmt.Errorf("%s", c.Providers.Mock.ErrorMessage)
 		}
 		if c.Providers.Mock.Delay != "" {
 			d, err := time.ParseDuration(c.Providers.Mock.Delay)
