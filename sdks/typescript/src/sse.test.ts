@@ -189,6 +189,154 @@ describe('parseSSEStream', () => {
     }
   });
 
+  // --- 11c: Chunked SSE delivery edge cases ---
+
+  it('handles chunk split mid-\\n\\n separator', async () => {
+    // Split the double-newline separator across two chunks: first chunk ends with
+    // a single \n, second chunk starts with the second \n
+    const encoder = new TextEncoder();
+    const chunk1 = 'event: start\ndata: {}\n';        // first \n of separator
+    const chunk2 = '\nevent: done\ndata: {"node_id":"n-1"}\n\n';  // second \n starts next
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(chunk1));
+        controller.enqueue(encoder.encode(chunk2));
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(2);
+    expect(events[0].type).toBe('start');
+    expect(events[1].type).toBe('done');
+    if (events[1].type === 'done') {
+      expect(events[1].node_id).toBe('n-1');
+    }
+  });
+
+  it('handles chunk split mid-data: prefix', async () => {
+    const encoder = new TextEncoder();
+    // Split "data:" across two chunks
+    const chunk1 = 'event: delta\nda';
+    const chunk2 = 'ta: {"content":"split"}\n\n';
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(chunk1));
+        controller.enqueue(encoder.encode(chunk2));
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('delta');
+    if (events[0].type === 'delta') {
+      expect(events[0].content).toBe('split');
+    }
+  });
+
+  it('handles chunk split mid-event: prefix', async () => {
+    const encoder = new TextEncoder();
+    // Split "event:" across two chunks
+    const chunk1 = 'ev';
+    const chunk2 = 'ent: delta\ndata: {"content":"hello"}\n\n';
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(chunk1));
+        controller.enqueue(encoder.encode(chunk2));
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('delta');
+    if (events[0].type === 'delta') {
+      expect(events[0].content).toBe('hello');
+    }
+  });
+
+  it('handles chunk split mid-UTF8 character', async () => {
+    // UTF-8 encoding of "é" (U+00E9) is 0xC3 0xA9 (2 bytes)
+    // Split those bytes across chunks to test TextDecoder stream mode
+    const fullText = 'event: delta\ndata: {"content":"café"}\n\n';
+    const fullBytes = new TextEncoder().encode(fullText);
+
+    // Find the é byte position — "caf" then é
+    // "café" in JSON is after {"content":"caf  = position within the full text
+    const cafeIdx = fullText.indexOf('café');
+    // The 'é' starts at cafeIdx + 3 in the string, but in UTF-8 it's 2 bytes
+    // Let's find it by encoding just the prefix
+    const prefixBytes = new TextEncoder().encode(fullText.substring(0, cafeIdx + 3)); // up to "caf"
+    const splitPoint = prefixBytes.length; // right before the first byte of é
+
+    // Split between the two bytes of the é character
+    const chunk1 = fullBytes.slice(0, splitPoint + 1); // includes first byte of é (0xC3)
+    const chunk2 = fullBytes.slice(splitPoint + 1);     // starts with second byte (0xA9)
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(chunk1);
+        controller.enqueue(chunk2);
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('delta');
+    if (events[0].type === 'delta') {
+      expect(events[0].content).toBe('café');
+    }
+  });
+
+  it('handles many small single-byte chunks', async () => {
+    const fullText = 'event: delta\ndata: {"content":"tiny"}\n\n';
+    const fullBytes = new TextEncoder().encode(fullText);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send one byte at a time
+        for (let i = 0; i < fullBytes.length; i++) {
+          controller.enqueue(fullBytes.slice(i, i + 1));
+        }
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('delta');
+    if (events[0].type === 'delta') {
+      expect(events[0].content).toBe('tiny');
+    }
+  });
+
+  it('handles chunk split mid-JSON in data field', async () => {
+    const encoder = new TextEncoder();
+    // Split JSON object across chunks at an awkward point
+    const chunk1 = 'event: done\ndata: {"node_';
+    const chunk2 = 'id":"n-split"}\n\n';
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(chunk1));
+        controller.enqueue(encoder.encode(chunk2));
+        controller.close();
+      },
+    });
+
+    const events = await collectEvents(parseSSEStream(stream));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('done');
+    if (events[0].type === 'done') {
+      expect(events[0].node_id).toBe('n-split');
+    }
+  });
+
   it('handles empty content deltas', async () => {
     const text = [
       'event: delta',
