@@ -427,6 +427,60 @@ describe('LangDAGClient', () => {
       await expect(stream.node()).rejects.toThrow(SSEParseError);
     });
 
+    // --- 11a: SSE stream without done event ---
+
+    it('stream without done event: node() throws, content preserved via stream.content', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"Hello "}',
+        '',
+        'event: delta',
+        'data: {"content":"world!"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      const events = [];
+      for await (const event of stream.events()) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(3); // start + 2 deltas, no done
+      // stream.content has accumulated text from deltas
+      expect(stream.content).toBe('Hello world!');
+      // node() should throw since no done event
+      await expect(stream.node()).rejects.toThrow(SSEParseError);
+      await expect(stream.node()).rejects.toThrow('done event');
+    });
+
+    it('stream without done event: auto-consume throws, content preserved', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"partial"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      // Call node() directly — auto-consumes then throws
+      await expect(stream.node()).rejects.toThrow(SSEParseError);
+      // Content was still accumulated during auto-consumption
+      expect(stream.content).toBe('partial');
+    });
+
     it('stream with empty content deltas collects correctly', async () => {
       const sseText = [
         'event: start',

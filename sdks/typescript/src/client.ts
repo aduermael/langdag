@@ -106,6 +106,14 @@ export class Stream {
   }
 
   /**
+   * Content accumulated from delta events so far.
+   * Available even if the stream ends without a done event (e.g. error or connection drop).
+   */
+  get content(): string {
+    return this.collectedContent;
+  }
+
+  /**
    * Async iterator over SSE events.
    * Must be consumed before calling node().
    */
