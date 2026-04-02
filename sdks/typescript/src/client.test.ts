@@ -481,6 +481,104 @@ describe('LangDAGClient', () => {
       expect(stream.content).toBe('partial');
     });
 
+    // --- 11b: Provider error mid-stream ---
+
+    it('error mid-stream: error event yielded, content preserved, node() throws', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"partial "}',
+        '',
+        'event: delta',
+        'data: {"content":"response"}',
+        '',
+        'event: error',
+        'data: provider crashed',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      const events = [];
+      for await (const event of stream.events()) {
+        events.push(event);
+      }
+
+      // All events yielded including error
+      expect(events).toHaveLength(4);
+      expect(events[3]).toEqual({ type: 'error', error: 'provider crashed' });
+
+      // Content from deltas preserved
+      expect(stream.content).toBe('partial response');
+
+      // node() throws because no done event
+      await expect(stream.node()).rejects.toThrow(SSEParseError);
+    });
+
+    it('error mid-stream with auto-consume: node() throws, content accessible', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"before error"}',
+        '',
+        'event: error',
+        'data: {"message":"internal server error"}',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      // Auto-consume via node() — should throw
+      await expect(stream.node()).rejects.toThrow(SSEParseError);
+      // Content accumulated before the error
+      expect(stream.content).toBe('before error');
+    });
+
+    it('error after done: all events yielded, node still works', async () => {
+      const sseText = [
+        'event: start',
+        'data: {}',
+        '',
+        'event: delta',
+        'data: {"content":"full response"}',
+        '',
+        'event: done',
+        'data: {"node_id":"n-1"}',
+        '',
+        'event: error',
+        'data: trailing error',
+        '',
+      ].join('\n');
+
+      const body = createSSEStream(sseText);
+      const fetchFn = mockFetch({ body });
+      const client = new LangDAGClient({ fetch: fetchFn });
+      const stream = await client.promptStream('Hello');
+
+      const events = [];
+      for await (const event of stream.events()) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(4);
+      expect(events[3]).toEqual({ type: 'error', error: 'trailing error' });
+
+      // node() still works because done event was received
+      const node = await stream.node();
+      expect(node.id).toBe('n-1');
+      expect(node.content).toBe('full response');
+    });
+
     it('stream with empty content deltas collects correctly', async () => {
       const sseText = [
         'event: start',
