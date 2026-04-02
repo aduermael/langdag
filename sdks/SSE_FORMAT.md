@@ -90,6 +90,22 @@ After joining `data:` lines, the error message is: `"line one\nline two"`.
 | No done event | `StreamError` from `Node()` | Iteration completes, no node_id | `SSEParseError` from `node()` |
 | Content after error | `Content()` returns partial | Manual accumulation from deltas | `stream.content` returns partial |
 
+## Graceful Degradation Contract
+
+When a stream terminates abnormally (no `done` event), all SDKs MUST:
+
+1. **Complete iteration** — never hang or block indefinitely
+2. **Preserve accumulated content** — all delta content received before termination must be accessible
+3. **Signal the abnormal state** — either return an error or provide no node_id
+
+| SDK | Content access | Abnormal signal |
+|-----|---------------|-----------------|
+| Go | `stream.Content()` returns partial text | `stream.Node()` returns `*StreamError` |
+| Python | Accumulate from delta events manually | No done event → no `node_id` in any event |
+| TypeScript | `stream.content` getter returns partial text | `stream.node()` rejects with `SSEParseError` |
+
+All three SDKs pass these invariants for: no-done-event, error-termination, empty-response (start only), and I/O error mid-stream scenarios.
+
 ## Malformed Data Handling (SDK-Specific)
 
 Malformed JSON in `delta` or `done` payloads:
