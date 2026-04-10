@@ -579,10 +579,11 @@ func parseGrokPage(html string) ([]ModelPricing, error) {
 // official pricing becomes available.
 func fetchGemmaModels(_ context.Context) ([]ModelPricing, error) {
 	return []ModelPricing{
-		{ID: "gemma-3-1b", InputPricePer1M: 0.005, OutputPricePer1M: 0.015, ContextWindow: 32768, MaxOutput: 8192},
-		{ID: "gemma-3-4b", InputPricePer1M: 0.01, OutputPricePer1M: 0.03, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-12b", InputPricePer1M: 0.025, OutputPricePer1M: 0.075, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-27b", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-4", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 1048576, MaxOutput: 8192},
+		{ID: "gemma-3-1b-it", InputPricePer1M: 0.005, OutputPricePer1M: 0.015, ContextWindow: 32768, MaxOutput: 8192},
+		{ID: "gemma-3-4b-it", InputPricePer1M: 0.01, OutputPricePer1M: 0.03, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-12b-it", InputPricePer1M: 0.025, OutputPricePer1M: 0.075, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-27b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-4-31b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
+		{ID: "gemma-4-26b-a4b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
 	}, nil
 }
