@@ -30,7 +30,7 @@ Use --update to fetch the latest data from the remote source.`,
 }
 
 func init() {
-	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by provider (anthropic, openai, gemini, grok)")
+	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by provider (anthropic, openai, gemini, gemma, grok)")
 	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest model data from remote source")
 	rootCmd.AddCommand(modelsCmd)
 }
@@ -71,7 +71,7 @@ func runModels(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	providers := []string{"anthropic", "openai", "gemini", "grok"}
+	providers := []string{"anthropic", "openai", "gemini", "gemma", "grok"}
 	if modelsProvider != "" {
 		providers = []string{modelsProvider}
 	}

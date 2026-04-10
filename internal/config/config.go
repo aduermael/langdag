@@ -35,6 +35,7 @@ type ProvidersConfig struct {
 	Anthropic ProviderConfig     `mapstructure:"anthropic"`
 	OpenAI    ProviderConfig     `mapstructure:"openai"`
 	Gemini    ProviderConfig     `mapstructure:"gemini"`
+	Gemma     ProviderConfig     `mapstructure:"gemma"`
 	Grok      ProviderConfig     `mapstructure:"grok"`
 	Ollama    ProviderConfig     `mapstructure:"ollama"`
 	Mock      MockProviderConfig `mapstructure:"mock"`
@@ -150,6 +151,7 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.openai.api_key", "OPENAI_API_KEY")
 	v.BindEnv("providers.openai.base_url", "OPENAI_BASE_URL")
 	v.BindEnv("providers.gemini.api_key", "GEMINI_API_KEY")
+	v.BindEnv("providers.gemma.api_key", "GEMMA_API_KEY")
 	v.BindEnv("providers.grok.api_key", "XAI_API_KEY")
 	v.BindEnv("providers.grok.base_url", "XAI_BASE_URL")
 	v.BindEnv("providers.ollama.base_url", "OLLAMA_BASE_URL")

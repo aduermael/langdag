@@ -15,6 +15,7 @@ import (
 	"langdag.com/langdag/internal/models"
 	internalprovider "langdag.com/langdag/internal/provider"
 	anthropicprovider "langdag.com/langdag/internal/provider/anthropic"
+	gemmaprovider "langdag.com/langdag/internal/provider/gemma"
 	geminiprovider "langdag.com/langdag/internal/provider/gemini"
 	openaiprovider "langdag.com/langdag/internal/provider/openai"
 	internalstorage "langdag.com/langdag/internal/storage"
@@ -45,13 +46,13 @@ type Config struct {
 	StoragePath string
 
 	// Provider is the default LLM provider to use.
-	// Valid values: "anthropic", "openai", "gemini", "grok", "ollama",
+	// Valid values: "anthropic", "openai", "gemini", "gemma", "grok", "ollama",
 	// "anthropic-vertex", "anthropic-bedrock", "openai-azure", "gemini-vertex"
 	// Defaults to "anthropic"
 	Provider string
 
 	// APIKeys maps provider names to their API keys.
-	// Keys: "anthropic", "openai", "gemini"
+	// Keys: "anthropic", "openai", "gemini", "gemma"
 	APIKeys map[string]string
 
 	// AnthropicConfig holds Anthropic-specific config (optional base URL override).
@@ -62,6 +63,9 @@ type Config struct {
 
 	// GeminiConfig holds Gemini-specific config.
 	GeminiConfig *GeminiConfig
+
+	// GemmaConfig holds Gemma-specific config.
+	GemmaConfig *GemmaConfig
 
 	// GrokConfig holds Grok (xAI)-specific config.
 	GrokConfig *GrokConfig
@@ -100,6 +104,13 @@ type OpenAIConfig struct {
 
 // GeminiConfig holds Gemini-specific configuration.
 type GeminiConfig struct {
+	BaseURL string
+}
+
+// GemmaConfig holds Gemma-specific configuration. Gemma uses the same
+// Google AI Studio endpoint as Gemini, but the key and routing are kept
+// independent so the two providers can be configured separately.
+type GemmaConfig struct {
 	BaseURL string
 }
 
@@ -577,6 +588,16 @@ func createSingleProvider(ctx context.Context, name string, cfg Config) (interna
 			return nil, fmt.Errorf("langdag: GEMINI_API_KEY not set")
 		}
 		return geminiprovider.New(apiKey), nil
+
+	case "gemma":
+		apiKey := cfg.APIKeys["gemma"]
+		if apiKey == "" {
+			apiKey = os.Getenv("GEMMA_API_KEY")
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("langdag: GEMMA_API_KEY not set")
+		}
+		return gemmaprovider.New(apiKey), nil
 
 	case "anthropic-vertex":
 		vc := cfg.VertexConfig

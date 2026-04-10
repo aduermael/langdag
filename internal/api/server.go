@@ -14,6 +14,7 @@ import (
 	"langdag.com/langdag/internal/conversation"
 	"langdag.com/langdag/internal/provider"
 	"langdag.com/langdag/internal/provider/anthropic"
+	gemmaprovider "langdag.com/langdag/internal/provider/gemma"
 	geminiprovider "langdag.com/langdag/internal/provider/gemini"
 	mockprovider "langdag.com/langdag/internal/provider/mock"
 	openaiprovider "langdag.com/langdag/internal/provider/openai"
@@ -249,6 +250,12 @@ var providerRegistry = map[string]providerFactory{
 			return nil, fmt.Errorf("GEMINI_API_KEY not set")
 		}
 		return geminiprovider.New(c.Providers.Gemini.APIKey), nil
+	},
+	"gemma": func(_ context.Context, c *config.Config) (provider.Provider, error) {
+		if c.Providers.Gemma.APIKey == "" {
+			return nil, fmt.Errorf("GEMMA_API_KEY not set")
+		}
+		return gemmaprovider.New(c.Providers.Gemma.APIKey), nil
 	},
 	"gemini-vertex": func(ctx context.Context, c *config.Config) (provider.Provider, error) {
 		vc := c.Providers.GeminiVertex
