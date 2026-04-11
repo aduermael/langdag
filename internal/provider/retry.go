@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -13,11 +14,37 @@ import (
 	"langdag.com/langdag/types"
 )
 
+// retryCallbackKey is the context key for per-call retry callbacks.
+type retryCallbackKey struct{}
+
+// ContextWithRetryCallback returns a child context that carries a per-call
+// retry callback. When a retryProvider fires a retry, it checks the context
+// first; this takes priority over the config-level OnRetry.
+func ContextWithRetryCallback(ctx context.Context, fn func(RetryEvent)) context.Context {
+	return context.WithValue(ctx, retryCallbackKey{}, fn)
+}
+
+// RetryAfterError is implemented by errors that carry a server-suggested retry delay.
+type RetryAfterError interface {
+	error
+	RetryAfter() time.Duration
+}
+
+// RetryEvent holds information about a retry attempt, passed to OnRetry callbacks.
+type RetryEvent struct {
+	Err        error
+	Attempt    int
+	MaxRetries int
+	Delay      time.Duration
+}
+
 // RetryConfig configures retry behavior for provider calls.
 type RetryConfig struct {
 	MaxRetries int
 	BaseDelay  time.Duration
 	MaxDelay   time.Duration
+	// OnRetry is called before each retry wait. It may be nil.
+	OnRetry func(RetryEvent)
 }
 
 // DefaultRetryConfig returns the default retry configuration.
@@ -51,8 +78,8 @@ func (r *retryProvider) Complete(ctx context.Context, req *types.CompletionReque
 	var lastErr error
 	for attempt := 0; attempt <= r.config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			delay := r.backoff(attempt)
-			log.Printf("Retry %d/%d after %v: %v", attempt, r.config.MaxRetries, delay, lastErr)
+			delay := r.retryDelay(attempt, lastErr)
+			r.notifyRetry(ctx, lastErr, attempt, delay)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -77,8 +104,8 @@ func (r *retryProvider) Stream(ctx context.Context, req *types.CompletionRequest
 	var lastErr error
 	for attempt := 0; attempt <= r.config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			delay := r.backoff(attempt)
-			log.Printf("Retry %d/%d after %v: %v", attempt, r.config.MaxRetries, delay, lastErr)
+			delay := r.retryDelay(attempt, lastErr)
+			r.notifyRetry(ctx, lastErr, attempt, delay)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -97,6 +124,39 @@ func (r *retryProvider) Stream(ctx context.Context, req *types.CompletionRequest
 		lastErr = err
 	}
 	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// notifyRetry calls the per-call context callback, the config-level OnRetry,
+// or falls back to log.Printf.
+func (r *retryProvider) notifyRetry(ctx context.Context, err error, attempt int, delay time.Duration) {
+	ev := RetryEvent{
+		Err:        err,
+		Attempt:    attempt,
+		MaxRetries: r.config.MaxRetries,
+		Delay:      delay,
+	}
+	if fn, ok := ctx.Value(retryCallbackKey{}).(func(RetryEvent)); ok && fn != nil {
+		fn(ev)
+	} else if r.config.OnRetry != nil {
+		r.config.OnRetry(ev)
+	} else {
+		log.Printf("Retry %d/%d after %v: %v", attempt, r.config.MaxRetries, delay, err)
+	}
+}
+
+// retryDelay returns the delay before a retry attempt. If the error carries a
+// server-suggested retry delay (RetryAfterError), that value is used with small
+// jitter. Otherwise, exponential backoff is used.
+func (r *retryProvider) retryDelay(attempt int, lastErr error) time.Duration {
+	var rae RetryAfterError
+	if errors.As(lastErr, &rae) {
+		if d := rae.RetryAfter(); d > 0 {
+			// Small jitter on server-suggested delay (1.0x to 1.1x).
+			jitter := 1.0 + 0.1*rand.Float64()
+			return time.Duration(float64(d) * jitter)
+		}
+	}
+	return r.backoff(attempt)
 }
 
 // backoff calculates the delay for a given retry attempt using exponential backoff with jitter.

@@ -13,10 +13,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"langdag.com/langdag/types"
 )
+
+// apiError represents an API error with optional retry information.
+type apiError struct {
+	statusCode int
+	body       string
+	retryAfter time.Duration
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("gemma: API error (status %d): %s", e.statusCode, e.body)
+}
+
+func (e *apiError) RetryAfter() time.Duration {
+	return e.retryAfter
+}
 
 // --- Request types ---
 
@@ -440,8 +457,56 @@ func doHTTPRequest(ctx context.Context, client *http.Client, url string, body []
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("gemma: API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+
+		apiErr := &apiError{
+			statusCode: resp.StatusCode,
+			body:       string(bodyBytes),
+		}
+
+		// Parse retry delay from Retry-After header.
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if secs, err := strconv.Atoi(ra); err == nil {
+				apiErr.retryAfter = time.Duration(secs) * time.Second
+			}
+		}
+
+		// For rate limit errors, also check the Google RetryInfo in the JSON body.
+		if resp.StatusCode == http.StatusTooManyRequests && apiErr.retryAfter == 0 {
+			apiErr.retryAfter = parseRetryDelay(bodyBytes)
+		}
+
+		return nil, apiErr
 	}
 
 	return resp.Body, nil
+}
+
+// parseRetryDelay extracts the retry delay from a Google API error response
+// that contains a google.rpc.RetryInfo detail.
+func parseRetryDelay(body []byte) time.Duration {
+	var errResp struct {
+		Error struct {
+			Details []json.RawMessage `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		return 0
+	}
+	for _, detail := range errResp.Error.Details {
+		var retryInfo struct {
+			Type       string `json:"@type"`
+			RetryDelay string `json:"retryDelay"`
+		}
+		if err := json.Unmarshal(detail, &retryInfo); err != nil {
+			continue
+		}
+		if retryInfo.Type == "type.googleapis.com/google.rpc.RetryInfo" && retryInfo.RetryDelay != "" {
+			// The delay is typically like "21s" or "21.243533579s".
+			d, err := time.ParseDuration(retryInfo.RetryDelay)
+			if err == nil {
+				return d
+			}
+		}
+	}
+	return 0
 }

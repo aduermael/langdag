@@ -33,6 +33,10 @@ type Storage = internalstorage.Storage
 // of Client.Provider() without importing an internal package.
 type Provider = internalprovider.Provider
 
+// ContextWithRetryCallback returns a child context that carries a per-call
+// retry callback. This takes priority over the config-level OnRetry.
+var ContextWithRetryCallback = internalprovider.ContextWithRetryCallback
+
 // ModelPricing contains pricing and capability information for a model.
 type ModelPricing = models.ModelPricing
 
@@ -151,11 +155,16 @@ type RoutingEntry struct {
 	Retry    *RetryConfig
 }
 
+// RetryEvent holds information about a retry attempt.
+type RetryEvent = internalprovider.RetryEvent
+
 // RetryConfig configures retry behavior for LLM provider calls.
 type RetryConfig struct {
 	MaxRetries int
 	BaseDelay  time.Duration
 	MaxDelay   time.Duration
+	// OnRetry is called before each retry wait. It may be nil.
+	OnRetry func(RetryEvent)
 }
 
 // Client is the main langdag client for managing AI conversations.
@@ -221,6 +230,12 @@ func NewWithDeps(store Storage, prov Provider) *Client {
 		prov:    prov,
 		convMgr: conversation.NewManager(store, prov),
 	}
+}
+
+// WithRetry wraps a Provider with exponential backoff retry logic.
+// Only transient errors (5xx, rate limits, timeouts) are retried.
+func WithRetry(p Provider, cfg RetryConfig) Provider {
+	return internalprovider.WithRetry(p, resolveRetryConfig(&cfg))
 }
 
 // Close releases all resources held by the client.
@@ -762,5 +777,6 @@ func resolveRetryConfig(rc *RetryConfig) internalprovider.RetryConfig {
 	if rc.MaxDelay > 0 {
 		cfg.MaxDelay = rc.MaxDelay
 	}
+	cfg.OnRetry = rc.OnRetry
 	return cfg
 }
