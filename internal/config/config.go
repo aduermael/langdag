@@ -35,7 +35,7 @@ type ProvidersConfig struct {
 	Anthropic ProviderConfig     `mapstructure:"anthropic"`
 	OpenAI    ProviderConfig     `mapstructure:"openai"`
 	Gemini    ProviderConfig     `mapstructure:"gemini"`
-	Gemma     ProviderConfig     `mapstructure:"gemma"`
+	Gemma     ProviderConfig     `mapstructure:"gemma"` // Deprecated: use Gemini; kept for backward compatibility
 	Grok      ProviderConfig     `mapstructure:"grok"`
 	Ollama    ProviderConfig     `mapstructure:"ollama"`
 	Mock      MockProviderConfig `mapstructure:"mock"`

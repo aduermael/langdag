@@ -23,6 +23,9 @@ func liveProvider(t *testing.T) *Provider {
 	t.Helper()
 	key := os.Getenv("GEMINI_API_KEY")
 	if key == "" {
+		key = os.Getenv("GEMMA_API_KEY")
+	}
+	if key == "" {
 		t.Skip("GEMINI_API_KEY not set")
 	}
 	return New(key)
@@ -35,7 +38,13 @@ var allModels = []string{
 	"gemini-3.1-flash-lite-preview",
 }
 
+// Gemma models served via the same Google AI Studio endpoint.
+var gemmaModels = []string{
+	"gemma-4-31b-it",
+}
+
 const defaultModel = "gemini-3-flash-preview"
+const defaultGemmaModel = "gemma-4-31b-it"
 
 // ---------- Basic completion ----------
 
@@ -596,6 +605,141 @@ func TestLive_LargeContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------- Gemma-specific tests ----------
+
+// TestLive_Gemma_SimpleComplete tests a basic completion with a Gemma model.
+func TestLive_Gemma_SimpleComplete(t *testing.T) {
+	p := liveProvider(t)
+
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
+
+			resp, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"Say hello in exactly 3 words."`)},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Complete failed: %v", err)
+			}
+
+			if len(resp.Content) == 0 {
+				t.Fatal("expected at least one content block")
+			}
+			var hasText bool
+			for _, b := range resp.Content {
+				if b.Type == "text" && b.Text != "" {
+					hasText = true
+					t.Logf("response text: %q", b.Text)
+				}
+			}
+			if !hasText {
+				t.Error("expected a non-empty text content block")
+			}
+			t.Logf("usage: in=%d out=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
+		})
+	}
+}
+
+// TestLive_Gemma_ToolCallWithReasoningTokens tests tool calling and checks
+// whether Gemma reports reasoning tokens alongside tool calls.
+func TestLive_Gemma_ToolCallWithReasoningTokens(t *testing.T) {
+	p := liveProvider(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	tools := []types.ToolDefinition{
+		{
+			Name:        "search_code",
+			Description: "Search for a pattern in source code files",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"}},"required":["pattern"]}`),
+		},
+	}
+
+	resp, err := p.Complete(ctx, &types.CompletionRequest{
+		Model: defaultGemmaModel,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Find where the git branch name is displayed in the UI"`)},
+		},
+		Tools: tools,
+	})
+	if err != nil {
+		t.Fatalf("Complete failed: %v", err)
+	}
+
+	var hasText, hasToolUse bool
+	for _, b := range resp.Content {
+		switch b.Type {
+		case "text":
+			hasText = true
+			t.Logf("text: %q", truncate(b.Text, 200))
+		case "tool_use":
+			hasToolUse = true
+			t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
+		}
+	}
+
+	t.Logf("has_text=%v has_tool_use=%v stop=%q reasoning=%d",
+		hasText, hasToolUse, resp.StopReason, resp.Usage.ReasoningTokens)
+	if resp.Usage.ReasoningTokens > 0 {
+		t.Log("NOTE: reasoning tokens reported alongside tool calls without explicit thinking")
+	}
+}
+
+// TestLive_Gemma_Thinking tests that Gemma handles thinking config correctly.
+func TestLive_Gemma_Thinking(t *testing.T) {
+	p := liveProvider(t)
+
+	t.Run("explicit_thinking_rejected", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		think := true
+		_, err := p.Complete(ctx, &types.CompletionRequest{
+			Model: defaultGemmaModel,
+			Messages: []types.Message{
+				{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
+			},
+			Think: &think,
+		})
+		if err == nil {
+			t.Log("NOTE: explicit thinking was accepted (model may have added support)")
+		} else if strings.Contains(err.Error(), "400") {
+			t.Logf("confirmed: explicit thinking rejected: %v", err)
+		} else {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("implicit_reasoning_tokens", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		resp, err := p.Complete(ctx, &types.CompletionRequest{
+			Model: defaultGemmaModel,
+			Messages: []types.Message{
+				{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Complete failed: %v", err)
+		}
+
+		t.Logf("usage: in=%d out=%d reasoning=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.ReasoningTokens)
+		if resp.Usage.ReasoningTokens > 0 {
+			t.Log("NOTE: model reports reasoning tokens even without explicit thinking config")
+		}
+		for _, b := range resp.Content {
+			if b.Type == "text" {
+				t.Logf("response: %q", b.Text)
+			}
+		}
+	})
 }
 
 func truncate(s string, n int) string {

@@ -32,13 +32,21 @@ func (p *Provider) Name() string {
 	return "gemini"
 }
 
-// Models returns the available models.
+// Models returns the available models (Gemini and Gemma families).
 func (p *Provider) Models() []types.ModelInfo {
 	st := []string{types.ServerToolWebSearch}
 	return []types.ModelInfo{
+		// Gemini models
 		{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
 		{ID: "gemini-3.1-pro-preview", Name: "Gemini 3.1 Pro", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
 		{ID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
+		// Gemma models (served via the same Google AI Studio endpoint)
+		{ID: "gemma-4-31b-it", Name: "Gemma 4 31B", ContextWindow: 262144, MaxOutput: 8192, ServerTools: st},
+		{ID: "gemma-4-26b-a4b-it", Name: "Gemma 4 26B MoE", ContextWindow: 262144, MaxOutput: 8192, ServerTools: st},
+		{ID: "gemma-3-27b-it", Name: "Gemma 3 27B", ContextWindow: 131072, MaxOutput: 8192, ServerTools: st},
+		{ID: "gemma-3-12b-it", Name: "Gemma 3 12B", ContextWindow: 131072, MaxOutput: 8192, ServerTools: st},
+		{ID: "gemma-3-4b-it", Name: "Gemma 3 4B", ContextWindow: 131072, MaxOutput: 8192, ServerTools: st},
+		{ID: "gemma-3-1b-it", Name: "Gemma 3 1B", ContextWindow: 32768, MaxOutput: 8192, ServerTools: st},
 	}
 }
 
