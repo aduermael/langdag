@@ -14,7 +14,6 @@ import (
 	"langdag.com/langdag/internal/conversation"
 	"langdag.com/langdag/internal/provider"
 	"langdag.com/langdag/internal/provider/anthropic"
-	gemmaprovider "langdag.com/langdag/internal/provider/gemma"
 	geminiprovider "langdag.com/langdag/internal/provider/gemini"
 	mockprovider "langdag.com/langdag/internal/provider/mock"
 	openaiprovider "langdag.com/langdag/internal/provider/openai"
@@ -245,18 +244,8 @@ var providerRegistry = map[string]providerFactory{
 	"ollama": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		return openaiprovider.NewOllama(c.Providers.Ollama.BaseURL), nil
 	},
-	"gemini": func(_ context.Context, c *config.Config) (provider.Provider, error) {
-		if c.Providers.Gemini.APIKey == "" {
-			return nil, fmt.Errorf("GEMINI_API_KEY not set")
-		}
-		return geminiprovider.New(c.Providers.Gemini.APIKey), nil
-	},
-	"gemma": func(_ context.Context, c *config.Config) (provider.Provider, error) {
-		if c.Providers.Gemma.APIKey == "" {
-			return nil, fmt.Errorf("GEMMA_API_KEY not set")
-		}
-		return gemmaprovider.New(c.Providers.Gemma.APIKey), nil
-	},
+	"gemini": newGeminiProvider,
+	"gemma":  newGeminiProvider,
 	"gemini-vertex": func(ctx context.Context, c *config.Config) (provider.Provider, error) {
 		vc := c.Providers.GeminiVertex
 		if vc.ProjectID == "" || vc.Region == "" {
@@ -289,6 +278,14 @@ var providerRegistry = map[string]providerFactory{
 		}
 		return mockprovider.New(cfg), nil
 	},
+}
+
+// newGeminiProvider creates a Gemini provider using Google AI Studio credentials.
+func newGeminiProvider(_ context.Context, c *config.Config) (provider.Provider, error) {
+	if c.Providers.Gemini.APIKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY not set")
+	}
+	return geminiprovider.New(c.Providers.Gemini.APIKey), nil
 }
 
 // createProvider creates the LLM provider based on configuration.

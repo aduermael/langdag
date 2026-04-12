@@ -74,9 +74,7 @@
         "server_tools": [
           "web_search"
         ]
-      }
-    ],
-    "gemma": [
+      },
       {
         "id": "gemma-3-12b-it",
         "input_price_per_1m": 0.025,

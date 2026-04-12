@@ -618,15 +618,8 @@ func parseGrokPage(html string) ([]ModelPricing, error) {
 	return models, nil
 }
 
-// --- Gemma ---
-//
-// Gemma models are open-weight and there is no scrapable upstream pricing
-// page (Google AI Studio bills Gemma alongside Gemini but does not list
-// per-model rates the way the Gemini pricing page does). The fetcher
-// therefore returns a hardcoded list so that running `langdag models
-// --update` does not drop Gemma from the cache. Update these values when
-// official pricing becomes available.
-func fetchGemmaModels(_ context.Context) ([]ModelPricing, error) {
+// gemmaHardcodedModels returns Gemma model pricing (no scrapable upstream source).
+func gemmaHardcodedModels() []ModelPricing {
 	return []ModelPricing{
 		{ID: "gemma-3-1b-it", InputPricePer1M: 0.005, OutputPricePer1M: 0.015, ContextWindow: 32768, MaxOutput: 8192},
 		{ID: "gemma-3-4b-it", InputPricePer1M: 0.01, OutputPricePer1M: 0.03, ContextWindow: 131072, MaxOutput: 8192},
@@ -634,5 +627,15 @@ func fetchGemmaModels(_ context.Context) ([]ModelPricing, error) {
 		{ID: "gemma-3-27b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 131072, MaxOutput: 8192},
 		{ID: "gemma-4-31b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
 		{ID: "gemma-4-26b-a4b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
-	}, nil
+	}
+}
+
+// fetchGeminiAndGemmaModels fetches Gemini models from the pricing page and
+// appends the hardcoded Gemma models (same Google AI Studio endpoint).
+func fetchGeminiAndGemmaModels(ctx context.Context) ([]ModelPricing, error) {
+	geminiModels, err := fetchGeminiModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(geminiModels, gemmaHardcodedModels()...), nil
 }

@@ -16,7 +16,6 @@ var providerServerTools = map[string][]string{
 	"anthropic": {"web_search"},
 	"openai":    {"web_search"},
 	"gemini":    {"web_search"},
-	"gemma":     {"web_search"},
 	"grok":      {"web_search"},
 }
 
@@ -40,8 +39,7 @@ func FetchLatest(ctx context.Context) (*Catalog, error) {
 	fetchers := []fetcher{
 		{"openai", fetchOpenAIModels},
 		{"anthropic", fetchAnthropicModels},
-		{"gemini", fetchGeminiModels},
-		{"gemma", fetchGemmaModels},
+		{"gemini", fetchGeminiAndGemmaModels},
 		{"grok", fetchGrokModels},
 	}
 

@@ -506,6 +506,30 @@ func TestConvertTools(t *testing.T) {
 	}
 }
 
+func TestProviderModelsIncludesGemma(t *testing.T) {
+	p := New("test-key")
+	models := p.Models()
+
+	want := map[string]bool{
+		"gemma-4-31b-it":     false,
+		"gemma-4-26b-a4b-it": false,
+		"gemma-3-27b-it":     false,
+		"gemma-3-12b-it":     false,
+		"gemma-3-4b-it":      false,
+		"gemma-3-1b-it":      false,
+	}
+	for _, m := range models {
+		if _, ok := want[m.ID]; ok {
+			want[m.ID] = true
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Errorf("expected model %q in catalog", id)
+		}
+	}
+}
+
 func TestVertexProviderName(t *testing.T) {
 	p := &VertexProvider{}
 	if p.Name() != "gemini-vertex" {

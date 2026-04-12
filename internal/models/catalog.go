@@ -67,6 +67,9 @@ func (c *Catalog) ForProvider(provider string) []ModelPricing {
 	if c == nil || c.Providers == nil {
 		return nil
 	}
+	if provider == "gemma" {
+		provider = "gemini"
+	}
 	return c.Providers[provider]
 }
 
