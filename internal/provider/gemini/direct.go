@@ -36,8 +36,9 @@ func (p *Provider) Name() string {
 func (p *Provider) Models() []types.ModelInfo {
 	st := []string{types.ServerToolWebSearch}
 	return []types.ModelInfo{
-		{ID: "gemini-2.0-flash", Name: "Gemini 2.0 Flash", ContextWindow: 1048576, MaxOutput: 8192, ServerTools: st},
-		{ID: "gemini-2.5-pro-preview-05-06", Name: "Gemini 2.5 Pro", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
+		{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
+		{ID: "gemini-3.1-pro-preview", Name: "Gemini 3.1 Pro", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
+		{ID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
 	}
 }
 

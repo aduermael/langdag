@@ -33,13 +33,43 @@ func (e *apiError) RetryAfter() time.Duration {
 	return e.retryAfter
 }
 
+// parseRetryDelay extracts the retry delay from a Google API error response
+// that contains a google.rpc.RetryInfo detail.
+func parseRetryDelay(body []byte) time.Duration {
+	var errResp struct {
+		Error struct {
+			Details []json.RawMessage `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		return 0
+	}
+	for _, detail := range errResp.Error.Details {
+		var retryInfo struct {
+			Type       string `json:"@type"`
+			RetryDelay string `json:"retryDelay"`
+		}
+		if err := json.Unmarshal(detail, &retryInfo); err != nil {
+			continue
+		}
+		if retryInfo.Type == "type.googleapis.com/google.rpc.RetryInfo" && retryInfo.RetryDelay != "" {
+			// The delay is typically like "21s" or "21.243533579s".
+			d, err := time.ParseDuration(retryInfo.RetryDelay)
+			if err == nil {
+				return d
+			}
+		}
+	}
+	return 0
+}
 // --- Request types ---
 
 type geminiRequest struct {
-	Contents         []content         `json:"contents"`
-	SystemInstruction *content         `json:"system_instruction,omitempty"`
-	Tools            []geminiTool      `json:"tools,omitempty"`
-	GenerationConfig *generationConfig `json:"generation_config,omitempty"`
+	Contents          []content         `json:"contents"`
+	SystemInstruction *content          `json:"system_instruction,omitempty"`
+	Tools             []geminiTool      `json:"tools,omitempty"`
+	ToolConfig        *toolConfig       `json:"tool_config,omitempty"`
+	GenerationConfig  *generationConfig `json:"generation_config,omitempty"`
 }
 
 type content struct {
@@ -117,6 +147,10 @@ type generationConfig struct {
 	ThinkingConfig  *thinkingConfig  `json:"thinkingConfig,omitempty"`
 }
 
+type toolConfig struct {
+	IncludeServerSideToolInvocations bool `json:"include_server_side_tool_invocations,omitempty"`
+}
+
 // --- Response types ---
 
 type geminiResponse struct {
@@ -151,6 +185,12 @@ func buildRequest(req *types.CompletionRequest) []byte {
 
 	if len(req.Tools) > 0 {
 		gr.Tools = convertTools(req.Tools)
+		for _, t := range req.Tools {
+			if !t.IsClientTool() {
+				gr.ToolConfig = &toolConfig{IncludeServerSideToolInvocations: true}
+				break
+			}
+		}
 	}
 
 	gc := &generationConfig{}
