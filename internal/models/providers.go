@@ -15,8 +15,9 @@ import (
 var (
 	openAISourceURL    = "https://cdn.openai.com/API/docs/txt/llms-models-pricing.txt"
 	anthropicSourceURL = "https://platform.claude.com/docs/en/docs/about-claude/models"
-	geminiSourceURL    = "https://ai.google.dev/pricing"
-	geminiSpecBaseURL  = "https://ai.google.dev/gemini-api/docs/models"
+	geminiSourceURL       = "https://ai.google.dev/pricing"
+	geminiSpecBaseURL     = "https://ai.google.dev/gemini-api/docs/models"
+	geminiDeprecationsURL = "https://ai.google.dev/gemini-api/docs/deprecations"
 	grokSourceURL      = "https://docs.x.ai/docs/models"
 )
 
@@ -334,7 +335,7 @@ func fetchGeminiModels(ctx context.Context) ([]ModelPricing, error) {
 		return nil, err
 	}
 
-	// Step 2: Fetch spec pages concurrently for context window + max output
+	// Step 2: Fetch spec pages and deprecations page concurrently
 	var wg sync.WaitGroup
 	for i := range models {
 		wg.Add(1)
@@ -354,7 +355,30 @@ func fetchGeminiModels(ctx context.Context) ([]ModelPricing, error) {
 			}
 		}(i)
 	}
+
+	var shutdownModels map[string]bool
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		depBody, err := providerHTTPGet(ctx, geminiDeprecationsURL)
+		if err != nil {
+			return // deprecations page not available; skip filtering
+		}
+		shutdownModels = parseGeminiDeprecations(depBody)
+	}()
+
 	wg.Wait()
+
+	// Step 3: Filter out models that have a shutdown date
+	if len(shutdownModels) > 0 {
+		filtered := models[:0]
+		for _, m := range models {
+			if !shutdownModels[m.ID] {
+				filtered = append(filtered, m)
+			}
+		}
+		models = filtered
+	}
 
 	return models, nil
 }
@@ -454,6 +478,31 @@ func parseGeminiSpecPage(html string) (contextWindow int, maxOutput int) {
 		maxOutput = parseCommaNumber(m[1])
 	}
 	return
+}
+
+// geminiDeprecationRowRe matches table rows in the Gemini deprecations page.
+// It captures the model ID (column 1) and shutdown date text (column 3).
+var geminiDeprecationRowRe = regexp.MustCompile(
+	`(?i)<tr[^>]*>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>.*?</td>\s*<td[^>]*>(.*?)</td>`,
+)
+
+// parseGeminiDeprecations extracts model IDs that have an announced shutdown date
+// from the Gemini deprecations page. Returns a set of model IDs to exclude.
+func parseGeminiDeprecations(html string) map[string]bool {
+	shutdownModels := make(map[string]bool)
+	for _, match := range geminiDeprecationRowRe.FindAllStringSubmatch(html, -1) {
+		modelID := strings.TrimSpace(stripHTMLTags(match[1]))
+		shutdownDate := strings.TrimSpace(stripHTMLTags(match[2]))
+		if modelID == "" || shutdownDate == "" {
+			continue
+		}
+		// Keep models that have no shutdown date announced.
+		if strings.Contains(strings.ToLower(shutdownDate), "no shutdown date") {
+			continue
+		}
+		shutdownModels[modelID] = true
+	}
+	return shutdownModels
 }
 
 func parseCommaNumber(s string) int {

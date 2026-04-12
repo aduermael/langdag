@@ -313,6 +313,42 @@ func TestParseGeminiSpecPage(t *testing.T) {
 	}
 }
 
+func TestParseGeminiDeprecations(t *testing.T) {
+	html := `<html><body>
+<table>
+<tr><th>Model</th><th>Release date</th><th>Shutdown date</th><th>Replacement</th></tr>
+<tr><td>gemini-3-flash-preview</td><td>December 17, 2025</td><td>No shutdown date announced</td><td>-</td></tr>
+<tr><td>gemini-3.1-pro-preview</td><td>February 19, 2026</td><td>No shutdown date announced</td><td>-</td></tr>
+<tr><td>gemini-2.5-pro</td><td>June 17, 2025</td><td>June 17, 2026</td><td>gemini-3.1-pro-preview</td></tr>
+<tr><td>gemini-2.5-flash</td><td>June 17, 2025</td><td>June 17, 2026</td><td>gemini-3-flash-preview</td></tr>
+<tr><td>gemini-2.0-flash</td><td>February 5, 2025</td><td>June 1, 2026</td><td>gemini-3-flash-preview</td></tr>
+</table>
+</body></html>`
+
+	shutdown := parseGeminiDeprecations(html)
+
+	// Models with a shutdown date should be in the set
+	for _, id := range []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"} {
+		if !shutdown[id] {
+			t.Errorf("expected %s to have shutdown date", id)
+		}
+	}
+
+	// Models with "No shutdown date announced" should NOT be in the set
+	for _, id := range []string{"gemini-3-flash-preview", "gemini-3.1-pro-preview"} {
+		if shutdown[id] {
+			t.Errorf("expected %s to NOT have shutdown date", id)
+		}
+	}
+}
+
+func TestParseGeminiDeprecations_Empty(t *testing.T) {
+	shutdown := parseGeminiDeprecations("<html><body>No tables here</body></html>")
+	if len(shutdown) != 0 {
+		t.Errorf("expected empty set, got %d entries", len(shutdown))
+	}
+}
+
 func TestParseGeminiSpecPage_NoData(t *testing.T) {
 	ctx, maxOut := parseGeminiSpecPage("<html><body>No specs here</body></html>")
 	if ctx != 0 || maxOut != 0 {
