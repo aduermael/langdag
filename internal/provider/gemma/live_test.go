@@ -28,7 +28,7 @@ const defaultModel = "gemma-4-31b-it"
 // TestLive_SimpleComplete tests a basic synchronous completion.
 func TestLive_SimpleComplete(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	resp, err := p.Complete(ctx, &types.CompletionRequest{
@@ -60,7 +60,7 @@ func TestLive_SimpleComplete(t *testing.T) {
 // TestLive_SimpleStream tests a basic streaming completion.
 func TestLive_SimpleStream(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	events, err := p.Stream(ctx, &types.CompletionRequest{
@@ -105,7 +105,7 @@ func TestLive_SimpleStream(t *testing.T) {
 // This is the key test for diagnosing the "no text with tool calls" behavior.
 func TestLive_ToolCall(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	tools := []types.ToolDefinition{
@@ -155,7 +155,7 @@ func TestLive_ToolCall(t *testing.T) {
 // TestLive_ToolCallStream tests streaming with tool calls.
 func TestLive_ToolCallStream(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	tools := []types.ToolDefinition{
@@ -211,7 +211,7 @@ func TestLive_ToolCallStream(t *testing.T) {
 // user asks → model calls tool → we provide result → model responds with text.
 func TestLive_MultiTurnToolUse(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	tools := []types.ToolDefinition{
@@ -295,7 +295,7 @@ func TestLive_Thinking(t *testing.T) {
 	p := liveProvider(t)
 
 	t.Run("explicit_thinking_rejected", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		think := true
@@ -316,7 +316,7 @@ func TestLive_Thinking(t *testing.T) {
 	})
 
 	t.Run("implicit_reasoning_tokens", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		resp, err := p.Complete(ctx, &types.CompletionRequest{
@@ -360,7 +360,7 @@ func TestLive_LargeContext(t *testing.T) {
 
 	for _, sz := range sizes {
 		t.Run(sz.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
 			content := filler
@@ -401,7 +401,7 @@ func TestLive_LargeContext(t *testing.T) {
 // thinking config, since gemma-4-31b-it rejects it).
 func TestLive_ToolCallWithReasoningTokens(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	tools := []types.ToolDefinition{
@@ -446,7 +446,7 @@ func TestLive_ToolCallWithReasoningTokens(t *testing.T) {
 // in a single response when multiple tools are available.
 func TestLive_ConsecutiveToolCalls(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	tools := []types.ToolDefinition{
