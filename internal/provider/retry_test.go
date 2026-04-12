@@ -263,6 +263,7 @@ func TestIsTransient_EdgeCaseMessages(t *testing.T) {
 	}{
 		// Variants of timeout phrasing
 		{"connection timeout", true},        // contains "timeout"
+		{"Connection Timeout", true},        // case-insensitive
 		{"request timed out", false},         // "timed out" does NOT contain "timeout"
 		{"context deadline exceeded", false}, // Go stdlib timeout message — not matched by string
 		{"temporary failure in name resolution", true}, // contains "temporary failure"
@@ -280,16 +281,19 @@ func TestIsTransient_EdgeCaseMessages(t *testing.T) {
 		{"invoice #50032 not found", false}, // "500" embedded in "50032" — not a status code
 		{"port 5003 is busy", false},         // "500" embedded in "5003" — not a status code
 
-		// Connection errors
+		// Connection errors (case-insensitive)
 		{"connection reset by peer", true},
 		{"connection refused by server", true},
+		{"Connection Refused", true},
+		{"Connection Reset by peer", true},
 
 		// EOF — only matched via errors.Is, not substring; string-only messages won't match
 		{"unexpected EOF", false},
 		{"read: EOF", false},
 
-		// Broken pipe
+		// Broken pipe (case-insensitive)
 		{"write tcp 127.0.0.1:8080: write: broken pipe", true},
+		{"Broken Pipe", true},
 
 		// TLS errors (case-insensitive)
 		{"TLS handshake error", true},

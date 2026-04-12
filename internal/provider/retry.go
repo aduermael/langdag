@@ -199,12 +199,12 @@ func isTransient(err error) bool {
 		return true
 	}
 
-	// Network / transport errors
-	if strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "temporary failure") ||
-		strings.Contains(msg, "broken pipe") ||
+	// Network / transport errors (case-insensitive)
+	if strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "connection reset") ||
+		strings.Contains(lower, "timeout") ||
+		strings.Contains(lower, "temporary failure") ||
+		strings.Contains(lower, "broken pipe") ||
 		strings.Contains(lower, "tls handshake") {
 		return true
 	}
