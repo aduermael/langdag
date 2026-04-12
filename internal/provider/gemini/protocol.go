@@ -53,6 +53,7 @@ type part struct {
 	FileData         *fileData         `json:"fileData,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+	ThoughtSignature string            `json:"thoughtSignature,omitempty"`
 }
 
 type inlineData struct {
@@ -66,11 +67,13 @@ type fileData struct {
 }
 
 type functionCall struct {
+	ID   string                 `json:"id,omitempty"`
 	Name string                 `json:"name"`
 	Args map[string]interface{} `json:"args,omitempty"`
 }
 
 type functionResponse struct {
+	ID       string                 `json:"id,omitempty"`
 	Name     string                 `json:"name"`
 	Response map[string]interface{} `json:"response"`
 }
@@ -182,6 +185,9 @@ func buildRequest(req *types.CompletionRequest) []byte {
 
 func convertMessages(messages []types.Message) []content {
 	var result []content
+	// Map of tool call ID → function name, built from tool_use blocks
+	// so that tool_result blocks can resolve the function name.
+	callNames := make(map[string]string)
 
 	for _, msg := range messages {
 		role := msg.Role
@@ -226,16 +232,37 @@ func convertMessages(messages []types.Message) []content {
 				if block.Input != nil {
 					json.Unmarshal(block.Input, &args)
 				}
-				c.Parts = append(c.Parts, part{
-					FunctionCall: &functionCall{Name: block.Name, Args: args},
-				})
+				fc := &functionCall{Name: block.Name, Args: args}
+				if block.ID != "" && block.ID != block.Name {
+					fc.ID = block.ID
+				}
+				p := part{FunctionCall: fc}
+				// Restore thought signature from provider data.
+				if len(block.ProviderData) > 0 {
+					var pd geminiProviderData
+					if json.Unmarshal(block.ProviderData, &pd) == nil && pd.ThoughtSignature != "" {
+						p.ThoughtSignature = pd.ThoughtSignature
+					}
+				}
+				c.Parts = append(c.Parts, p)
+				// Track ID → name for tool_result resolution.
+				if block.ID != "" {
+					callNames[block.ID] = block.Name
+				}
 			case "tool_result":
-				c.Parts = append(c.Parts, part{
-					FunctionResponse: &functionResponse{
-						Name:     block.ToolUseID,
-						Response: map[string]interface{}{"result": block.Content},
-					},
-				})
+				name := block.ToolUseID
+				if n, ok := callNames[block.ToolUseID]; ok {
+					name = n
+				}
+				fr := &functionResponse{
+					Name:     name,
+					Response: map[string]interface{}{"result": block.Content},
+				}
+				// Include ID when it differs from the name (Gemini 3.x).
+				if block.ToolUseID != name {
+					fr.ID = block.ToolUseID
+				}
+				c.Parts = append(c.Parts, part{FunctionResponse: fr})
 			}
 		}
 
@@ -282,6 +309,12 @@ func convertTools(tools []types.ToolDefinition) []geminiTool {
 	return result
 }
 
+// geminiProviderData holds Gemini-specific data stored in ContentBlock.ProviderData
+// to survive round-trips (e.g. thought signatures for multi-turn tool use).
+type geminiProviderData struct {
+	ThoughtSignature string `json:"thought_signature,omitempty"`
+}
+
 // --- Response conversion ---
 
 func convertResponse(resp *geminiResponse) *types.CompletionResponse {
@@ -300,12 +333,21 @@ func convertResponse(resp *geminiResponse) *types.CompletionResponse {
 			}
 			if p.FunctionCall != nil {
 				args, _ := json.Marshal(p.FunctionCall.Args)
-				cr.Content = append(cr.Content, types.ContentBlock{
+				block := types.ContentBlock{
 					Type:  "tool_use",
 					ID:    p.FunctionCall.Name,
 					Name:  p.FunctionCall.Name,
 					Input: args,
-				})
+				}
+				if p.FunctionCall.ID != "" {
+					block.ID = p.FunctionCall.ID
+				}
+				if p.ThoughtSignature != "" {
+					block.ProviderData, _ = json.Marshal(geminiProviderData{
+						ThoughtSignature: p.ThoughtSignature,
+					})
+				}
+				cr.Content = append(cr.Content, block)
 			}
 		}
 	}
@@ -386,6 +428,14 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 					ID:    p.FunctionCall.Name,
 					Name:  p.FunctionCall.Name,
 					Input: args,
+				}
+				if p.FunctionCall.ID != "" {
+					block.ID = p.FunctionCall.ID
+				}
+				if p.ThoughtSignature != "" {
+					block.ProviderData, _ = json.Marshal(geminiProviderData{
+						ThoughtSignature: p.ThoughtSignature,
+					})
 				}
 				toolUseBlocks = append(toolUseBlocks, block)
 				events <- types.StreamEvent{

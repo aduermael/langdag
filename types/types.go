@@ -35,6 +35,11 @@ type ContentBlock struct {
 	ContentJSON json.RawMessage `json:"content_json,omitempty"` // structured tool result (takes priority over Content when set)
 	IsError     bool            `json:"is_error,omitempty"`
 	DurationMs  int             `json:"duration_ms,omitempty"` // tool execution time in ms
+
+	// ProviderData holds opaque provider-specific data that must survive
+	// round-trips (e.g. Gemini thought signatures for multi-turn tool use).
+	// Providers store and retrieve structured data here; other providers ignore it.
+	ProviderData json.RawMessage `json:"provider_data,omitempty"`
 }
 
 // ToolResultContent returns the tool result content as a JSON value.
