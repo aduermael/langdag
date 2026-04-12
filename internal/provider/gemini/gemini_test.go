@@ -528,7 +528,7 @@ func TestVertexProviderModels(t *testing.T) {
 
 func TestBuildRequest_SystemInstruction(t *testing.T) {
 	req := &types.CompletionRequest{
-		Model:     "gemini-2.0-flash",
+		Model:     "gemini-3-flash-preview",
 		Messages:  []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
 		System:    "You are helpful",
 		MaxTokens: 1000,
@@ -553,7 +553,7 @@ func TestBuildRequest_SystemInstruction(t *testing.T) {
 func TestBuildRequest_ThinkTrue(t *testing.T) {
 	thinkTrue := true
 	req := &types.CompletionRequest{
-		Model:    "gemini-2.5-flash",
+		Model:    "gemini-3-flash-preview",
 		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
 		Think:    &thinkTrue,
 	}
@@ -584,7 +584,7 @@ func TestBuildRequest_ThinkTrue(t *testing.T) {
 func TestBuildRequest_ThinkFalse(t *testing.T) {
 	thinkFalse := false
 	req := &types.CompletionRequest{
-		Model:    "gemini-2.5-flash",
+		Model:    "gemini-3-flash-preview",
 		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
 		Think:    &thinkFalse,
 	}
@@ -614,7 +614,7 @@ func TestBuildRequest_ThinkFalse(t *testing.T) {
 
 func TestBuildRequest_ThinkNil(t *testing.T) {
 	req := &types.CompletionRequest{
-		Model:    "gemini-2.5-flash",
+		Model:    "gemini-3-flash-preview",
 		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
 		// Think is nil (not set)
 	}

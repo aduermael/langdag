@@ -235,18 +235,6 @@ duplicate \"name\":\"grok-3\",\"version\":\"1.0\",\"promptTextTokenPrice\":\"$n3
 
 func TestParseGeminiHTML(t *testing.T) {
 	html := `<html><body>
-<h3>Gemini 2.5 Pro</h3>
-<p>Input price $1.25</p>
-<p>Output price $10.00</p>
-
-<h3>Gemini 2.5 Flash</h3>
-<p>Input price $0.30 (text / image / video)</p>
-<p>Output price (including thinking tokens) $2.50</p>
-
-<h3>Gemini 2.5 Flash-Lite</h3>
-<p>Input price $0.10</p>
-<p>Output price $0.40</p>
-
 <h3>Gemini 3.1 Pro Preview</h3>
 <p>Input price $2.00</p>
 <p>Output price $12.00</p>
@@ -255,7 +243,11 @@ func TestParseGeminiHTML(t *testing.T) {
 <p>Input price $0.50</p>
 <p>Output price $3.00</p>
 
-<h3>Gemini 2.5 Flash Image</h3>
+<h3>Gemini 3.1 Flash-Lite Preview</h3>
+<p>Input price $0.25</p>
+<p>Output price $1.50</p>
+
+<h3>Gemini 3 Flash Image</h3>
 <p>Output price $30.00</p>
 </body></html>`
 
@@ -269,37 +261,6 @@ func TestParseGeminiHTML(t *testing.T) {
 		byID[m.ID] = m
 	}
 
-	if m, ok := byID["gemini-2.5-pro"]; !ok {
-		t.Error("gemini-2.5-pro not found")
-	} else {
-		if m.InputPricePer1M != 1.25 {
-			t.Errorf("input = %f, want 1.25", m.InputPricePer1M)
-		}
-		if m.OutputPricePer1M != 10.0 {
-			t.Errorf("output = %f, want 10.0", m.OutputPricePer1M)
-		}
-	}
-
-	if m, ok := byID["gemini-2.5-flash"]; !ok {
-		t.Error("gemini-2.5-flash not found")
-	} else {
-		if m.InputPricePer1M != 0.30 {
-			t.Errorf("input = %f, want 0.30", m.InputPricePer1M)
-		}
-		if m.OutputPricePer1M != 2.50 {
-			t.Errorf("output = %f, want 2.50", m.OutputPricePer1M)
-		}
-	}
-
-	if m, ok := byID["gemini-2.5-flash-lite"]; !ok {
-		t.Error("gemini-2.5-flash-lite not found")
-	} else {
-		if m.InputPricePer1M != 0.10 {
-			t.Errorf("input = %f, want 0.10", m.InputPricePer1M)
-		}
-	}
-
-	// Preview models should have "-preview" suffix
 	if m, ok := byID["gemini-3.1-pro-preview"]; !ok {
 		t.Error("gemini-3.1-pro-preview not found")
 	} else {
@@ -311,19 +272,34 @@ func TestParseGeminiHTML(t *testing.T) {
 		}
 	}
 
-	if _, ok := byID["gemini-3-flash-preview"]; !ok {
+	if m, ok := byID["gemini-3-flash-preview"]; !ok {
 		t.Error("gemini-3-flash-preview not found")
+	} else {
+		if m.InputPricePer1M != 0.50 {
+			t.Errorf("input = %f, want 0.50", m.InputPricePer1M)
+		}
+		if m.OutputPricePer1M != 3.0 {
+			t.Errorf("output = %f, want 3.0", m.OutputPricePer1M)
+		}
+	}
+
+	if m, ok := byID["gemini-3.1-flash-lite-preview"]; !ok {
+		t.Error("gemini-3.1-flash-lite-preview not found")
+	} else {
+		if m.InputPricePer1M != 0.25 {
+			t.Errorf("input = %f, want 0.25", m.InputPricePer1M)
+		}
 	}
 
 	// Image model should be skipped
-	if _, ok := byID["gemini-2.5-flash-image"]; ok {
+	if _, ok := byID["gemini-3-flash-image"]; ok {
 		t.Error("image model should be filtered")
 	}
 }
 
 func TestParseGeminiSpecPage(t *testing.T) {
 	html := `<html><body>
-<dt>Model code</dt><dd>gemini-2.5-flash</dd>
+<dt>Model code</dt><dd>gemini-3-flash-preview</dd>
 <dt>Input token limit</dt><dd>1,048,576</dd>
 <dt>Output token limit</dt><dd>65,536</dd>
 </body></html>`

@@ -223,9 +223,9 @@ func TestFetchLatest(t *testing.T) {
 	// Gemini: pricing page + spec page
 	geminiMux := http.NewServeMux()
 	geminiMux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<h3>Gemini 2.5 Flash</h3><p>Input price $0.30</p><p>Output price $2.50</p>`))
+		w.Write([]byte(`<h3>Gemini 3 Flash Preview</h3><p>Input price $0.50</p><p>Output price $3.00</p>`))
 	})
-	geminiMux.HandleFunc("/models/gemini-2.5-flash", func(w http.ResponseWriter, r *http.Request) {
+	geminiMux.HandleFunc("/models/gemini-3-flash-preview", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>Input token limit 1,048,576 Output token limit 65,536</html>`))
 	})
 	geminiServer := httptest.NewServer(geminiMux)
@@ -285,9 +285,9 @@ func TestFetchLatest(t *testing.T) {
 	}
 
 	// Gemini model should have spec data from spec page
-	gm, _, ok := catalog.LookupModel("gemini-2.5-flash")
+	gm, _, ok := catalog.LookupModel("gemini-3-flash-preview")
 	if !ok {
-		t.Fatal("gemini-2.5-flash not found")
+		t.Fatal("gemini-3-flash-preview not found")
 	}
 	if gm.ContextWindow != 1048576 {
 		t.Errorf("gemini context = %d, want 1048576", gm.ContextWindow)
@@ -328,9 +328,9 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 
 	geminiMux := http.NewServeMux()
 	geminiMux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<h3>Gemini 2.5 Flash</h3><p>Input price $0.30</p><p>Output price $2.50</p>`))
+		w.Write([]byte(`<h3>Gemini 3 Flash Preview</h3><p>Input price $0.50</p><p>Output price $3.00</p>`))
 	})
-	geminiMux.HandleFunc("/models/gemini-2.5-flash", func(w http.ResponseWriter, r *http.Request) {
+	geminiMux.HandleFunc("/models/gemini-3-flash-preview", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>Input token limit 1,048,576 Output token limit 65,536</html>`))
 	})
 	geminiServer := httptest.NewServer(geminiMux)
