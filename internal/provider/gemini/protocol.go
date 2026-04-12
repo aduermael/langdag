@@ -62,6 +62,7 @@ func parseRetryDelay(body []byte) time.Duration {
 	}
 	return 0
 }
+
 // --- Request types ---
 
 type geminiRequest struct {
@@ -79,6 +80,7 @@ type content struct {
 
 type part struct {
 	Text             string            `json:"text,omitempty"`
+	Thought          bool              `json:"thought,omitempty"`
 	InlineData       *inlineData       `json:"inlineData,omitempty"`
 	FileData         *fileData         `json:"fileData,omitempty"`
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
@@ -365,6 +367,9 @@ func convertResponse(resp *geminiResponse) *types.CompletionResponse {
 		cr.StopReason = strings.ToLower(cand.FinishReason)
 
 		for _, p := range cand.Content.Parts {
+			if p.Thought {
+				continue
+			}
 			if p.Text != "" {
 				cr.Content = append(cr.Content, types.ContentBlock{
 					Type: "text",
@@ -446,6 +451,9 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 		var currentText string
 		for _, p := range cand.Content.Parts {
+			if p.Thought {
+				continue
+			}
 			if p.Text != "" {
 				currentText += p.Text
 			}
@@ -461,6 +469,9 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 		}
 
 		for _, p := range cand.Content.Parts {
+			if p.Thought {
+				continue
+			}
 			if p.FunctionCall != nil {
 				args, _ := json.Marshal(p.FunctionCall.Args)
 				block := types.ContentBlock{
@@ -545,33 +556,4 @@ func doHTTPRequest(ctx context.Context, client *http.Client, url string, body []
 	}
 
 	return resp.Body, nil
-}
-
-// parseRetryDelay extracts the retry delay from a Google API error response
-// that contains a google.rpc.RetryInfo detail.
-func parseRetryDelay(body []byte) time.Duration {
-	var errResp struct {
-		Error struct {
-			Details []json.RawMessage `json:"details"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &errResp); err != nil {
-		return 0
-	}
-	for _, detail := range errResp.Error.Details {
-		var retryInfo struct {
-			Type       string `json:"@type"`
-			RetryDelay string `json:"retryDelay"`
-		}
-		if err := json.Unmarshal(detail, &retryInfo); err != nil {
-			continue
-		}
-		if retryInfo.Type == "type.googleapis.com/google.rpc.RetryInfo" && retryInfo.RetryDelay != "" {
-			d, err := time.ParseDuration(retryInfo.RetryDelay)
-			if err == nil {
-				return d
-			}
-		}
-	}
-	return 0
 }

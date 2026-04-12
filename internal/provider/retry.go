@@ -37,7 +37,6 @@ type RetryEvent struct {
 	MaxRetries int
 	Delay      time.Duration
 }
-
 // RetryConfig configures retry behavior for provider calls.
 type RetryConfig struct {
 	MaxRetries int
