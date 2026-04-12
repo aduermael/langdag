@@ -176,24 +176,34 @@ func isTransient(err error) bool {
 	}
 
 	msg := err.Error()
+	lower := strings.ToLower(msg)
 
-	// Rate limit errors
-	if strings.Contains(msg, "429") || strings.Contains(msg, "rate limit") {
+	// Rate limit errors (case-insensitive to catch "Rate Limit Exceeded" etc.)
+	if strings.Contains(msg, "429") || strings.Contains(lower, "rate limit") {
 		return true
 	}
 
-	// Server errors (5xx)
-	for _, code := range []string{"500", "502", "503", "504"} {
+	// Server errors (5xx); 529 is Anthropic's "overloaded" status.
+	for _, code := range []string{"500", "502", "503", "504", "529"} {
 		if strings.Contains(msg, code) {
 			return true
 		}
 	}
 
-	// Network errors
+	// Provider capacity errors (case-insensitive; Anthropic uses "Overloaded")
+	if strings.Contains(lower, "overloaded") {
+		return true
+	}
+
+	// Network / transport errors
 	if strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "temporary failure") {
+		strings.Contains(msg, "temporary failure") ||
+		strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "TLS handshake") ||
+		strings.Contains(msg, "no such host") {
 		return true
 	}
 
