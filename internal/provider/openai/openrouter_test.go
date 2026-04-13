@@ -706,3 +706,92 @@ data: [DONE]
 		t.Errorf("text = %q, want %q", text, "Hi")
 	}
 }
+
+func TestOpenRouterModels_RetryAfterFailure(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			// First call fails
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":"service temporarily unavailable"}`))
+			return
+		}
+		// Second call succeeds
+		json.NewEncoder(w).Encode(openRouterModelsResponse{
+			Data: []openRouterModel{
+				{ID: "openai/gpt-4o", Name: "GPT-4o", ContextLength: 128000},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := NewOpenRouter("test-key", srv.URL)
+	
+	// First call should fail and return empty
+	models := p.Models()
+	if len(models) != 0 {
+		t.Errorf("expected 0 models on first failed fetch, got %d", len(models))
+	}
+	
+	// Second call should retry and succeed
+	models = p.Models()
+	if len(models) != 1 {
+		t.Errorf("expected 1 model on retry after failure, got %d", len(models))
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 HTTP calls (initial failure + retry), got %d", callCount)
+	}
+}
+
+func TestOpenRouterDoRequest_LargeErrorBodyTruncated(t *testing.T) {
+	// Create an error body larger than maxErrorBodySize (4KB)
+	largeErrorBody := strings.Repeat("x", 10000) // 10KB of 'x'
+	
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(largeErrorBody))
+	}))
+	defer srv.Close()
+
+	p := NewOpenRouter("test-key", srv.URL)
+	_, err := p.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "openai/gpt-4o",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
+	
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	
+	// Error message should be truncated to maxErrorBodySize
+	errMsg := err.Error()
+	// The error message includes prefix "openrouter: API error (status 400): "
+	// so the body part should be at most maxErrorBodySize
+	if len(errMsg) > maxErrorBodySize+100 { // +100 for the prefix and formatting
+		t.Errorf("error message too long (%d bytes), expected truncation at ~%d bytes", 
+			len(errMsg), maxErrorBodySize)
+	}
+}
+
+func TestOpenRouterModels_LargeErrorBodyTruncated(t *testing.T) {
+	// Create an error body larger than maxErrorBodySize (4KB)
+	largeErrorBody := strings.Repeat("y", 8000) // 8KB of 'y'
+	
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(largeErrorBody))
+	}))
+	defer srv.Close()
+
+	p := NewOpenRouter("test-key", srv.URL)
+	models := p.Models()
+	
+	// Should return empty models on error
+	if len(models) != 0 {
+		t.Errorf("expected 0 models on error, got %d", len(models))
+	}
+	
+	// The internal error should have been truncated (we can't directly test this
+	// since Models() doesn't return the error, but the truncation prevents memory issues)
+}
