@@ -14,7 +14,10 @@ import (
 	"langdag.com/langdag/types"
 )
 
-const openRouterBaseURL = "https://openrouter.ai/api/v1"
+const (
+	openRouterBaseURL     = "https://openrouter.ai/api/v1"
+	maxErrorBodySize      = 4096 // 4KB limit for error response bodies
+)
 
 // OpenRouterProvider implements the provider interface for OpenRouter.
 // OpenRouter is an OpenAI-compatible API that routes to many underlying models.
@@ -102,7 +105,7 @@ func (p *OpenRouterProvider) fetchModels() ([]types.ModelInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
 		return nil, fmt.Errorf("openrouter: models API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
@@ -178,7 +181,7 @@ func (p *OpenRouterProvider) doRequest(ctx context.Context, body []byte) (io.Rea
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
 		return nil, fmt.Errorf("openrouter: API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
 
