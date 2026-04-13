@@ -32,13 +32,13 @@ type ProvidersConfig struct {
 	Default string `mapstructure:"default"`
 
 	// Direct providers
-	Anthropic ProviderConfig     `mapstructure:"anthropic"`
-	OpenAI    ProviderConfig     `mapstructure:"openai"`
-	Gemini    ProviderConfig     `mapstructure:"gemini"`
+	Anthropic  ProviderConfig     `mapstructure:"anthropic"`
+	OpenAI     ProviderConfig     `mapstructure:"openai"`
+	Gemini     ProviderConfig     `mapstructure:"gemini"`
 	Grok       ProviderConfig     `mapstructure:"grok"`
 	OpenRouter ProviderConfig     `mapstructure:"openrouter"`
 	Ollama     ProviderConfig     `mapstructure:"ollama"`
-	Mock      MockProviderConfig `mapstructure:"mock"`
+	Mock       MockProviderConfig `mapstructure:"mock"`
 
 	// Cloud platform variants
 	AnthropicVertex  VertexConfig  `mapstructure:"anthropic-vertex"`

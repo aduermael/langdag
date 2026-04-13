@@ -61,8 +61,8 @@ func (p *OpenRouterProvider) Models() []types.ModelInfo {
 	models, err := p.fetchModels()
 	if err == nil {
 		p.modelCache = models
+		p.modelsFetched = true
 	}
-	p.modelsFetched = true
 	return p.modelCache
 }
 
