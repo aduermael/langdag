@@ -34,6 +34,16 @@
         ]
       },
       {
+        "id": "claude-opus-4-7",
+        "input_price_per_1m": 5,
+        "output_price_per_1m": 25,
+        "context_window": 1000000,
+        "max_output": 128000,
+        "server_tools": [
+          "web_search"
+        ]
+      },
+      {
         "id": "claude-sonnet-4-6",
         "input_price_per_1m": 3,
         "output_price_per_1m": 15,
