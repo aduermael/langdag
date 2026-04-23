@@ -100,8 +100,8 @@ func (p *Provider) doRequest(ctx context.Context, body []byte) (io.ReadCloser, e
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("openai: API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
+		return nil, fmt.Errorf("openai: API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
 
 	return resp.Body, nil

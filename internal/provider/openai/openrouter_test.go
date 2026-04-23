@@ -144,7 +144,10 @@ func TestOpenRouterRequiredHeaders(t *testing.T) {
 	defer srv.Close()
 
 	p := NewOpenRouter("test-key", srv.URL)
-	p.doRequest(context.Background(), []byte(`{}`)) //nolint — testing headers only
+	p.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "openai/gpt-4o",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	})
 
 	if gotReferer == "" {
 		t.Error("expected HTTP-Referer header to be set")
@@ -187,8 +190,8 @@ func TestOpenRouterDoRequest_UsesCorrectEndpoint(t *testing.T) {
 		stop := "stop"
 		content := "hi"
 		json.NewEncoder(w).Encode(chatCompletionResponse{
-			ID:    "r1",
-			Model: "openai/gpt-4o",
+			ID:      "r1",
+			Model:   "openai/gpt-4o",
 			Choices: []choice{{Message: responseMessage{Content: &content}, FinishReason: &stop}},
 		})
 	}))
@@ -211,8 +214,8 @@ func TestOpenRouterDoRequest_AuthHeader(t *testing.T) {
 		stop := "stop"
 		content := "hi"
 		json.NewEncoder(w).Encode(chatCompletionResponse{
-			ID:    "r1",
-			Model: "openai/gpt-4o",
+			ID:      "r1",
+			Model:   "openai/gpt-4o",
 			Choices: []choice{{Message: responseMessage{Content: &content}, FinishReason: &stop}},
 		})
 	}))
@@ -235,8 +238,8 @@ func TestOpenRouterDoRequest_ContentTypeHeader(t *testing.T) {
 		stop := "stop"
 		content := "hi"
 		json.NewEncoder(w).Encode(chatCompletionResponse{
-			ID:    "r1",
-			Model: "openai/gpt-4o",
+			ID:      "r1",
+			Model:   "openai/gpt-4o",
 			Choices: []choice{{Message: responseMessage{Content: &content}, FinishReason: &stop}},
 		})
 	}))
@@ -513,8 +516,8 @@ func TestOpenRouterComplete_RequestBodyFields(t *testing.T) {
 		stop := "stop"
 		content := "ok"
 		json.NewEncoder(w).Encode(chatCompletionResponse{
-			ID:    "r1",
-			Model: "openai/gpt-4o",
+			ID:      "r1",
+			Model:   "openai/gpt-4o",
 			Choices: []choice{{Message: responseMessage{Content: &content}, FinishReason: &stop}},
 		})
 	}))
@@ -556,8 +559,8 @@ func TestOpenRouterComplete_SystemPrompt(t *testing.T) {
 		stop := "stop"
 		content := "ok"
 		json.NewEncoder(w).Encode(chatCompletionResponse{
-			ID:    "r1",
-			Model: "openai/gpt-4o",
+			ID:      "r1",
+			Model:   "openai/gpt-4o",
 			Choices: []choice{{Message: responseMessage{Content: &content}, FinishReason: &stop}},
 		})
 	}))
@@ -727,13 +730,13 @@ func TestOpenRouterModels_RetryAfterFailure(t *testing.T) {
 	defer srv.Close()
 
 	p := NewOpenRouter("test-key", srv.URL)
-	
+
 	// First call should fail and return empty
 	models := p.Models()
 	if len(models) != 0 {
 		t.Errorf("expected 0 models on first failed fetch, got %d", len(models))
 	}
-	
+
 	// Second call should retry and succeed
 	models = p.Models()
 	if len(models) != 1 {
@@ -747,7 +750,7 @@ func TestOpenRouterModels_RetryAfterFailure(t *testing.T) {
 func TestOpenRouterDoRequest_LargeErrorBodyTruncated(t *testing.T) {
 	// Create an error body larger than maxErrorBodySize (4KB)
 	largeErrorBody := strings.Repeat("x", 10000) // 10KB of 'x'
-	
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(largeErrorBody))
@@ -759,17 +762,17 @@ func TestOpenRouterDoRequest_LargeErrorBodyTruncated(t *testing.T) {
 		Model:    "openai/gpt-4o",
 		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
 	})
-	
+
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	
+
 	// Error message should be truncated to maxErrorBodySize
 	errMsg := err.Error()
 	// The error message includes prefix "openrouter: API error (status 400): "
 	// so the body part should be at most maxErrorBodySize
 	if len(errMsg) > maxErrorBodySize+100 { // +100 for the prefix and formatting
-		t.Errorf("error message too long (%d bytes), expected truncation at ~%d bytes", 
+		t.Errorf("error message too long (%d bytes), expected truncation at ~%d bytes",
 			len(errMsg), maxErrorBodySize)
 	}
 }
@@ -777,7 +780,7 @@ func TestOpenRouterDoRequest_LargeErrorBodyTruncated(t *testing.T) {
 func TestOpenRouterModels_LargeErrorBodyTruncated(t *testing.T) {
 	// Create an error body larger than maxErrorBodySize (4KB)
 	largeErrorBody := strings.Repeat("y", 8000) // 8KB of 'y'
-	
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(largeErrorBody))
@@ -786,12 +789,12 @@ func TestOpenRouterModels_LargeErrorBodyTruncated(t *testing.T) {
 
 	p := NewOpenRouter("test-key", srv.URL)
 	models := p.Models()
-	
+
 	// Should return empty models on error
 	if len(models) != 0 {
 		t.Errorf("expected 0 models on error, got %d", len(models))
 	}
-	
+
 	// The internal error should have been truncated (we can't directly test this
 	// since Models() doesn't return the error, but the truncation prevents memory issues)
 }
