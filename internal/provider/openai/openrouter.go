@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	openRouterBaseURL     = "https://openrouter.ai/api/v1"
-	maxErrorBodySize      = 4096 // 4KB limit for error response bodies
+	openRouterBaseURL = "https://openrouter.ai/api/v1"
+	openRouterReferer = "https://github.com/fundamental-research-labs/langdag"
+	maxErrorBodySize  = 4096 // 4KB limit for error response bodies
 )
 
 // OpenRouterProvider implements the provider interface for OpenRouter.
@@ -27,8 +29,8 @@ type OpenRouterProvider struct {
 	baseURL string
 	client  *http.Client
 
-	modelsMu    sync.Mutex
-	modelCache  []types.ModelInfo
+	modelsMu      sync.Mutex
+	modelCache    []types.ModelInfo
 	modelsFetched bool
 }
 
@@ -65,6 +67,8 @@ func (p *OpenRouterProvider) Models() []types.ModelInfo {
 	if err == nil {
 		p.modelCache = models
 		p.modelsFetched = true
+	} else {
+		log.Printf("openrouter: failed to fetch models: %v", err)
 	}
 	return p.modelCache
 }
@@ -87,6 +91,8 @@ type openRouterModel struct {
 // OpenRouter requires HTTP-Referer and X-Title headers on every request,
 // including this one.
 func (p *OpenRouterProvider) fetchModels() ([]types.ModelInfo, error) {
+	// The Models() interface doesn't accept a context, so we use a fixed timeout.
+	// 10s is generous for a single HTTP request; most responses arrive in <1s.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -95,7 +101,7 @@ func (p *OpenRouterProvider) fetchModels() ([]types.ModelInfo, error) {
 		return nil, fmt.Errorf("openrouter: creating models request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	req.Header.Set("HTTP-Referer", "https://github.com/aduermael/langdag")
+	req.Header.Set("HTTP-Referer", openRouterReferer)
 	req.Header.Set("X-Title", "langdag")
 
 	resp, err := p.client.Do(req)
@@ -127,6 +133,8 @@ func (p *OpenRouterProvider) fetchModels() ([]types.ModelInfo, error) {
 }
 
 // Complete performs a synchronous completion request.
+// We pass openAIServerTools here, but Models() returns entries with empty
+// ServerTools, so upstream filterProvider strips them for non-OpenAI models.
 func (p *OpenRouterProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
 	body := buildRequest(req, false, openAIServerTools)
 
@@ -145,6 +153,8 @@ func (p *OpenRouterProvider) Complete(ctx context.Context, req *types.Completion
 }
 
 // Stream performs a streaming completion request.
+// We pass openAIServerTools here, but Models() returns entries with empty
+// ServerTools, so upstream filterProvider strips them for non-OpenAI models.
 func (p *OpenRouterProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
 	body := buildRequest(req, true, openAIServerTools)
 
@@ -171,7 +181,7 @@ func (p *OpenRouterProvider) doRequest(ctx context.Context, body []byte) (io.Rea
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-	httpReq.Header.Set("HTTP-Referer", "https://github.com/aduermael/langdag")
+	httpReq.Header.Set("HTTP-Referer", openRouterReferer)
 	httpReq.Header.Set("X-Title", "langdag")
 
 	resp, err := p.client.Do(httpReq)
