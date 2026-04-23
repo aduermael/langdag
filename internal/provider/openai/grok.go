@@ -101,8 +101,8 @@ func (p *GrokProvider) doRequest(ctx context.Context, body []byte) (io.ReadClose
 
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("grok: API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
+		return nil, fmt.Errorf("grok: API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 	}
 
 	return resp.Body, nil
