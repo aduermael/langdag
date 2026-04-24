@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-12T06:59:35.867504Z",
+  "updated_at": "2026-04-24T00:00:00Z",
   "source": "providers",
   "providers": {
     "anthropic": [
@@ -474,6 +474,26 @@
         "input_price_per_1m": 0.05,
         "output_price_per_1m": 0.4,
         "context_window": 400000,
+        "max_output": 128000,
+        "server_tools": [
+          "web_search"
+        ]
+      },
+      {
+        "id": "gpt-5.5-2026-04-23",
+        "input_price_per_1m": 5,
+        "output_price_per_1m": 30,
+        "context_window": 1050000,
+        "max_output": 128000,
+        "server_tools": [
+          "web_search"
+        ]
+      },
+      {
+        "id": "gpt-5.5-pro-2026-04-23",
+        "input_price_per_1m": 30,
+        "output_price_per_1m": 180,
+        "context_window": 1050000,
         "max_output": 128000,
         "server_tools": [
           "web_search"
