@@ -619,14 +619,15 @@ func parseGrokPage(html string) ([]ModelPricing, error) {
 }
 
 // gemmaHardcodedModels returns Gemma model pricing (no scrapable upstream source).
+// Gemma is free of charge on Google AI Studio, so input/output prices are zero.
 func gemmaHardcodedModels() []ModelPricing {
 	return []ModelPricing{
-		{ID: "gemma-3-1b-it", InputPricePer1M: 0.005, OutputPricePer1M: 0.015, ContextWindow: 32768, MaxOutput: 8192},
-		{ID: "gemma-3-4b-it", InputPricePer1M: 0.01, OutputPricePer1M: 0.03, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-12b-it", InputPricePer1M: 0.025, OutputPricePer1M: 0.075, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-27b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-4-31b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
-		{ID: "gemma-4-26b-a4b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
+		{ID: "gemma-3-1b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 32768, MaxOutput: 8192},
+		{ID: "gemma-3-4b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-12b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-27b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-4-31b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 262144, MaxOutput: 8192},
+		{ID: "gemma-4-26b-a4b-it", InputPricePer1M: 0, OutputPricePer1M: 0, ContextWindow: 262144, MaxOutput: 8192},
 	}
 }
 

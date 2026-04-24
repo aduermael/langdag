@@ -87,8 +87,8 @@
       },
       {
         "id": "gemma-3-12b-it",
-        "input_price_per_1m": 0.025,
-        "output_price_per_1m": 0.075,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 131072,
         "max_output": 8192,
         "server_tools": [
@@ -97,8 +97,8 @@
       },
       {
         "id": "gemma-3-1b-it",
-        "input_price_per_1m": 0.005,
-        "output_price_per_1m": 0.015,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 32768,
         "max_output": 8192,
         "server_tools": [
@@ -107,8 +107,8 @@
       },
       {
         "id": "gemma-3-27b-it",
-        "input_price_per_1m": 0.05,
-        "output_price_per_1m": 0.15,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 131072,
         "max_output": 8192,
         "server_tools": [
@@ -117,8 +117,8 @@
       },
       {
         "id": "gemma-3-4b-it",
-        "input_price_per_1m": 0.01,
-        "output_price_per_1m": 0.03,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 131072,
         "max_output": 8192,
         "server_tools": [
@@ -127,8 +127,8 @@
       },
       {
         "id": "gemma-4-26b-a4b-it",
-        "input_price_per_1m": 0.05,
-        "output_price_per_1m": 0.15,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 262144,
         "max_output": 8192,
         "server_tools": [
@@ -137,8 +137,8 @@
       },
       {
         "id": "gemma-4-31b-it",
-        "input_price_per_1m": 0.05,
-        "output_price_per_1m": 0.15,
+        "input_price_per_1m": 0,
+        "output_price_per_1m": 0,
         "context_window": 262144,
         "max_output": 8192,
         "server_tools": [

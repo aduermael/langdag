@@ -360,11 +360,12 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 		t.Fatalf("FetchLatest() error: %v", err)
 	}
 
-	// All models should have both pricing and context window
+	// All models should have a context window. Pricing must be non-negative
+	// but may be zero for free models (e.g. Gemma on Google AI Studio).
 	for provider, models := range catalog.Providers {
 		for _, m := range models {
-			if m.InputPricePer1M <= 0 && m.OutputPricePer1M <= 0 {
-				t.Errorf("%s/%s: missing pricing", provider, m.ID)
+			if m.InputPricePer1M < 0 || m.OutputPricePer1M < 0 {
+				t.Errorf("%s/%s: negative pricing", provider, m.ID)
 			}
 			if m.ContextWindow <= 0 {
 				t.Errorf("%s/%s: missing context window", provider, m.ID)

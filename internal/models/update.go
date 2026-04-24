@@ -75,10 +75,11 @@ func FetchLatest(ctx context.Context) (*Catalog, error) {
 	}
 
 	for _, r := range results {
-		// Filter: require pricing > 0 AND context_window > 0
+		// Filter: require context_window > 0. Free models (e.g. Gemma on AI Studio)
+		// are kept even when both prices are zero.
 		var filtered []ModelPricing
 		for _, m := range r.models {
-			if (m.InputPricePer1M > 0 || m.OutputPricePer1M > 0) && m.ContextWindow > 0 {
+			if m.ContextWindow > 0 {
 				filtered = append(filtered, m)
 			}
 		}
