@@ -788,6 +788,29 @@ func TestFeatureCheck_UnknownModelPermissive(t *testing.T) {
 	}
 }
 
+// TestModels_NoSilentDrift guards against the silent inconsistency that would
+// arise if a future model is added to (Provider).Models() or
+// (VertexProvider).Models() without a matching modelCaps entry. applyCaps
+// would return zero-value caps (all false) so ModelInfo would claim
+// unsupported, while featureCheck would fall through to the permissive
+// unknown-model branch and let requests pass — the public surface and the
+// request path would disagree.
+func TestModels_NoSilentDrift(t *testing.T) {
+	check := func(t *testing.T, providerName string, models []types.ModelInfo) {
+		t.Helper()
+		for _, m := range models {
+			if _, ok := modelCaps[m.ID]; !ok {
+				t.Errorf("%s.Models() returns %q which is missing from modelCaps "+
+					"— add a row or remove the model", providerName, m.ID)
+			}
+		}
+	}
+	check(t, "Provider", New("dummy").Models())
+	// VertexProvider.Models() does not access instance state, so a
+	// zero-value receiver is enough — keeps the test offline.
+	check(t, "VertexProvider", (&VertexProvider{}).Models())
+}
+
 // TestModels_CapFieldsPopulated verifies that per-model cap fields flow from
 // modelCaps into ModelInfo. The flat ServerTools list on every model was a
 // known lie pre-refactor; this pins the correct per-model derivation.
