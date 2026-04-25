@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,28 @@ import (
 
 	"langdag.com/langdag/types"
 )
+
+// requireCap skips the current test if the named model does not support the
+// requested capability, per the modelCaps table. Feature names: "function_calling",
+// "explicit_thinking_budget", "google_search".
+func requireCap(t *testing.T, model, feature string) {
+	t.Helper()
+	c := modelCaps[model]
+	var ok bool
+	switch feature {
+	case "function_calling":
+		ok = c.FunctionCalling
+	case "explicit_thinking_budget":
+		ok = c.ExplicitThinkingBudget
+	case "google_search":
+		ok = c.GoogleSearch
+	default:
+		t.Fatalf("requireCap: unknown feature %q", feature)
+	}
+	if !ok {
+		t.Skipf("%s does not support %s", model, feature)
+	}
+}
 
 // These tests hit the real Google AI Studio API and require GEMINI_API_KEY to be set.
 // Run with: GEMINI_API_KEY=<key> go test -v -run TestLive -count=1 ./internal/provider/gemini/
@@ -37,11 +60,11 @@ var allModels = []string{
 
 // Gemma models served via the same Google AI Studio endpoint.
 var gemmaModels = []string{
-	"gemma-4-31b-it",
+	"gemma-4-26b-a4b-it",
+	"gemma-3-1b-it",
 }
 
 const defaultModel = "gemini-3-flash-preview"
-const defaultGemmaModel = "gemma-4-31b-it"
 
 // ---------- Basic completion ----------
 
@@ -646,52 +669,55 @@ func TestLive_Gemma_SimpleComplete(t *testing.T) {
 // TestLive_Gemma_SimpleStream tests a basic streaming completion with a Gemma model.
 func TestLive_Gemma_SimpleStream(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
-	events, err := p.Stream(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"Say hello in exactly 3 words."`)},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Stream failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var gotStart, gotDone bool
-	var text strings.Builder
-	for ev := range events {
-		switch ev.Type {
-		case types.StreamEventStart:
-			gotStart = true
-		case types.StreamEventDelta:
-			text.WriteString(ev.Content)
-		case types.StreamEventDone:
-			gotDone = true
-			if ev.Response != nil {
-				t.Logf("usage: in=%d out=%d", ev.Response.Usage.InputTokens, ev.Response.Usage.OutputTokens)
+			events, err := p.Stream(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"Say hello in exactly 3 words."`)},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Stream failed: %v", err)
 			}
-		}
-	}
 
-	if !gotStart {
-		t.Error("missing StreamEventStart")
+			var gotStart, gotDone bool
+			var text strings.Builder
+			for ev := range events {
+				switch ev.Type {
+				case types.StreamEventStart:
+					gotStart = true
+				case types.StreamEventDelta:
+					text.WriteString(ev.Content)
+				case types.StreamEventDone:
+					gotDone = true
+					if ev.Response != nil {
+						t.Logf("usage: in=%d out=%d", ev.Response.Usage.InputTokens, ev.Response.Usage.OutputTokens)
+					}
+				}
+			}
+
+			if !gotStart {
+				t.Error("missing StreamEventStart")
+			}
+			if !gotDone {
+				t.Error("missing StreamEventDone")
+			}
+			if text.Len() == 0 {
+				t.Error("expected non-empty streamed text")
+			}
+			t.Logf("streamed text: %q", text.String())
+		})
 	}
-	if !gotDone {
-		t.Error("missing StreamEventDone")
-	}
-	if text.Len() == 0 {
-		t.Error("expected non-empty streamed text")
-	}
-	t.Logf("streamed text: %q", text.String())
 }
 
 // TestLive_Gemma_ToolCall tests tool calling with a Gemma model.
 func TestLive_Gemma_ToolCall(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
 	tools := []types.ToolDefinition{
 		{
@@ -701,43 +727,49 @@ func TestLive_Gemma_ToolCall(t *testing.T) {
 		},
 	}
 
-	resp, err := p.Complete(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"What is the weather in Paris?"`)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Complete failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			requireCap(t, model, "function_calling")
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var hasText, hasToolUse bool
-	for _, b := range resp.Content {
-		switch b.Type {
-		case "text":
-			hasText = true
-			t.Logf("text block: %q", b.Text)
-		case "tool_use":
-			hasToolUse = true
-			t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
-		}
-	}
+			resp, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"What is the weather in Paris?"`)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Complete failed: %v", err)
+			}
 
-	t.Logf("has_text=%v has_tool_use=%v stop_reason=%q", hasText, hasToolUse, resp.StopReason)
-	if !hasToolUse {
-		t.Error("expected a tool_use content block")
-	}
-	if !hasText {
-		t.Log("NOTE: Gemma returned tool_use WITHOUT any text block")
+			var hasText, hasToolUse bool
+			for _, b := range resp.Content {
+				switch b.Type {
+				case "text":
+					hasText = true
+					t.Logf("text block: %q", b.Text)
+				case "tool_use":
+					hasToolUse = true
+					t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
+				}
+			}
+
+			t.Logf("has_text=%v has_tool_use=%v stop_reason=%q", hasText, hasToolUse, resp.StopReason)
+			if !hasToolUse {
+				t.Error("expected a tool_use content block")
+			}
+			if !hasText {
+				t.Log("NOTE: Gemma returned tool_use WITHOUT any text block")
+			}
+		})
 	}
 }
 
 // TestLive_Gemma_ToolCallStream tests streaming with tool calls for a Gemma model.
 func TestLive_Gemma_ToolCallStream(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
 	tools := []types.ToolDefinition{
 		{
@@ -747,44 +779,52 @@ func TestLive_Gemma_ToolCallStream(t *testing.T) {
 		},
 	}
 
-	events, err := p.Stream(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"What is the weather in Paris?"`)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Stream failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			requireCap(t, model, "function_calling")
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var text strings.Builder
-	var toolCalls []types.ContentBlock
-	for ev := range events {
-		switch ev.Type {
-		case types.StreamEventDelta:
-			text.WriteString(ev.Content)
-		case types.StreamEventContentDone:
-			if ev.ContentBlock != nil && ev.ContentBlock.Type == "tool_use" {
-				toolCalls = append(toolCalls, *ev.ContentBlock)
+			events, err := p.Stream(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"What is the weather in Paris?"`)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Stream failed: %v", err)
 			}
-		case types.StreamEventDone:
-			if ev.Response != nil {
-				t.Logf("usage: in=%d out=%d", ev.Response.Usage.InputTokens, ev.Response.Usage.OutputTokens)
+
+			var text strings.Builder
+			var toolCalls []types.ContentBlock
+			for ev := range events {
+				switch ev.Type {
+				case types.StreamEventDelta:
+					text.WriteString(ev.Content)
+				case types.StreamEventContentDone:
+					if ev.ContentBlock != nil && ev.ContentBlock.Type == "tool_use" {
+						toolCalls = append(toolCalls, *ev.ContentBlock)
+					}
+				case types.StreamEventDone:
+					if ev.Response != nil {
+						t.Logf("usage: in=%d out=%d", ev.Response.Usage.InputTokens, ev.Response.Usage.OutputTokens)
+					}
+				}
 			}
-		}
-	}
 
-	t.Logf("streamed_text=%q tool_calls=%d", text.String(), len(toolCalls))
-	for _, tc := range toolCalls {
-		t.Logf("  tool: name=%s args=%s", tc.Name, string(tc.Input))
-	}
+			t.Logf("streamed_text=%q tool_calls=%d", text.String(), len(toolCalls))
+			for _, tc := range toolCalls {
+				t.Logf("  tool: name=%s args=%s", tc.Name, string(tc.Input))
+			}
 
-	if len(toolCalls) == 0 {
-		t.Error("expected at least one tool call")
-	}
-	if text.Len() == 0 {
-		t.Log("NOTE: Gemma streamed tool calls WITHOUT any text deltas")
+			if len(toolCalls) == 0 {
+				t.Error("expected at least one tool call")
+			}
+			if text.Len() == 0 {
+				t.Log("NOTE: Gemma streamed tool calls WITHOUT any text deltas")
+			}
+		})
 	}
 }
 
@@ -792,8 +832,6 @@ func TestLive_Gemma_ToolCallStream(t *testing.T) {
 // user asks → model calls tool → we provide result → model responds with text.
 func TestLive_Gemma_MultiTurnToolUse(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
 	tools := []types.ToolDefinition{
 		{
@@ -803,77 +841,83 @@ func TestLive_Gemma_MultiTurnToolUse(t *testing.T) {
 		},
 	}
 
-	// Turn 1: user asks, model should call tool
-	resp1, err := p.Complete(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"What is the weather in Tokyo?"`)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Turn 1 failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			requireCap(t, model, "function_calling")
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var toolCall *types.ContentBlock
-	for i := range resp1.Content {
-		if resp1.Content[i].Type == "tool_use" {
-			toolCall = &resp1.Content[i]
-			break
-		}
-	}
-	if toolCall == nil {
-		t.Fatal("Turn 1: expected a tool_use block")
-	}
-	t.Logf("Turn 1: tool=%s args=%s", toolCall.Name, string(toolCall.Input))
+			// Turn 1: user asks, model should call tool
+			resp1, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"What is the weather in Tokyo?"`)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Turn 1 failed: %v", err)
+			}
 
-	// Build assistant message with all content blocks from turn 1
-	assistantContent, _ := json.Marshal(resp1.Content)
+			var toolCall *types.ContentBlock
+			for i := range resp1.Content {
+				if resp1.Content[i].Type == "tool_use" {
+					toolCall = &resp1.Content[i]
+					break
+				}
+			}
+			if toolCall == nil {
+				t.Fatal("Turn 1: expected a tool_use block")
+			}
+			t.Logf("Turn 1: tool=%s args=%s", toolCall.Name, string(toolCall.Input))
 
-	// Build tool result — use toolCall.ID (unique call ID for Gemini 3.x,
-	// falls back to function name for older models).
-	toolResult := []types.ContentBlock{
-		{
-			Type:      "tool_result",
-			ToolUseID: toolCall.ID,
-			Content:   `{"temperature": "22°C", "condition": "sunny", "humidity": "45%"}`,
-		},
-	}
-	toolResultJSON, _ := json.Marshal(toolResult)
+			// Build assistant message with all content blocks from turn 1
+			assistantContent, _ := json.Marshal(resp1.Content)
 
-	// Turn 2: provide tool result, model should respond with text
-	resp2, err := p.Complete(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"What is the weather in Tokyo?"`)},
-			{Role: "assistant", Content: json.RawMessage(assistantContent)},
-			{Role: "user", Content: json.RawMessage(toolResultJSON)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Turn 2 failed: %v", err)
-	}
+			// Build tool result — use toolCall.ID (unique call ID for Gemini 3.x,
+			// falls back to function name for older models).
+			toolResult := []types.ContentBlock{
+				{
+					Type:      "tool_result",
+					ToolUseID: toolCall.ID,
+					Content:   `{"temperature": "22°C", "condition": "sunny", "humidity": "45%"}`,
+				},
+			}
+			toolResultJSON, _ := json.Marshal(toolResult)
 
-	var hasText bool
-	for _, b := range resp2.Content {
-		if b.Type == "text" && b.Text != "" {
-			hasText = true
-			t.Logf("Turn 2 text: %q", b.Text)
-		}
+			// Turn 2: provide tool result, model should respond with text
+			resp2, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"What is the weather in Tokyo?"`)},
+					{Role: "assistant", Content: json.RawMessage(assistantContent)},
+					{Role: "user", Content: json.RawMessage(toolResultJSON)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Turn 2 failed: %v", err)
+			}
+
+			var hasText bool
+			for _, b := range resp2.Content {
+				if b.Type == "text" && b.Text != "" {
+					hasText = true
+					t.Logf("Turn 2 text: %q", b.Text)
+				}
+			}
+			if !hasText {
+				t.Error("Turn 2: expected text response after tool result")
+			}
+			t.Logf("Turn 2 usage: in=%d out=%d", resp2.Usage.InputTokens, resp2.Usage.OutputTokens)
+		})
 	}
-	if !hasText {
-		t.Error("Turn 2: expected text response after tool result")
-	}
-	t.Logf("Turn 2 usage: in=%d out=%d", resp2.Usage.InputTokens, resp2.Usage.OutputTokens)
 }
 
 // TestLive_Gemma_ConsecutiveToolCalls tests if a Gemma model batches multiple
 // tool calls in a single response.
 func TestLive_Gemma_ConsecutiveToolCalls(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
 	tools := []types.ToolDefinition{
 		{
@@ -888,33 +932,41 @@ func TestLive_Gemma_ConsecutiveToolCalls(t *testing.T) {
 		},
 	}
 
-	resp, err := p.Complete(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"What is the weather and current time in London?"`)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Complete failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			requireCap(t, model, "function_calling")
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var toolCalls int
-	for _, b := range resp.Content {
-		if b.Type == "tool_use" {
-			toolCalls++
-			t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
-		}
-		if b.Type == "text" {
-			t.Logf("text: %q", truncate(b.Text, 200))
-		}
-	}
+			resp, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"What is the weather and current time in London?"`)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Complete failed: %v", err)
+			}
 
-	t.Logf("tool_calls=%d stop=%q", toolCalls, resp.StopReason)
-	if toolCalls > 1 {
-		t.Log("NOTE: Gemma batched multiple tool calls in one response")
-	} else if toolCalls == 1 {
-		t.Log("NOTE: Gemma returned only one tool call (no batching)")
+			var toolCalls int
+			for _, b := range resp.Content {
+				if b.Type == "tool_use" {
+					toolCalls++
+					t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
+				}
+				if b.Type == "text" {
+					t.Logf("text: %q", truncate(b.Text, 200))
+				}
+			}
+
+			t.Logf("tool_calls=%d stop=%q", toolCalls, resp.StopReason)
+			if toolCalls > 1 {
+				t.Log("NOTE: Gemma batched multiple tool calls in one response")
+			} else if toolCalls == 1 {
+				t.Log("NOTE: Gemma returned only one tool call (no batching)")
+			}
+		})
 	}
 }
 
@@ -933,38 +985,42 @@ func TestLive_Gemma_LargeContext(t *testing.T) {
 		{"200k_chars", 200_000},
 	}
 
-	for _, sz := range sizes {
-		t.Run(sz.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-			defer cancel()
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			for _, sz := range sizes {
+				t.Run(sz.name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+					defer cancel()
 
-			content := filler
-			if len(content) > sz.chars {
-				content = content[:sz.chars]
-			}
+					content := filler
+					if len(content) > sz.chars {
+						content = content[:sz.chars]
+					}
 
-			msg := "Here is some context:\n" + content + "\n\nSummarize the above in one sentence."
-			msgJSON, _ := json.Marshal(msg)
+					msg := "Here is some context:\n" + content + "\n\nSummarize the above in one sentence."
+					msgJSON, _ := json.Marshal(msg)
 
-			resp, err := p.Complete(ctx, &types.CompletionRequest{
-				Model: defaultGemmaModel,
-				Messages: []types.Message{
-					{Role: "user", Content: json.RawMessage(msgJSON)},
-				},
-			})
-			if err != nil {
-				t.Logf("ERROR with %s context: %v", sz.name, err)
-				if strings.Contains(err.Error(), "500") {
-					t.Logf("GOT 500 ERROR — context size may be the cause")
-				}
-				return
-			}
+					resp, err := p.Complete(ctx, &types.CompletionRequest{
+						Model: model,
+						Messages: []types.Message{
+							{Role: "user", Content: json.RawMessage(msgJSON)},
+						},
+					})
+					if err != nil {
+						t.Logf("ERROR with %s context: %v", sz.name, err)
+						if strings.Contains(err.Error(), "500") {
+							t.Logf("GOT 500 ERROR — context size may be the cause")
+						}
+						return
+					}
 
-			t.Logf("OK: in=%d out=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
-			for _, b := range resp.Content {
-				if b.Type == "text" {
-					t.Logf("response: %q", truncate(b.Text, 200))
-				}
+					t.Logf("OK: in=%d out=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens)
+					for _, b := range resp.Content {
+						if b.Type == "text" {
+							t.Logf("response: %q", truncate(b.Text, 200))
+						}
+					}
+				})
 			}
 		})
 	}
@@ -974,8 +1030,6 @@ func TestLive_Gemma_LargeContext(t *testing.T) {
 // whether Gemma reports reasoning tokens alongside tool calls.
 func TestLive_Gemma_ToolCallWithReasoningTokens(t *testing.T) {
 	p := liveProvider(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
 
 	tools := []types.ToolDefinition{
 		{
@@ -985,33 +1039,41 @@ func TestLive_Gemma_ToolCallWithReasoningTokens(t *testing.T) {
 		},
 	}
 
-	resp, err := p.Complete(ctx, &types.CompletionRequest{
-		Model: defaultGemmaModel,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"Find where the git branch name is displayed in the UI"`)},
-		},
-		Tools: tools,
-	})
-	if err != nil {
-		t.Fatalf("Complete failed: %v", err)
-	}
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			requireCap(t, model, "function_calling")
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-	var hasText, hasToolUse bool
-	for _, b := range resp.Content {
-		switch b.Type {
-		case "text":
-			hasText = true
-			t.Logf("text: %q", truncate(b.Text, 200))
-		case "tool_use":
-			hasToolUse = true
-			t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
-		}
-	}
+			resp, err := p.Complete(ctx, &types.CompletionRequest{
+				Model: model,
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"Find where the git branch name is displayed in the UI"`)},
+				},
+				Tools: tools,
+			})
+			if err != nil {
+				t.Fatalf("Complete failed: %v", err)
+			}
 
-	t.Logf("has_text=%v has_tool_use=%v stop=%q reasoning=%d",
-		hasText, hasToolUse, resp.StopReason, resp.Usage.ReasoningTokens)
-	if resp.Usage.ReasoningTokens > 0 {
-		t.Log("NOTE: reasoning tokens reported alongside tool calls without explicit thinking")
+			var hasText, hasToolUse bool
+			for _, b := range resp.Content {
+				switch b.Type {
+				case "text":
+					hasText = true
+					t.Logf("text: %q", truncate(b.Text, 200))
+				case "tool_use":
+					hasToolUse = true
+					t.Logf("tool_use: name=%s args=%s", b.Name, string(b.Input))
+				}
+			}
+
+			t.Logf("has_text=%v has_tool_use=%v stop=%q reasoning=%d",
+				hasText, hasToolUse, resp.StopReason, resp.Usage.ReasoningTokens)
+			if resp.Usage.ReasoningTokens > 0 {
+				t.Log("NOTE: reasoning tokens reported alongside tool calls without explicit thinking")
+			}
+		})
 	}
 }
 
@@ -1019,51 +1081,62 @@ func TestLive_Gemma_ToolCallWithReasoningTokens(t *testing.T) {
 func TestLive_Gemma_Thinking(t *testing.T) {
 	p := liveProvider(t)
 
-	t.Run("explicit_thinking_rejected", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
+	for _, model := range gemmaModels {
+		t.Run(model, func(t *testing.T) {
+			t.Run("explicit_thinking_refused_client_side", func(t *testing.T) {
+				if modelCaps[model].ExplicitThinkingBudget {
+					t.Skipf("%s supports explicit thinking budget; nothing to refuse", model)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
 
-		think := true
-		_, err := p.Complete(ctx, &types.CompletionRequest{
-			Model: defaultGemmaModel,
-			Messages: []types.Message{
-				{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
-			},
-			Think: &think,
+				think := true
+				_, err := p.Complete(ctx, &types.CompletionRequest{
+					Model: model,
+					Messages: []types.Message{
+						{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
+					},
+					Think: &think,
+				})
+				var fe *ErrFeatureUnsupported
+				if !errors.As(err, &fe) {
+					t.Fatalf("expected *ErrFeatureUnsupported, got: %v", err)
+				}
+				if fe.Feature != "explicit_thinking_budget" {
+					t.Errorf("expected Feature=%q, got %q", "explicit_thinking_budget", fe.Feature)
+				}
+				if fe.Model != model {
+					t.Errorf("expected Model=%q, got %q", model, fe.Model)
+				}
+				t.Logf("confirmed client-side refusal: %v", err)
+			})
+
+			t.Run("implicit_reasoning_tokens", func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+				defer cancel()
+
+				resp, err := p.Complete(ctx, &types.CompletionRequest{
+					Model: model,
+					Messages: []types.Message{
+						{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
+					},
+				})
+				if err != nil {
+					t.Fatalf("Complete failed: %v", err)
+				}
+
+				t.Logf("usage: in=%d out=%d reasoning=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.ReasoningTokens)
+				if resp.Usage.ReasoningTokens > 0 {
+					t.Log("NOTE: model reports reasoning tokens even without explicit thinking config")
+				}
+				for _, b := range resp.Content {
+					if b.Type == "text" {
+						t.Logf("response: %q", b.Text)
+					}
+				}
+			})
 		})
-		if err == nil {
-			t.Log("NOTE: explicit thinking was accepted (model may have added support)")
-		} else if strings.Contains(err.Error(), "400") {
-			t.Logf("confirmed: explicit thinking rejected: %v", err)
-		} else {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("implicit_reasoning_tokens", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		resp, err := p.Complete(ctx, &types.CompletionRequest{
-			Model: defaultGemmaModel,
-			Messages: []types.Message{
-				{Role: "user", Content: json.RawMessage(`"What is 17 * 23?"`)},
-			},
-		})
-		if err != nil {
-			t.Fatalf("Complete failed: %v", err)
-		}
-
-		t.Logf("usage: in=%d out=%d reasoning=%d", resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.ReasoningTokens)
-		if resp.Usage.ReasoningTokens > 0 {
-			t.Log("NOTE: model reports reasoning tokens even without explicit thinking config")
-		}
-		for _, b := range resp.Content {
-			if b.Type == "text" {
-				t.Logf("response: %q", b.Text)
-			}
-		}
-	})
+	}
 }
 
 func truncate(s string, n int) string {

@@ -18,6 +18,68 @@ import (
 	"langdag.com/langdag/types"
 )
 
+// caps describes which features a given Gemini/Gemma model supports on the
+// Google AI Studio endpoint. The table below is derived from direct API probes
+// (2026-04-24) plus Google's public docs where the free-tier quota prevented
+// live probing. When the API rejects a feature, the fail-closed pre-flight
+// check in buildRequest short-circuits with ErrFeatureUnsupported so callers
+// get a typed error instead of a downstream 400.
+type caps struct {
+	FunctionCalling        bool
+	ExplicitThinkingBudget bool
+	GoogleSearch           bool
+}
+
+var modelCaps = map[string]caps{
+	"gemini-3-flash-preview":        {FunctionCalling: true, ExplicitThinkingBudget: true, GoogleSearch: true},
+	"gemini-3.1-pro-preview":        {FunctionCalling: true, ExplicitThinkingBudget: true, GoogleSearch: true},
+	"gemini-3.1-flash-lite-preview": {FunctionCalling: true, ExplicitThinkingBudget: true, GoogleSearch: true},
+	"gemma-4-31b-it":                {FunctionCalling: true, ExplicitThinkingBudget: false, GoogleSearch: true},
+	"gemma-4-26b-a4b-it":            {FunctionCalling: true, ExplicitThinkingBudget: false, GoogleSearch: true},
+	"gemma-3-27b-it":                {FunctionCalling: false, ExplicitThinkingBudget: false, GoogleSearch: false},
+	"gemma-3-12b-it":                {FunctionCalling: false, ExplicitThinkingBudget: false, GoogleSearch: false},
+	"gemma-3-4b-it":                 {FunctionCalling: false, ExplicitThinkingBudget: false, GoogleSearch: false},
+	"gemma-3-1b-it":                 {FunctionCalling: false, ExplicitThinkingBudget: false, GoogleSearch: false},
+}
+
+// ErrFeatureUnsupported is returned when a request asks for a capability the
+// target model does not support. The fail-closed pre-flight check in
+// buildRequest returns this before any HTTP call is made.
+type ErrFeatureUnsupported struct {
+	Model   string
+	Feature string
+}
+
+func (e *ErrFeatureUnsupported) Error() string {
+	return fmt.Sprintf("gemini: model %q does not support %s", e.Model, e.Feature)
+}
+
+// featureCheck validates req against the caps table. Unknown models are
+// permissive (not in the table → caller may be using a newer model; let the
+// API be the arbiter). Known models are fail-closed.
+func featureCheck(req *types.CompletionRequest) error {
+	c, known := modelCaps[req.Model]
+	if !known {
+		return nil
+	}
+	for _, t := range req.Tools {
+		if t.IsClientTool() {
+			if !c.FunctionCalling {
+				return &ErrFeatureUnsupported{Model: req.Model, Feature: "function_calling"}
+			}
+			continue
+		}
+		// Server-side tool: check specific support.
+		if geminiServerTools[t.Name] == "google_search" && !c.GoogleSearch {
+			return &ErrFeatureUnsupported{Model: req.Model, Feature: "google_search"}
+		}
+	}
+	if req.Think != nil && !c.ExplicitThinkingBudget {
+		return &ErrFeatureUnsupported{Model: req.Model, Feature: "explicit_thinking_budget"}
+	}
+	return nil
+}
+
 // apiError represents an API error with optional retry information.
 type apiError struct {
 	statusCode int
@@ -174,7 +236,11 @@ type usageMetadata struct {
 
 // --- Request building ---
 
-func buildRequest(req *types.CompletionRequest) []byte {
+func buildRequest(req *types.CompletionRequest) ([]byte, error) {
+	if err := featureCheck(req); err != nil {
+		return nil, err
+	}
+
 	gr := geminiRequest{
 		Contents: convertMessages(req.Messages),
 	}
@@ -222,7 +288,7 @@ func buildRequest(req *types.CompletionRequest) []byte {
 	}
 
 	body, _ := json.Marshal(gr)
-	return body
+	return body, nil
 }
 
 func convertMessages(messages []types.Message) []content {

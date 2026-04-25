@@ -197,4 +197,14 @@ type ModelInfo struct {
 	ContextWindow int      `json:"context_window"`
 	MaxOutput     int      `json:"max_output"`
 	ServerTools   []string `json:"server_tools,omitempty"`
+
+	// SupportsFunctionCalling reports whether the model accepts client-side
+	// (user-defined) function tools in CompletionRequest.Tools.
+	SupportsFunctionCalling bool `json:"supports_function_calling,omitempty"`
+
+	// SupportsExplicitThinkingBudget reports whether the model accepts an
+	// explicit thinking budget via CompletionRequest.Think. A model can
+	// perform implicit reasoning and still return false here if it rejects
+	// explicit budget configuration (e.g. Gemma 4).
+	SupportsExplicitThinkingBudget bool `json:"supports_explicit_thinking_budget,omitempty"`
 }
