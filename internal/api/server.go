@@ -241,6 +241,12 @@ var providerRegistry = map[string]providerFactory{
 		}
 		return openaiprovider.NewGrok(c.Providers.Grok.APIKey, c.Providers.Grok.BaseURL), nil
 	},
+	"openrouter": func(_ context.Context, c *config.Config) (provider.Provider, error) {
+		if c.Providers.OpenRouter.APIKey == "" {
+			return nil, fmt.Errorf("OPENROUTER_API_KEY not set")
+		}
+		return openaiprovider.NewOpenRouter(c.Providers.OpenRouter.APIKey, c.Providers.OpenRouter.BaseURL), nil
+	},
 	"ollama": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		return openaiprovider.NewOllama(c.Providers.Ollama.BaseURL), nil
 	},

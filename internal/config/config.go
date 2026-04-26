@@ -32,12 +32,13 @@ type ProvidersConfig struct {
 	Default string `mapstructure:"default"`
 
 	// Direct providers
-	Anthropic ProviderConfig     `mapstructure:"anthropic"`
-	OpenAI    ProviderConfig     `mapstructure:"openai"`
-	Gemini    ProviderConfig     `mapstructure:"gemini"`
-	Grok      ProviderConfig     `mapstructure:"grok"`
-	Ollama    ProviderConfig     `mapstructure:"ollama"`
-	Mock      MockProviderConfig `mapstructure:"mock"`
+	Anthropic  ProviderConfig     `mapstructure:"anthropic"`
+	OpenAI     ProviderConfig     `mapstructure:"openai"`
+	Gemini     ProviderConfig     `mapstructure:"gemini"`
+	Grok       ProviderConfig     `mapstructure:"grok"`
+	OpenRouter ProviderConfig     `mapstructure:"openrouter"`
+	Ollama     ProviderConfig     `mapstructure:"ollama"`
+	Mock       MockProviderConfig `mapstructure:"mock"`
 
 	// Cloud platform variants
 	AnthropicVertex  VertexConfig  `mapstructure:"anthropic-vertex"`
@@ -152,6 +153,8 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.gemini.api_key", "GEMINI_API_KEY")
 	v.BindEnv("providers.grok.api_key", "XAI_API_KEY")
 	v.BindEnv("providers.grok.base_url", "XAI_BASE_URL")
+	v.BindEnv("providers.openrouter.api_key", "OPENROUTER_API_KEY")
+	v.BindEnv("providers.openrouter.base_url", "OPENROUTER_BASE_URL")
 	v.BindEnv("providers.ollama.base_url", "OLLAMA_BASE_URL")
 	v.BindEnv("providers.mock.mode", "LANGDAG_MOCK_MODE")
 	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
