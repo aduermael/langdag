@@ -592,7 +592,10 @@ func TestBuildRequest_SystemInstruction(t *testing.T) {
 		MaxTokens: 1000,
 	}
 
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
 
 	var gr geminiRequest
 	json.Unmarshal(body, &gr)
@@ -616,7 +619,10 @@ func TestBuildRequest_ThinkTrue(t *testing.T) {
 		Think:    &thinkTrue,
 	}
 
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
 
 	// Verify via struct unmarshaling
 	var gr geminiRequest
@@ -647,7 +653,10 @@ func TestBuildRequest_ThinkFalse(t *testing.T) {
 		Think:    &thinkFalse,
 	}
 
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
 
 	// Verify via struct unmarshaling
 	var gr geminiRequest
@@ -677,7 +686,10 @@ func TestBuildRequest_ThinkNil(t *testing.T) {
 		// Think is nil (not set)
 	}
 
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
 
 	// Verify thinkingConfig is NOT in serialized JSON
 	if strings.Contains(string(body), `"thinkingConfig"`) {
@@ -687,6 +699,162 @@ func TestBuildRequest_ThinkNil(t *testing.T) {
 	// Also verify no generation_config at all (no other config fields set)
 	if strings.Contains(string(body), `"generation_config"`) {
 		t.Errorf("expected no generation_config when no config fields set, got: %s", string(body))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// featureCheck — fail-closed per-model capability enforcement
+// ---------------------------------------------------------------------------
+
+// TestFeatureCheck_RefusesUnsupported covers the three axes the caps table
+// enforces. Each case is a (model, request) pair that should be refused with a
+// typed *ErrFeatureUnsupported carrying the expected Feature tag.
+func TestFeatureCheck_RefusesUnsupported(t *testing.T) {
+	toolReq := &types.CompletionRequest{
+		Model:    "gemma-3-1b-it",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Tools: []types.ToolDefinition{
+			{Name: "x", Description: "d", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+	searchReq := &types.CompletionRequest{
+		Model:    "gemma-3-1b-it",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Tools:    []types.ToolDefinition{{Name: types.ServerToolWebSearch}},
+	}
+	think := true
+	thinkReq := &types.CompletionRequest{
+		Model:    "gemma-4-26b-a4b-it",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Think:    &think,
+	}
+
+	cases := []struct {
+		name    string
+		req     *types.CompletionRequest
+		feature string
+	}{
+		{"function_calling_on_gemma_3_1b", toolReq, "function_calling"},
+		{"google_search_on_gemma_3_1b", searchReq, "google_search"},
+		{"explicit_thinking_on_gemma_4", thinkReq, "explicit_thinking_budget"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildRequest(tc.req)
+			var fe *ErrFeatureUnsupported
+			if !errors.As(err, &fe) {
+				t.Fatalf("expected *ErrFeatureUnsupported, got: %v", err)
+			}
+			if fe.Feature != tc.feature {
+				t.Errorf("expected Feature=%q, got %q", tc.feature, fe.Feature)
+			}
+			if fe.Model != tc.req.Model {
+				t.Errorf("expected Model=%q, got %q", tc.req.Model, fe.Model)
+			}
+		})
+	}
+}
+
+// TestFeatureCheck_AllowsSupported verifies the caps table permits requests
+// when the target model supports the requested feature (no false-positives).
+func TestFeatureCheck_AllowsSupported(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model:    "gemini-3-flash-preview",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Tools: []types.ToolDefinition{
+			{Name: "x", Description: "d", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			{Name: types.ServerToolWebSearch},
+		},
+		Think: &think,
+	}
+	if _, err := buildRequest(req); err != nil {
+		t.Fatalf("expected success on fully-capable model, got: %v", err)
+	}
+}
+
+// TestFeatureCheck_UnknownModelPermissive verifies the caps table is
+// permissive for unknown models — the API becomes the arbiter.
+func TestFeatureCheck_UnknownModelPermissive(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model:    "gemini-99-unreleased",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		Think:    &think,
+	}
+	if _, err := buildRequest(req); err != nil {
+		t.Fatalf("expected permissive pass-through for unknown model, got: %v", err)
+	}
+}
+
+// TestModels_NoSilentDrift guards against the silent inconsistency that would
+// arise if a future model is added to (Provider).Models() or
+// (VertexProvider).Models() without a matching modelCaps entry. applyCaps
+// would return zero-value caps (all false) so ModelInfo would claim
+// unsupported, while featureCheck would fall through to the permissive
+// unknown-model branch and let requests pass — the public surface and the
+// request path would disagree.
+func TestModels_NoSilentDrift(t *testing.T) {
+	check := func(t *testing.T, providerName string, models []types.ModelInfo) {
+		t.Helper()
+		for _, m := range models {
+			if _, ok := modelCaps[m.ID]; !ok {
+				t.Errorf("%s.Models() returns %q which is missing from modelCaps "+
+					"— add a row or remove the model", providerName, m.ID)
+			}
+		}
+	}
+	check(t, "Provider", New("dummy").Models())
+	// VertexProvider.Models() does not access instance state, so a
+	// zero-value receiver is enough — keeps the test offline.
+	check(t, "VertexProvider", (&VertexProvider{}).Models())
+}
+
+// TestModels_CapFieldsPopulated verifies that per-model cap fields flow from
+// modelCaps into ModelInfo. The flat ServerTools list on every model was a
+// known lie pre-refactor; this pins the correct per-model derivation.
+func TestModels_CapFieldsPopulated(t *testing.T) {
+	p := New("dummy")
+	models := p.Models()
+	byID := map[string]types.ModelInfo{}
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+
+	cases := []struct {
+		id                 string
+		wantFunction       bool
+		wantThinkingBudget bool
+		wantSearchTool     bool
+	}{
+		{"gemini-3-flash-preview", true, true, true},
+		{"gemma-4-26b-a4b-it", true, false, true},
+		{"gemma-3-1b-it", false, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.id, func(t *testing.T) {
+			m, ok := byID[c.id]
+			if !ok {
+				t.Fatalf("model %q not in Models()", c.id)
+			}
+			if m.SupportsFunctionCalling != c.wantFunction {
+				t.Errorf("SupportsFunctionCalling: got %v want %v", m.SupportsFunctionCalling, c.wantFunction)
+			}
+			if m.SupportsExplicitThinkingBudget != c.wantThinkingBudget {
+				t.Errorf("SupportsExplicitThinkingBudget: got %v want %v", m.SupportsExplicitThinkingBudget, c.wantThinkingBudget)
+			}
+			hasSearch := false
+			for _, st := range m.ServerTools {
+				if st == types.ServerToolWebSearch {
+					hasSearch = true
+					break
+				}
+			}
+			if hasSearch != c.wantSearchTool {
+				t.Errorf("ServerTools contains ServerToolWebSearch: got %v want %v (tools=%v)", hasSearch, c.wantSearchTool, m.ServerTools)
+			}
+		})
 	}
 }
 

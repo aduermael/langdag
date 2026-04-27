@@ -41,19 +41,26 @@ func (p *VertexProvider) Name() string {
 	return "gemini-vertex"
 }
 
-// Models returns the available models.
+// Models returns the available models. Per-model capability fields are
+// derived from the modelCaps table (shared with the direct provider).
 func (p *VertexProvider) Models() []types.ModelInfo {
-	st := []string{types.ServerToolWebSearch}
-	return []types.ModelInfo{
-		{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash (Vertex)", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
-		{ID: "gemini-3.1-pro-preview", Name: "Gemini 3.1 Pro (Vertex)", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
-		{ID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite (Vertex)", ContextWindow: 1048576, MaxOutput: 65536, ServerTools: st},
+	base := []types.ModelInfo{
+		{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash (Vertex)", ContextWindow: 1048576, MaxOutput: 65536},
+		{ID: "gemini-3.1-pro-preview", Name: "Gemini 3.1 Pro (Vertex)", ContextWindow: 1048576, MaxOutput: 65536},
+		{ID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite (Vertex)", ContextWindow: 1048576, MaxOutput: 65536},
 	}
+	for i := range base {
+		applyCaps(&base[i])
+	}
+	return base
 }
 
 // Complete performs a synchronous completion request.
 func (p *VertexProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	url := fmt.Sprintf("%s/publishers/google/models/%s:generateContent", p.baseURL, req.Model)
 
 	respBody, err := doHTTPRequest(ctx, p.client, url, body, nil)
@@ -72,7 +79,10 @@ func (p *VertexProvider) Complete(ctx context.Context, req *types.CompletionRequ
 
 // Stream performs a streaming completion request.
 func (p *VertexProvider) Stream(ctx context.Context, req *types.CompletionRequest) (<-chan types.StreamEvent, error) {
-	body := buildRequest(req)
+	body, err := buildRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	url := fmt.Sprintf("%s/publishers/google/models/%s:streamGenerateContent?alt=sse", p.baseURL, req.Model)
 
 	respBody, err := doHTTPRequest(ctx, p.client, url, body, nil)
