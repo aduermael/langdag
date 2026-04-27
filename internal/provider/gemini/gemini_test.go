@@ -233,12 +233,12 @@ func TestConvertResponse_ToolUseID(t *testing.T) {
 }
 
 func TestParseSSEStream(t *testing.T) {
-	// Gemini sends full response snapshots
+	// Gemini streams text as incremental deltas, one chunk at a time.
 	sseData := `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1}}
 
-data: {"candidates":[{"content":{"parts":[{"text":"Hello world"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2}}
+data: {"candidates":[{"content":{"parts":[{"text":" world"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2}}
 
-data: {"candidates":[{"content":{"parts":[{"text":"Hello world!"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":3}}
+data: {"candidates":[{"content":{"parts":[{"text":"!"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":3}}
 
 `
 
@@ -350,7 +350,7 @@ func TestParseSSEStream_CacheTokens(t *testing.T) {
 func TestParseSSEStream_DoneResponseContainsText(t *testing.T) {
 	sseData := `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":1}}
 
-data: {"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}}
+data: {"candidates":[{"content":{"parts":[{"text":" world"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}}
 
 `
 
@@ -387,6 +387,58 @@ data: {"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason
 	}
 	if done.Response.Content[0].Text != "Hello world" {
 		t.Errorf("expected full text 'Hello world', got '%s'", done.Response.Content[0].Text)
+	}
+}
+
+// Regression for a real failure where a long opening chunk was followed by
+// many short deltas. Earlier code tracked the longest text seen and emitted
+// only the suffix of any chunk that exceeded it, dropping shorter deltas
+// entirely and corrupting longer ones. Each part.text is a delta and must
+// be concatenated as-is.
+func TestParseSSEStream_LongOpeningThenShortDeltas(t *testing.T) {
+	sseData := `data: {"candidates":[{"content":{"parts":[{"text":"The PR (commit ` + "`" + `18ff60e` + "`" + `) correctly implements **synchronized updates** (DEC mode 20"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"26"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":", Inst"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"ructionKey"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":", pa"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"rtial update"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":" in single "}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"block, ensuring they"}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":" are atomic. It"}]},"finishReason":"STOP"}]}
+
+`
+	events := make(chan types.StreamEvent, 32)
+	go func() {
+		defer close(events)
+		parseSSEStream(strings.NewReader(sseData), events)
+	}()
+
+	var deltaText string
+	var done *types.StreamEvent
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			deltaText += ev.Content
+		case types.StreamEventDone:
+			e := ev
+			done = &e
+		}
+	}
+
+	want := "The PR (commit `18ff60e`) correctly implements **synchronized updates** (DEC mode 2026, InstructionKey, partial update in single block, ensuring they are atomic. It"
+	if deltaText != want {
+		t.Errorf("delta concat = %q\nwant %q", deltaText, want)
+	}
+	if done == nil || done.Response == nil || len(done.Response.Content) != 1 || done.Response.Content[0].Text != want {
+		t.Errorf("done.Response text mismatch: %+v", done)
 	}
 }
 
@@ -1104,7 +1156,7 @@ func TestParseSSEStream_MalformedJSON(t *testing.T) {
 
 data: {invalid json}
 
-data: {"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason":"STOP"}]}
+data: {"candidates":[{"content":{"parts":[{"text":" world"}]},"finishReason":"STOP"}]}
 
 `
 	events := make(chan types.StreamEvent, 20)

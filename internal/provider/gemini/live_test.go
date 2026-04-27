@@ -150,6 +150,61 @@ func TestLive_SimpleStream(t *testing.T) {
 	t.Logf("streamed text: %q", text.String())
 }
 
+// TestLive_LongStreamCoherence forces a response long enough to span many SSE
+// chunks and asserts the assembled text contains a distinctive marker phrase
+// verbatim. Catches per-chunk delta parsing bugs that drop or chop chunks —
+// length-only assertions in TestLive_SimpleStream would not.
+func TestLive_LongStreamCoherence(t *testing.T) {
+	p := liveProvider(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	const marker = "MAGENTA-LIGHTHOUSE-FORTY-TWO"
+	prompt := `Write a 200-word paragraph about lighthouses. Include the exact token "` + marker + `" verbatim somewhere in the middle of the paragraph; do not change its spelling, capitalization, or hyphens.`
+	body, err := json.Marshal(prompt)
+	if err != nil {
+		t.Fatalf("marshal prompt: %v", err)
+	}
+
+	events, err := p.Stream(ctx, &types.CompletionRequest{
+		Model:    defaultModel,
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(body)}},
+	})
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+
+	var streamed strings.Builder
+	var doneText string
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			streamed.WriteString(ev.Content)
+		case types.StreamEventDone:
+			if ev.Response != nil {
+				for _, b := range ev.Response.Content {
+					if b.Type == "text" {
+						doneText = b.Text
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !strings.Contains(streamed.String(), marker) {
+		t.Errorf("streamed text missing marker %q\ngot (%d chars): %q", marker, streamed.Len(), streamed.String())
+	}
+	if !strings.Contains(doneText, marker) {
+		t.Errorf("done response text missing marker %q\ngot (%d chars): %q", marker, len(doneText), doneText)
+	}
+	if streamed.String() != doneText {
+		t.Errorf("streamed deltas != done response text\nstreamed (%d): %q\ndone (%d): %q",
+			streamed.Len(), streamed.String(), len(doneText), doneText)
+	}
+	t.Logf("streamed %d chars across deltas, marker present", streamed.Len())
+}
+
 // TestLive_SystemPrompt tests that the system instruction is respected.
 func TestLive_SystemPrompt(t *testing.T) {
 	p := liveProvider(t)

@@ -487,7 +487,7 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var prevText string
+	var fullText strings.Builder
 	var lastUsage *types.Usage
 	var toolUseBlocks []types.ContentBlock
 	var finishReason string
@@ -520,23 +520,17 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 			finishReason = cand.FinishReason
 		}
 
-		var currentText string
 		for _, p := range cand.Content.Parts {
 			if p.Thought {
 				continue
 			}
 			if p.Text != "" {
-				currentText += p.Text
+				events <- types.StreamEvent{
+					Type:    types.StreamEventDelta,
+					Content: p.Text,
+				}
+				fullText.WriteString(p.Text)
 			}
-		}
-
-		if len(currentText) > len(prevText) {
-			delta := currentText[len(prevText):]
-			events <- types.StreamEvent{
-				Type:    types.StreamEventDelta,
-				Content: delta,
-			}
-			prevText = currentText
 		}
 
 		for _, p := range cand.Content.Parts {
@@ -574,10 +568,10 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	if lastUsage != nil {
 		resp.Usage = *lastUsage
 	}
-	if prevText != "" {
+	if fullText.Len() > 0 {
 		resp.Content = append(resp.Content, types.ContentBlock{
 			Type: "text",
-			Text: prevText,
+			Text: fullText.String(),
 		})
 	}
 	resp.Content = append(resp.Content, toolUseBlocks...)
