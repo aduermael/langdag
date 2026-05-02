@@ -24,8 +24,8 @@ type ModelPricing struct {
 
 // Catalog contains model information organized by provider.
 type Catalog struct {
-	UpdatedAt time.Time                `json:"updated_at"`
-	Source    string                   `json:"source"`
+	UpdatedAt time.Time                 `json:"updated_at"`
+	Source    string                    `json:"source"`
 	Providers map[string][]ModelPricing `json:"providers"`
 }
 

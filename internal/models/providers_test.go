@@ -1,6 +1,9 @@
 package models
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -22,6 +25,8 @@ func TestParseOpenAIText(t *testing.T) {
 - Context window size: 128000
 - Maximum output tokens: 16384
 
+# GPT-5.5 Pro **Current Snapshot:** gpt-5.5-pro-2026-04-23 ## Snapshots ### gpt-5.5-pro-2026-04-23 - Context window size: 1,050,000 - Knowledge cutoff date: 2025-12-31 - Maximum output tokens: 128,000 - Supported features: streaming, function_calling, web_search
+
 ## Text tokens
 
 | Name | Input | Cached input | Output | Unit |
@@ -30,6 +35,7 @@ func TestParseOpenAIText(t *testing.T) {
 | gpt-4o (batch) | 1.25 | | 5 | 1M tokens |
 | gpt-4o-2024-08-06 | 2.5 | 1.25 | 10 | 1M tokens |
 | gpt-4o-mini | 0.15 | 0.075 | 0.6 | 1M tokens |
+| gpt-5.5-pro-2026-04-23 | 30 |  | 180 | 1M tokens |
 | o1-pro | 100 | | 400 | 1M tokens |
 
 ## Audio tokens
@@ -99,6 +105,148 @@ func TestParseOpenAIText(t *testing.T) {
 		if m.OutputPricePer1M != 400 {
 			t.Errorf("o1-pro output = %f, want 400", m.OutputPricePer1M)
 		}
+	}
+
+	// gpt-5.5-pro: inline docs format with comma-formatted token limits
+	if m, ok := byID["gpt-5.5-pro-2026-04-23"]; !ok {
+		t.Error("gpt-5.5-pro-2026-04-23 not found")
+	} else {
+		if m.InputPricePer1M != 30 {
+			t.Errorf("gpt-5.5-pro input = %f, want 30", m.InputPricePer1M)
+		}
+		if m.OutputPricePer1M != 180 {
+			t.Errorf("gpt-5.5-pro output = %f, want 180", m.OutputPricePer1M)
+		}
+		if m.ContextWindow != 1050000 {
+			t.Errorf("gpt-5.5-pro context = %d, want 1050000", m.ContextWindow)
+		}
+		if m.MaxOutput != 128000 {
+			t.Errorf("gpt-5.5-pro maxOutput = %d, want 128000", m.MaxOutput)
+		}
+	}
+}
+
+func TestParseOpenAIModelPage(t *testing.T) {
+	html := `<html><body>
+<h1>GPT-5.5 pro</h1>
+<div>Price $30•$180 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5-pro gpt-5.5-pro-2026-04-23</section>
+</body></html>`
+
+	model, err := parseOpenAIModelPage(html, "gpt-5.5-pro-2026-04-23")
+	if err != nil {
+		t.Fatalf("parseOpenAIModelPage error: %v", err)
+	}
+	if model.ID != "gpt-5.5-pro-2026-04-23" {
+		t.Errorf("ID = %q, want gpt-5.5-pro-2026-04-23", model.ID)
+	}
+	if model.InputPricePer1M != 30 {
+		t.Errorf("InputPricePer1M = %f, want 30", model.InputPricePer1M)
+	}
+	if model.OutputPricePer1M != 180 {
+		t.Errorf("OutputPricePer1M = %f, want 180", model.OutputPricePer1M)
+	}
+	if model.ContextWindow != 1050000 {
+		t.Errorf("ContextWindow = %d, want 1050000", model.ContextWindow)
+	}
+	if model.MaxOutput != 128000 {
+		t.Errorf("MaxOutput = %d, want 128000", model.MaxOutput)
+	}
+}
+
+func TestFetchOpenAIModels_IncludesSupplementalModelPages(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`### gpt-5-2025-08-07
+
+- Context window size: 400000
+- Maximum output tokens: 128000
+
+## Text tokens
+
+| Name | Input | Cached input | Output | Unit |
+| --- | --- | --- | --- | --- |
+| gpt-5-2025-08-07 | 1.25 | 0.125 | 10 | 1M tokens |
+`))
+	})
+	mux.HandleFunc("/models/gpt-5.5", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<h1>GPT-5.5</h1>
+<div>Price $5•$30 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5 gpt-5.5-2026-04-23</section>
+</body></html>`))
+	})
+	mux.HandleFunc("/models/gpt-5.5-pro", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<h1>GPT-5.5 pro</h1>
+<div>Price $30•$180 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5-pro gpt-5.5-pro-2026-04-23</section>
+</body></html>`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	origOpenAI, origOpenAIModelDocs := openAISourceURL, openAIModelDocsURL
+	defer func() {
+		openAISourceURL = origOpenAI
+		openAIModelDocsURL = origOpenAIModelDocs
+	}()
+	openAISourceURL = server.URL + "/pricing"
+	openAIModelDocsURL = server.URL + "/models"
+
+	models, err := fetchOpenAIModels(context.Background())
+	if err != nil {
+		t.Fatalf("fetchOpenAIModels error: %v", err)
+	}
+	byID := make(map[string]ModelPricing)
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+	for _, id := range []string{"gpt-5.5-2026-04-23", "gpt-5.5-pro-2026-04-23"} {
+		if _, ok := byID[id]; !ok {
+			t.Fatalf("%s not found", id)
+		}
+	}
+	if got := byID["gpt-5.5-pro-2026-04-23"].OutputPricePer1M; got != 180 {
+		t.Errorf("gpt-5.5-pro output price = %f, want 180", got)
+	}
+}
+
+func TestFetchOpenAIModels_RequiresSupplementalModelPages(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`### gpt-5-2025-08-07
+
+- Context window size: 400000
+- Maximum output tokens: 128000
+
+## Text tokens
+
+| Name | Input | Cached input | Output | Unit |
+| --- | --- | --- | --- | --- |
+| gpt-5-2025-08-07 | 1.25 | 0.125 | 10 | 1M tokens |
+`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	origOpenAI, origOpenAIModelDocs := openAISourceURL, openAIModelDocsURL
+	defer func() {
+		openAISourceURL = origOpenAI
+		openAIModelDocsURL = origOpenAIModelDocs
+	}()
+	openAISourceURL = server.URL + "/pricing"
+	openAIModelDocsURL = server.URL + "/models"
+
+	_, err := fetchOpenAIModels(context.Background())
+	if err == nil {
+		t.Fatal("fetchOpenAIModels succeeded, want error")
 	}
 }
 

@@ -351,6 +351,46 @@ func TestAzureProviderName(t *testing.T) {
 	}
 }
 
+func TestProviderModelsIncludesGPT55(t *testing.T) {
+	p := New("test-key", "")
+	models := p.Models()
+
+	expected := map[string]struct {
+		contextWindow int
+		maxOutput     int
+	}{
+		"gpt-5.5-2026-04-23":     {contextWindow: 1050000, maxOutput: 128000},
+		"gpt-5.5-pro-2026-04-23": {contextWindow: 1050000, maxOutput: 128000},
+	}
+
+	for _, model := range models {
+		want, ok := expected[model.ID]
+		if !ok {
+			continue
+		}
+		delete(expected, model.ID)
+		if model.ContextWindow != want.contextWindow {
+			t.Errorf("%s ContextWindow = %d, want %d", model.ID, model.ContextWindow, want.contextWindow)
+		}
+		if model.MaxOutput != want.maxOutput {
+			t.Errorf("%s MaxOutput = %d, want %d", model.ID, model.MaxOutput, want.maxOutput)
+		}
+		foundWebSearch := false
+		for _, tool := range model.ServerTools {
+			if tool == types.ServerToolWebSearch {
+				foundWebSearch = true
+				break
+			}
+		}
+		if !foundWebSearch {
+			t.Errorf("%s ServerTools = %v, want %q", model.ID, model.ServerTools, types.ServerToolWebSearch)
+		}
+	}
+	for id := range expected {
+		t.Errorf("expected OpenAI model list to include %q", id)
+	}
+}
+
 func TestAzureProviderModels(t *testing.T) {
 	p := NewAzure("test-key", "https://myresource.openai.azure.com", "")
 	models := p.Models()

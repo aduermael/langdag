@@ -191,7 +191,8 @@ func TestLoadCatalog_InvalidCacheFallsBack(t *testing.T) {
 }
 
 func TestFetchLatest(t *testing.T) {
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAIMux := http.NewServeMux()
+	openAIMux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`# Models
 
 ### gpt-4o-2024-08-06
@@ -206,7 +207,24 @@ func TestFetchLatest(t *testing.T) {
 | gpt-4o | 2.5 | 1.25 | 10 | 1M tokens |
 | gpt-4o-2024-08-06 | 2.5 | 1.25 | 10 | 1M tokens |
 `))
-	}))
+	})
+	openAIMux.HandleFunc("/models/gpt-5.5", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<div>Price $5•$30 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5 gpt-5.5-2026-04-23</section>
+</body></html>`))
+	})
+	openAIMux.HandleFunc("/models/gpt-5.5-pro", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<div>Price $30•$180 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5-pro gpt-5.5-pro-2026-04-23</section>
+</body></html>`))
+	})
+	openAIServer := httptest.NewServer(openAIMux)
 	defer openAIServer.Close()
 
 	anthropicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -236,15 +254,17 @@ func TestFetchLatest(t *testing.T) {
 	}))
 	defer grokServer.Close()
 
-	origOpenAI, origAnthropic, origGemini, origGeminiSpec, origGrok := openAISourceURL, anthropicSourceURL, geminiSourceURL, geminiSpecBaseURL, grokSourceURL
+	origOpenAI, origOpenAIModelDocs, origAnthropic, origGemini, origGeminiSpec, origGrok := openAISourceURL, openAIModelDocsURL, anthropicSourceURL, geminiSourceURL, geminiSpecBaseURL, grokSourceURL
 	defer func() {
 		openAISourceURL = origOpenAI
+		openAIModelDocsURL = origOpenAIModelDocs
 		anthropicSourceURL = origAnthropic
 		geminiSourceURL = origGemini
 		geminiSpecBaseURL = origGeminiSpec
 		grokSourceURL = origGrok
 	}()
-	openAISourceURL = openAIServer.URL
+	openAISourceURL = openAIServer.URL + "/pricing"
+	openAIModelDocsURL = openAIServer.URL + "/models"
 	anthropicSourceURL = anthropicServer.URL
 	geminiSourceURL = geminiServer.URL + "/pricing"
 	geminiSpecBaseURL = geminiServer.URL + "/models"
@@ -299,7 +319,8 @@ func TestFetchLatest(t *testing.T) {
 
 func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 	// Models without context window or pricing should be filtered
-	openAIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	openAIMux := http.NewServeMux()
+	openAIMux.HandleFunc("/pricing", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`### gpt-4o-2024-08-06
 
 - Context window size: 128000
@@ -312,7 +333,24 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 | gpt-4o-2024-08-06 | 2.5 | 1.25 | 10 | 1M tokens |
 | gpt-4o | 2.5 | 1.25 | 10 | 1M tokens |
 `))
-	}))
+	})
+	openAIMux.HandleFunc("/models/gpt-5.5", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<div>Price $5•$30 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5 gpt-5.5-2026-04-23</section>
+</body></html>`))
+	})
+	openAIMux.HandleFunc("/models/gpt-5.5-pro", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<div>Price $30•$180 Input•Output</div>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<section>Snapshots gpt-5.5-pro gpt-5.5-pro-2026-04-23</section>
+</body></html>`))
+	})
+	openAIServer := httptest.NewServer(openAIMux)
 	defer openAIServer.Close()
 
 	anthropicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -341,15 +379,17 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 	}))
 	defer grokServer.Close()
 
-	origOpenAI, origAnthropic, origGemini, origGeminiSpec, origGrok := openAISourceURL, anthropicSourceURL, geminiSourceURL, geminiSpecBaseURL, grokSourceURL
+	origOpenAI, origOpenAIModelDocs, origAnthropic, origGemini, origGeminiSpec, origGrok := openAISourceURL, openAIModelDocsURL, anthropicSourceURL, geminiSourceURL, geminiSpecBaseURL, grokSourceURL
 	defer func() {
 		openAISourceURL = origOpenAI
+		openAIModelDocsURL = origOpenAIModelDocs
 		anthropicSourceURL = origAnthropic
 		geminiSourceURL = origGemini
 		geminiSpecBaseURL = origGeminiSpec
 		grokSourceURL = origGrok
 	}()
-	openAISourceURL = openAIServer.URL
+	openAISourceURL = openAIServer.URL + "/pricing"
+	openAIModelDocsURL = openAIServer.URL + "/models"
 	anthropicSourceURL = anthropicServer.URL
 	geminiSourceURL = geminiServer.URL + "/pricing"
 	geminiSpecBaseURL = geminiServer.URL + "/models"

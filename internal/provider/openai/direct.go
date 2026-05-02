@@ -44,6 +44,8 @@ func (p *Provider) Models() []types.ModelInfo {
 		{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, MaxOutput: 16384, ServerTools: st},
 		{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000, MaxOutput: 16384, ServerTools: st},
 		{ID: "o3-mini", Name: "o3-mini", ContextWindow: 200000, MaxOutput: 100000, ServerTools: st},
+		{ID: "gpt-5.5-2026-04-23", Name: "GPT-5.5", ContextWindow: 1050000, MaxOutput: 128000, ServerTools: st},
+		{ID: "gpt-5.5-pro-2026-04-23", Name: "GPT-5.5 Pro", ContextWindow: 1050000, MaxOutput: 128000, ServerTools: st},
 	}
 }
 
