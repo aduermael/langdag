@@ -13,13 +13,24 @@ import (
 
 // Source URLs for official provider data (variables for testability).
 var (
-	openAISourceURL    = "https://cdn.openai.com/API/docs/txt/llms-models-pricing.txt"
-	anthropicSourceURL = "https://platform.claude.com/docs/en/docs/about-claude/models"
+	openAISourceURL       = "https://cdn.openai.com/API/docs/txt/llms-models-pricing.txt"
+	openAIModelDocsURL    = "https://developers.openai.com/api/docs/models"
+	anthropicSourceURL    = "https://platform.claude.com/docs/en/docs/about-claude/models"
 	geminiSourceURL       = "https://ai.google.dev/pricing"
 	geminiSpecBaseURL     = "https://ai.google.dev/gemini-api/docs/models"
 	geminiDeprecationsURL = "https://ai.google.dev/gemini-api/docs/deprecations"
-	grokSourceURL      = "https://docs.x.ai/docs/models"
+	grokSourceURL         = "https://docs.x.ai/docs/models"
 )
+
+type openAIModelPage struct {
+	slug string
+	id   string
+}
+
+var openAISupplementalModelPages = []openAIModelPage{
+	{slug: "gpt-5.5", id: "gpt-5.5-2026-04-23"},
+	{slug: "gpt-5.5-pro", id: "gpt-5.5-pro-2026-04-23"},
+}
 
 // --- Shared helpers ---
 
@@ -132,14 +143,37 @@ func fetchOpenAIModels(ctx context.Context) ([]ModelPricing, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseOpenAIText(body)
+	models, err := parseOpenAIText(body)
+	if err != nil {
+		return nil, err
+	}
+	for _, page := range openAISupplementalModelPages {
+		if hasCompleteModelPricing(models, page.id) {
+			continue
+		}
+		pageBody, err := providerHTTPGet(ctx, strings.TrimRight(openAIModelDocsURL, "/")+"/"+page.slug)
+		if err != nil {
+			return nil, fmt.Errorf("fetch OpenAI model page %s: %w", page.slug, err)
+		}
+		pageModel, err := parseOpenAIModelPage(pageBody, page.id)
+		if err != nil {
+			return nil, fmt.Errorf("parse OpenAI model page %s: %w", page.slug, err)
+		}
+		models = upsertModelPricing(models, pageModel)
+	}
+	for _, page := range openAISupplementalModelPages {
+		if !hasCompleteModelPricing(models, page.id) {
+			return nil, fmt.Errorf("OpenAI catalog missing model %q", page.id)
+		}
+	}
+	return models, nil
 }
 
 var (
-	openAIPricingRowRe = regexp.MustCompile(`(?m)^\|\s*([a-z0-9][\w.-]*)\s*\|\s*([\d.]+)\s*\|[^|]*\|\s*([\d.]+)\s*\|`)
-	openAISnapshotRe   = regexp.MustCompile(`(?m)^###\s+([\w.-]+)`)
-	openAICtxWindowRe  = regexp.MustCompile(`(?m)^-\s*Context window size:\s*(\d+)`)
-	openAIMaxOutputRe  = regexp.MustCompile(`(?m)^-\s*Maximum output tokens:\s*(\d+)`)
+	openAIPricingRowRe = regexp.MustCompile(`\|\s*([a-z0-9][\w.-]*)\s*\|\s*([\d.]+)\s*\|[^|]*\|\s*([\d.]+)\s*\|`)
+	openAISnapshotRe   = regexp.MustCompile(`(?:^|\s)###\s+([a-z0-9][\w.-]*)`)
+	openAICtxWindowRe  = regexp.MustCompile(`-\s*Context window size:\s*([\d,]+)`)
+	openAIMaxOutputRe  = regexp.MustCompile(`-\s*Maximum output tokens:\s*([\d,]+)`)
 )
 
 func parseOpenAIText(text string) ([]ModelPricing, error) {
@@ -151,14 +185,7 @@ func parseOpenAIText(text string) ([]ModelPricing, error) {
 		if end := strings.Index(section[1:], "\n## "); end >= 0 {
 			section = section[:end+1]
 		}
-		for _, line := range strings.Split(section, "\n") {
-			if strings.Contains(line, "(batch)") {
-				continue
-			}
-			m := openAIPricingRowRe.FindStringSubmatch(line)
-			if m == nil {
-				continue
-			}
+		for _, m := range openAIPricingRowRe.FindAllStringSubmatch(section, -1) {
 			name := strings.TrimSpace(m[1])
 			input, _ := strconv.ParseFloat(m[2], 64)
 			output, _ := strconv.ParseFloat(m[3], 64)
@@ -171,18 +198,22 @@ func parseOpenAIText(text string) ([]ModelPricing, error) {
 	}
 
 	// Parse model metadata sections for context window and max output
-	parts := openAISnapshotRe.Split(text, -1)
-	names := openAISnapshotRe.FindAllStringSubmatch(text, -1)
-	for i, name := range names {
-		section := parts[i+1]
-		modelID := name[1]
+	matches := openAISnapshotRe.FindAllStringSubmatchIndex(text, -1)
+	for i, match := range matches {
+		modelID := text[match[2]:match[3]]
+		sectionStart := match[1]
+		sectionEnd := len(text)
+		if i+1 < len(matches) {
+			sectionEnd = matches[i+1][0]
+		}
+		section := text[sectionStart:sectionEnd]
 
 		var ctxWindow, maxOutput int
 		if m := openAICtxWindowRe.FindStringSubmatch(section); m != nil {
-			ctxWindow, _ = strconv.Atoi(m[1])
+			ctxWindow = parseCommaNumber(m[1])
 		}
 		if m := openAIMaxOutputRe.FindStringSubmatch(section); m != nil {
-			maxOutput, _ = strconv.Atoi(m[1])
+			maxOutput = parseCommaNumber(m[1])
 		}
 		if ctxWindow == 0 && maxOutput == 0 {
 			continue
@@ -207,6 +238,57 @@ func parseOpenAIText(text string) ([]ModelPricing, error) {
 		return nil, fmt.Errorf("no models found in OpenAI text")
 	}
 	return result, nil
+}
+
+var (
+	openAIPageContextRe = regexp.MustCompile(`([\d,]+)\s+context window`)
+	openAIPageMaxOutRe  = regexp.MustCompile(`([\d,]+)\s+max output tokens`)
+	openAIPagePriceRe   = regexp.MustCompile(`Price\s*\$\s*([\d.]+)\s*•\s*\$\s*([\d.]+)`)
+)
+
+func parseOpenAIModelPage(html, id string) (ModelPricing, error) {
+	text := stripHTMLTags(html)
+	if !strings.Contains(text, id) {
+		return ModelPricing{}, fmt.Errorf("OpenAI model page missing snapshot %q", id)
+	}
+
+	model := ModelPricing{ID: id}
+	if m := openAIPagePriceRe.FindStringSubmatch(text); m != nil {
+		model.InputPricePer1M, _ = strconv.ParseFloat(m[1], 64)
+		model.OutputPricePer1M, _ = strconv.ParseFloat(m[2], 64)
+	}
+	if m := openAIPageContextRe.FindStringSubmatch(text); m != nil {
+		model.ContextWindow = parseCommaNumber(m[1])
+	}
+	if m := openAIPageMaxOutRe.FindStringSubmatch(text); m != nil {
+		model.MaxOutput = parseCommaNumber(m[1])
+	}
+	if model.InputPricePer1M == 0 && model.OutputPricePer1M == 0 {
+		return ModelPricing{}, fmt.Errorf("OpenAI model page missing pricing for %q", id)
+	}
+	if model.ContextWindow == 0 || model.MaxOutput == 0 {
+		return ModelPricing{}, fmt.Errorf("OpenAI model page missing token limits for %q", id)
+	}
+	return model, nil
+}
+
+func upsertModelPricing(models []ModelPricing, model ModelPricing) []ModelPricing {
+	for i := range models {
+		if models[i].ID == model.ID {
+			models[i] = model
+			return models
+		}
+	}
+	return append(models, model)
+}
+
+func hasCompleteModelPricing(models []ModelPricing, id string) bool {
+	for _, model := range models {
+		if model.ID == id && (model.InputPricePer1M > 0 || model.OutputPricePer1M > 0) && model.ContextWindow > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Anthropic ---
