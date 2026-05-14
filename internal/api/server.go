@@ -247,6 +247,12 @@ var providerRegistry = map[string]providerFactory{
 		}
 		return openaiprovider.NewOpenRouter(c.Providers.OpenRouter.APIKey, c.Providers.OpenRouter.BaseURL), nil
 	},
+	"kimi": func(_ context.Context, c *config.Config) (provider.Provider, error) {
+		if c.Providers.Kimi.APIKey == "" {
+			return nil, fmt.Errorf("MOONSHOT_API_KEY not set")
+		}
+		return openaiprovider.NewKimi(c.Providers.Kimi.APIKey, c.Providers.Kimi.BaseURL), nil
+	},
 	"ollama": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		return openaiprovider.NewOllama(c.Providers.Ollama.BaseURL), nil
 	},

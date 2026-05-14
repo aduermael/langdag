@@ -37,6 +37,7 @@ type ProvidersConfig struct {
 	Gemini     ProviderConfig     `mapstructure:"gemini"`
 	Grok       ProviderConfig     `mapstructure:"grok"`
 	OpenRouter ProviderConfig     `mapstructure:"openrouter"`
+	Kimi       ProviderConfig     `mapstructure:"kimi"`
 	Ollama     ProviderConfig     `mapstructure:"ollama"`
 	Mock       MockProviderConfig `mapstructure:"mock"`
 
@@ -155,6 +156,8 @@ func Load() (*Config, error) {
 	v.BindEnv("providers.grok.base_url", "XAI_BASE_URL")
 	v.BindEnv("providers.openrouter.api_key", "OPENROUTER_API_KEY")
 	v.BindEnv("providers.openrouter.base_url", "OPENROUTER_BASE_URL")
+	v.BindEnv("providers.kimi.api_key", "MOONSHOT_API_KEY")
+	v.BindEnv("providers.kimi.base_url", "MOONSHOT_BASE_URL")
 	v.BindEnv("providers.ollama.base_url", "OLLAMA_BASE_URL")
 	v.BindEnv("providers.mock.mode", "LANGDAG_MOCK_MODE")
 	v.BindEnv("providers.mock.fixed_response", "LANGDAG_MOCK_RESPONSE")
