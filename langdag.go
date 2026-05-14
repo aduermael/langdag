@@ -49,8 +49,8 @@ type Config struct {
 	StoragePath string
 
 	// Provider is the default LLM provider to use.
-	// Valid values: "anthropic", "openai", "gemini", "grok", "openrouter", "ollama",
-	// "anthropic-vertex", "anthropic-bedrock", "openai-azure", "gemini-vertex"
+	// Valid values: "anthropic", "openai", "gemini", "grok", "openrouter", "kimi",
+	// "ollama", "anthropic-vertex", "anthropic-bedrock", "openai-azure", "gemini-vertex"
 	// "gemma" is accepted as an alias for "gemini".
 	// Defaults to "anthropic"
 	Provider string
@@ -82,6 +82,9 @@ type Config struct {
 
 	// BedrockConfig holds AWS Bedrock config.
 	BedrockConfig *BedrockConfig
+
+	// KimiConfig holds Kimi (Moonshot AI)-specific config.
+	KimiConfig *KimiConfig
 
 	// OllamaConfig holds Ollama-specific config (local LLM server).
 	OllamaConfig *OllamaConfig
@@ -143,6 +146,11 @@ type GrokConfig struct {
 
 // OpenRouterConfig holds OpenRouter-specific configuration.
 type OpenRouterConfig struct {
+	BaseURL string
+}
+
+// KimiConfig holds Kimi (Moonshot AI)-specific configuration.
+type KimiConfig struct {
 	BaseURL string
 }
 
@@ -658,6 +666,23 @@ func createSingleProvider(ctx context.Context, name string, cfg Config) (interna
 			baseURL = os.Getenv("OPENROUTER_BASE_URL")
 		}
 		return openaiprovider.NewOpenRouter(apiKey, baseURL), nil
+
+	case "kimi":
+		apiKey := cfg.APIKeys["kimi"]
+		if apiKey == "" {
+			apiKey = os.Getenv("MOONSHOT_API_KEY")
+		}
+		if apiKey == "" {
+			return nil, fmt.Errorf("langdag: MOONSHOT_API_KEY not set")
+		}
+		baseURL := ""
+		if cfg.KimiConfig != nil {
+			baseURL = cfg.KimiConfig.BaseURL
+		}
+		if baseURL == "" {
+			baseURL = os.Getenv("MOONSHOT_BASE_URL")
+		}
+		return openaiprovider.NewKimi(apiKey, baseURL), nil
 
 	case "gemini-vertex":
 		vc := cfg.VertexConfig
