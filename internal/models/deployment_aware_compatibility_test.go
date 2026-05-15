@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestPhase0OldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
-	path := filepath.Join("testdata", "deployment_aware_phase0", "old_provider_keyed_catalog_cache.json")
+func TestOldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
+	path := filepath.Join("testdata", "deployment_aware_compatibility", "old_provider_keyed_catalog_cache.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)

@@ -11,12 +11,12 @@ import (
 	"langdag.com/langdag/types"
 )
 
-func TestPhase0OldConversationSchemaMigratesProviderModelTokens(t *testing.T) {
+func TestOldConversationSchemaMigratesProviderModelTokens(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "conversation", "testdata", "deployment_aware_phase0", "old_conversation_nodes_provider_model_tokens.json"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "conversation", "testdata", "deployment_aware_compatibility", "old_conversation_nodes_provider_model_tokens.json"))
 	if err != nil {
 		t.Fatalf("read old conversation fixture: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestPhase0OldConversationSchemaMigratesProviderModelTokens(t *testing.T) {
 		t.Fatalf("unmarshal old conversation fixture: %v", err)
 	}
 
-	tmpFile, err := os.CreateTemp("", "langdag-phase0-old-schema-*.db")
+	tmpFile, err := os.CreateTemp("", "langdag-compat-old-schema-*.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPhase0OldConversationSchemaMigratesProviderModelTokens(t *testing.T) {
 		t.Fatalf("Init migrated old DB: %v", err)
 	}
 
-	assistant, err := migrated.GetNode(ctx, "phase0-assistant-1")
+	assistant, err := migrated.GetNode(ctx, "compat-assistant-1")
 	if err != nil {
 		t.Fatalf("GetNode: %v", err)
 	}
@@ -89,15 +89,15 @@ func TestPhase0OldConversationSchemaMigratesProviderModelTokens(t *testing.T) {
 	if len(assistant.Metadata) != 0 {
 		t.Fatalf("old migrated node should not gain metadata: %s", string(assistant.Metadata))
 	}
-	if assistant.RootID != "phase0-root" {
-		t.Fatalf("RootID = %q, want phase0-root", assistant.RootID)
+	if assistant.RootID != "compat-root" {
+		t.Fatalf("RootID = %q, want compat-root", assistant.RootID)
 	}
 
-	ancestors, err := migrated.GetAncestors(ctx, "phase0-assistant-1")
+	ancestors, err := migrated.GetAncestors(ctx, "compat-assistant-1")
 	if err != nil {
 		t.Fatalf("GetAncestors: %v", err)
 	}
-	if len(ancestors) != 2 || ancestors[0].ID != "phase0-root" || ancestors[1].ID != "phase0-assistant-1" {
+	if len(ancestors) != 2 || ancestors[0].ID != "compat-root" || ancestors[1].ID != "compat-assistant-1" {
 		t.Fatalf("ancestors after migration = %+v", ancestors)
 	}
 }

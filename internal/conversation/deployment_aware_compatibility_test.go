@@ -12,8 +12,8 @@ import (
 	"langdag.com/langdag/types"
 )
 
-func TestPhase0OldConversationNodeFixturePreservesProviderModelTokens(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("testdata", "deployment_aware_phase0", "old_conversation_nodes_provider_model_tokens.json"))
+func TestOldConversationNodeFixturePreservesProviderModelTokens(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "deployment_aware_compatibility", "old_conversation_nodes_provider_model_tokens.json"))
 	if err != nil {
 		t.Fatalf("read old conversation fixture: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestPhase0OldConversationNodeFixturePreservesProviderModelTokens(t *testing
 		t.Fatalf("roles = %q/%q, want user/assistant", messages[0].Role, messages[1].Role)
 	}
 
-	tmpFile, err := os.CreateTemp("", "langdag-phase0-current-schema-*.db")
+	tmpFile, err := os.CreateTemp("", "langdag-compat-current-schema-*.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestPhase0OldConversationNodeFixturePreservesProviderModelTokens(t *testing
 	}
 
 	manager := NewManager(store, mock.New(mock.Config{}))
-	stored, err := manager.ResolveNode(ctx, "phase0-assistant-1")
+	stored, err := manager.ResolveNode(ctx, "compat-assistant-1")
 	if err != nil {
 		t.Fatalf("ResolveNode: %v", err)
 	}

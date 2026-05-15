@@ -42,6 +42,30 @@ type ModelPricing = models.ModelPricing
 // ModelCatalog contains model pricing and capability information organized by provider.
 type ModelCatalog = models.Catalog
 
+// Deployment-aware model catalog v1 contract types.
+type CatalogV1 = models.CatalogV1
+type ProviderV1 = models.ProviderV1
+type APIProtocolV1 = models.APIProtocolV1
+type DeploymentV1 = models.DeploymentV1
+type ModelV1 = models.ModelV1
+type ModelOfferingV1 = models.ModelOfferingV1
+type ModelOfferingTemplateV1 = models.ModelOfferingTemplateV1
+type PricingV1 = models.PricingV1
+type PricingStatus = models.PricingStatus
+type CapabilityState = models.CapabilityState
+type CapabilitySetV1 = models.CapabilitySetV1
+type CompiledCatalogV1 = models.CompiledCatalogV1
+type DeploymentBindingV1 = models.DeploymentBindingV1
+
+const CatalogV1SchemaVersion = models.CatalogV1SchemaVersion
+
+var ReferenceCatalogV1 = models.ReferenceCatalogV1
+var CompileCatalogV1 = models.CompileCatalogV1
+var ValidateCatalogV1 = models.ValidateCatalogV1
+var ParseCatalogV1 = models.ParseCatalogV1
+var SplitOfferingIDV1 = models.SplitOfferingIDV1
+var DeploymentBindingsV1 = models.DeploymentBindingsV1
+
 // Config holds all configuration for the langdag client.
 type Config struct {
 	// StoragePath is the path to the SQLite database file.

@@ -1,7 +1,7 @@
 [
   {
-    "id": "phase0-root",
-    "root_id": "phase0-root",
+    "id": "compat-root",
+    "root_id": "compat-root",
     "sequence": 0,
     "node_type": "user",
     "content": "What changed in the deployment plan?",
@@ -12,9 +12,9 @@
     "created_at": "2026-05-01T12:00:00Z"
   },
   {
-    "id": "phase0-assistant-1",
-    "parent_id": "phase0-root",
-    "root_id": "phase0-root",
+    "id": "compat-assistant-1",
+    "parent_id": "compat-root",
+    "root_id": "compat-root",
     "sequence": 1,
     "node_type": "assistant",
     "content": "Herm currently stores provider, model, and token fields directly on assistant nodes.",
