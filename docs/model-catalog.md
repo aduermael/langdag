@@ -54,6 +54,17 @@ Remote catalog data is data-only. It can add known models, offerings, prices,
 capabilities, aliases, and provenance for known deployments, but it cannot define
 arbitrary endpoints, auth flows, request templates, or new protocol behavior.
 
+## Runtime Loading
+
+Runtime loading is cache or embedded first. Callers can use the local cache
+immediately, keep stale cache data with diagnostics, and refresh the cache from
+the published artifact. Remote refresh is enabled by default and can be disabled
+with `LANGDAG_MODEL_CATALOG_REFRESH=false`.
+`LANGDAG_MODEL_CATALOG_URL` overrides the static endpoint and
+`LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the refresh timeout. Remote data is
+strictly schema-validated before atomically replacing the cache; invalid, stale,
+or partially generated remote data leaves the existing cache untouched.
+
 ## Current Adapter Mapping
 
 | Langdag provider variant | Provider | API protocol | Deployment |

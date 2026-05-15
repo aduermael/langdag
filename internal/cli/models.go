@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	modelsProvider string
-	modelsUpdate   bool
-	modelsGenerate bool
+	modelsProvider   string
+	modelsUpdate     bool
+	modelsGenerate   bool
+	modelsCatalogURL string
 )
 
 // modelsCmd lists available models with pricing and capabilities.
@@ -26,7 +27,7 @@ var modelsCmd = &cobra.Command{
 	Long: `Display model names, pricing (per 1M tokens), context windows, and max output
 for all supported providers. Data is sourced from official provider documentation.
 
-Use --update to fetch the latest data into the local runtime cache.
+Use --update to fetch the latest published catalog into the local runtime cache.
 Use --generate --json to rebuild the deployment-aware catalog artifact for
 publishing automation.`,
 	Run: runModels,
@@ -34,8 +35,9 @@ publishing automation.`,
 
 func init() {
 	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by model owner or deployment provider (anthropic, openai, google, xai, openrouter, ollama)")
-	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest model data from remote source")
+	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest published model catalog")
 	modelsCmd.Flags().BoolVar(&modelsGenerate, "generate", false, "regenerate deployment-aware model catalog artifact")
+	modelsCmd.Flags().StringVar(&modelsCatalogURL, "catalog-url", "", "published catalog URL for --update")
 	rootCmd.AddCommand(modelsCmd)
 }
 
@@ -67,27 +69,37 @@ func runModels(cmd *cobra.Command, args []string) {
 	}
 
 	if modelsUpdate {
-		fmt.Fprintln(os.Stderr, "Fetching latest model data...")
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		catalog, err = models.FetchLatest(ctx)
-		if err != nil {
-			exitError("failed to fetch model data: %v", err)
+		fmt.Fprintln(os.Stderr, "Fetching published model catalog...")
+		opts := models.CatalogRefreshOptionsFromEnv(cachePath)
+		if modelsCatalogURL != "" {
+			opts.Endpoint = modelsCatalogURL
 		}
-
-		if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
-			exitError("failed to create cache directory: %v", err)
+		ctx := context.Background()
+		result, refreshErr := models.RefreshCatalogCache(ctx, opts)
+		if refreshErr != nil {
+			exitError("failed to fetch published model catalog: %v", refreshErr)
 		}
-		if err := models.SaveCatalog(catalog, cachePath); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to save cache: %v\n", err)
-		} else {
+		if result.ReplacedCache {
 			fmt.Fprintf(os.Stderr, "Saved to %s\n", cachePath)
 		}
+		for _, diagnostic := range result.Diagnostics {
+			fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
+		}
+		if result.Catalog == nil {
+			exitError("published model catalog was not refreshed")
+		}
+		catalog = result.Catalog
 	} else {
-		catalog, err = models.LoadCatalog(cachePath)
+		result, loadErr := models.LoadCatalogWithOptions(models.CatalogLoadOptions{CachePath: cachePath})
+		err = loadErr
 		if err != nil {
 			exitError("failed to load model catalog: %v", err)
+		}
+		catalog = result.Catalog
+		if verbose {
+			for _, diagnostic := range result.Diagnostics {
+				fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
+			}
 		}
 	}
 

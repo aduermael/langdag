@@ -3,11 +3,14 @@ package models
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +20,62 @@ import (
 
 //go:embed catalog.json
 var defaultCatalogJSON []byte
+
+const (
+	// DefaultRemoteCatalogURL is the static, data-only catalog artifact served
+	// from the langdag documentation site.
+	DefaultRemoteCatalogURL = "https://langdag.com/model-catalog/v1/catalog.json"
+
+	envCatalogRefresh = "LANGDAG_MODEL_CATALOG_REFRESH"
+	envCatalogURL     = "LANGDAG_MODEL_CATALOG_URL"
+	envCatalogTimeout = "LANGDAG_MODEL_CATALOG_TIMEOUT"
+
+	defaultRemoteCatalogTimeout = 5 * time.Second
+	maxRemoteCatalogBytes       = 10 << 20
+)
+
+// CatalogSource records where a catalog was loaded from.
+type CatalogSource string
+
+const (
+	CatalogSourceEmbedded CatalogSource = "embedded"
+	CatalogSourceCache    CatalogSource = "cache"
+	CatalogSourceRemote   CatalogSource = "remote"
+)
+
+// CatalogLoadOptions configures cache-or-embedded catalog loading.
+type CatalogLoadOptions struct {
+	CachePath string
+	Now       func() time.Time
+}
+
+// CatalogLoadResult returns the loaded catalog plus non-fatal diagnostics.
+type CatalogLoadResult struct {
+	Catalog     *Catalog
+	Source      CatalogSource
+	CachePath   string
+	Diagnostics []CatalogDiagnosticV1
+}
+
+// CatalogRefreshOptions configures remote catalog refresh.
+type CatalogRefreshOptions struct {
+	CachePath  string
+	Endpoint   string
+	Disabled   bool
+	Timeout    time.Duration
+	HTTPClient *http.Client
+	Now        func() time.Time
+}
+
+// CatalogRefreshResult returns the refreshed remote catalog plus cache status.
+type CatalogRefreshResult struct {
+	Catalog       *Catalog
+	Source        CatalogSource
+	Endpoint      string
+	CachePath     string
+	ReplacedCache bool
+	Diagnostics   []CatalogDiagnosticV1
+}
 
 // ModelPricing contains pricing and capability information for a model.
 type ModelPricing struct {
@@ -52,23 +111,69 @@ func DefaultCatalog() (*Catalog, error) {
 // LoadCatalog loads the catalog from a cache file, falling back to the
 // embedded default if the file does not exist or is invalid.
 func LoadCatalog(cachePath string) (*Catalog, error) {
-	if cachePath != "" {
-		data, err := os.ReadFile(cachePath)
+	result, err := LoadCatalogWithOptions(CatalogLoadOptions{CachePath: cachePath})
+	if err != nil {
+		return nil, err
+	}
+	return result.Catalog, nil
+}
+
+// LoadCatalogWithOptions loads a usable catalog immediately. It prefers a
+// valid cache file and falls back to the embedded catalog with diagnostics when
+// the cache is missing or invalid. Stale cached data remains usable.
+func LoadCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
+	now := catalogNow(opts.Now)
+	var diagnostics []CatalogDiagnosticV1
+	if opts.CachePath != "" {
+		data, err := os.ReadFile(opts.CachePath)
 		if err == nil {
 			catalog, err := ParseCatalogV1(data)
 			if err == nil {
 				NormalizeCatalogV1(catalog)
-				return catalog, nil
+				diagnostics = append(diagnostics, catalogFreshnessDiagnostics(catalog, now)...)
+				return &CatalogLoadResult{
+					Catalog:     catalog,
+					Source:      CatalogSourceCache,
+					CachePath:   opts.CachePath,
+					Diagnostics: diagnostics,
+				}, nil
 			}
+			diagnostics = append(diagnostics, CatalogDiagnosticV1{
+				Code:    "cache_invalid",
+				Message: fmt.Sprintf("model catalog cache %s is invalid: %v", opts.CachePath, err),
+			})
+		} else if os.IsNotExist(err) {
+			diagnostics = append(diagnostics, CatalogDiagnosticV1{
+				Code:    "cache_missing",
+				Message: fmt.Sprintf("model catalog cache %s does not exist", opts.CachePath),
+			})
+		} else {
+			diagnostics = append(diagnostics, CatalogDiagnosticV1{
+				Code:    "cache_unavailable",
+				Message: fmt.Sprintf("model catalog cache %s could not be read: %v", opts.CachePath, err),
+			})
 		}
 	}
-	return DefaultCatalog()
+	catalog, err := DefaultCatalog()
+	if err != nil {
+		return nil, err
+	}
+	diagnostics = append(diagnostics, catalogFreshnessDiagnostics(catalog, now)...)
+	return &CatalogLoadResult{
+		Catalog:     catalog,
+		Source:      CatalogSourceEmbedded,
+		CachePath:   opts.CachePath,
+		Diagnostics: diagnostics,
+	}, nil
 }
 
 // SaveCatalog writes the catalog to a JSON file.
 func SaveCatalog(catalog *Catalog, path string) error {
 	if catalog == nil {
 		return fmt.Errorf("models: cannot save nil catalog")
+	}
+	if path == "" {
+		return fmt.Errorf("models: catalog path is required")
 	}
 	NormalizeCatalogV1(catalog)
 	if err := ValidateCatalogV1(catalog); err != nil {
@@ -78,7 +183,169 @@ func SaveCatalog(catalog *Catalog, path string) error {
 	if err != nil {
 		return fmt.Errorf("models: failed to marshal catalog: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	data = append(data, '\n')
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("models: failed to create catalog directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".catalog-*.tmp")
+	if err != nil {
+		return fmt.Errorf("models: failed to create temporary catalog file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("models: failed to write temporary catalog file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("models: failed to close temporary catalog file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0644); err != nil {
+		return fmt.Errorf("models: failed to chmod temporary catalog file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("models: failed to replace catalog cache: %w", err)
+	}
+	return nil
+}
+
+// CatalogRefreshOptionsFromEnv builds default remote refresh options from
+// LANGDAG_MODEL_CATALOG_* environment variables.
+func CatalogRefreshOptionsFromEnv(cachePath string) CatalogRefreshOptions {
+	opts := CatalogRefreshOptions{CachePath: cachePath}
+	if disabledCatalogRefresh(os.Getenv(envCatalogRefresh)) {
+		opts.Disabled = true
+	}
+	if endpoint := strings.TrimSpace(os.Getenv(envCatalogURL)); endpoint != "" {
+		opts.Endpoint = endpoint
+	}
+	if timeout := strings.TrimSpace(os.Getenv(envCatalogTimeout)); timeout != "" {
+		if parsed, err := time.ParseDuration(timeout); err == nil {
+			opts.Timeout = parsed
+		}
+	}
+	return opts
+}
+
+// RefreshCatalogCache fetches the published remote catalog, validates it
+// strictly, and then atomically replaces the cache file. Invalid, stale, or
+// partial remote data never overwrites an existing cache.
+func RefreshCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	endpoint := strings.TrimSpace(opts.Endpoint)
+	if endpoint == "" {
+		endpoint = DefaultRemoteCatalogURL
+	}
+	result := &CatalogRefreshResult{
+		Source:    CatalogSourceRemote,
+		Endpoint:  endpoint,
+		CachePath: opts.CachePath,
+	}
+	if opts.Disabled {
+		result.Diagnostics = append(result.Diagnostics, CatalogDiagnosticV1{
+			Code:    "refresh_disabled",
+			Message: "remote model catalog refresh is disabled",
+		})
+		return result, nil
+	}
+
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = defaultRemoteCatalogTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	catalog, diagnostics, err := fetchRemoteCatalog(ctx, opts.HTTPClient, endpoint, catalogNow(opts.Now))
+	result.Diagnostics = append(result.Diagnostics, diagnostics...)
+	if err != nil {
+		return result, err
+	}
+	if opts.CachePath != "" {
+		if err := SaveCatalog(catalog, opts.CachePath); err != nil {
+			return result, err
+		}
+		result.ReplacedCache = true
+	}
+	result.Catalog = catalog
+	return result, nil
+}
+
+func fetchRemoteCatalog(ctx context.Context, client *http.Client, endpoint string, now time.Time) (*Catalog, []CatalogDiagnosticV1, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "langdag-model-catalog/1.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("models: fetch remote catalog: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("models: fetch remote catalog: HTTP %d from %s", resp.StatusCode, endpoint)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRemoteCatalogBytes+1))
+	if err != nil {
+		return nil, nil, fmt.Errorf("models: read remote catalog: %w", err)
+	}
+	if len(body) > maxRemoteCatalogBytes {
+		return nil, nil, fmt.Errorf("models: remote catalog exceeds %d bytes", maxRemoteCatalogBytes)
+	}
+	catalog, err := ParseRemoteCatalogV1(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("models: invalid remote catalog: %w", err)
+	}
+	compiled, err := CompileCatalogV1(catalog)
+	if err != nil {
+		return nil, nil, fmt.Errorf("models: invalid remote catalog: %w", err)
+	}
+	diagnostics := append([]CatalogDiagnosticV1{}, compiled.Diagnostics...)
+	diagnostics = append(diagnostics, catalogFreshnessDiagnostics(catalog, now)...)
+	if catalogIsStale(catalog, now) {
+		return nil, diagnostics, fmt.Errorf("models: remote catalog is stale after %s", catalog.StaleAfter.Format(time.RFC3339))
+	}
+	for _, diagnostic := range compiled.Diagnostics {
+		switch diagnostic.Code {
+		case "dropped_offering", "dropped_offering_template":
+			return nil, diagnostics, fmt.Errorf("models: remote catalog is partially generated: %s", diagnostic.Message)
+		}
+	}
+	return catalog, diagnostics, nil
+}
+
+func catalogNow(now func() time.Time) time.Time {
+	if now != nil {
+		return now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func catalogFreshnessDiagnostics(catalog *Catalog, now time.Time) []CatalogDiagnosticV1 {
+	if !catalogIsStale(catalog, now) {
+		return nil
+	}
+	return []CatalogDiagnosticV1{{
+		Code:    "stale_catalog",
+		Message: fmt.Sprintf("model catalog generated at %s is stale after %s", catalog.GeneratedAt.Format(time.RFC3339), catalog.StaleAfter.Format(time.RFC3339)),
+	}}
+}
+
+func catalogIsStale(catalog *Catalog, now time.Time) bool {
+	return catalog != nil && !catalog.StaleAfter.IsZero() && now.After(catalog.StaleAfter)
+}
+
+func disabledCatalogRefresh(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "0", "false", "no", "off", "disabled":
+		return true
+	default:
+		return false
+	}
 }
 
 // ForProvider returns a legacy provider view over routeable deployment

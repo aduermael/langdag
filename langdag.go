@@ -63,13 +63,22 @@ type EnvFallbackV1 = models.EnvFallbackV1
 type CatalogDiagnosticV1 = models.CatalogDiagnosticV1
 type CompiledCatalogV1 = models.CompiledCatalogV1
 type DeploymentBindingV1 = models.DeploymentBindingV1
+type CatalogSource = models.CatalogSource
+type CatalogLoadOptions = models.CatalogLoadOptions
+type CatalogLoadResult = models.CatalogLoadResult
+type CatalogRefreshOptions = models.CatalogRefreshOptions
+type CatalogRefreshResult = models.CatalogRefreshResult
 
 const CatalogV1SchemaVersion = models.CatalogV1SchemaVersion
 const CatalogV1JSONSchema = models.CatalogV1JSONSchema
+const DefaultRemoteCatalogURL = models.DefaultRemoteCatalogURL
 const PricingKnown = models.PricingKnown
 const PricingPartial = models.PricingPartial
 const PricingUnknown = models.PricingUnknown
 const PricingFree = models.PricingFree
+const CatalogSourceEmbedded = models.CatalogSourceEmbedded
+const CatalogSourceCache = models.CatalogSourceCache
+const CatalogSourceRemote = models.CatalogSourceRemote
 const CapabilitySupported = models.CapabilitySupported
 const CapabilityUnsupported = models.CapabilityUnsupported
 const CapabilityUnknown = models.CapabilityUnknown
@@ -86,8 +95,10 @@ var ReferenceCatalogV1 = models.ReferenceCatalogV1
 var CompileCatalogV1 = models.CompileCatalogV1
 var ValidateCatalogV1 = models.ValidateCatalogV1
 var ParseCatalogV1 = models.ParseCatalogV1
+var ParseRemoteCatalogV1 = models.ParseRemoteCatalogV1
 var SplitOfferingIDV1 = models.SplitOfferingIDV1
 var DeploymentBindingsV1 = models.DeploymentBindingsV1
+var CatalogRefreshOptionsFromEnv = models.CatalogRefreshOptionsFromEnv
 
 // Config holds all configuration for the langdag client.
 type Config struct {
@@ -1176,6 +1187,20 @@ func DefaultModelCatalog() (*ModelCatalog, error) {
 // the embedded default if the file does not exist or is invalid JSON.
 func LoadModelCatalog(cachePath string) (*ModelCatalog, error) {
 	return models.LoadCatalog(cachePath)
+}
+
+// LoadModelCatalogWithOptions loads a usable model catalog immediately,
+// preferring a valid cache and falling back to embedded catalog data with
+// diagnostics.
+func LoadModelCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
+	return models.LoadCatalogWithOptions(opts)
+}
+
+// RefreshModelCatalogCache refreshes the catalog cache from the published
+// remote catalog artifact. Invalid, stale, or partial remote data does not
+// replace the existing cache.
+func RefreshModelCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	return models.RefreshCatalogCache(ctx, opts)
 }
 
 // FetchModelCatalog fetches the latest model catalog from official provider

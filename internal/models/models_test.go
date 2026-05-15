@@ -2,10 +2,12 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -187,6 +189,364 @@ func TestLoadCatalog_InvalidCacheFallsBack(t *testing.T) {
 	if catalog.SchemaVersion != CatalogV1SchemaVersion {
 		t.Errorf("SchemaVersion = %q, want %q (should fall back to default)", catalog.SchemaVersion, CatalogV1SchemaVersion)
 	}
+}
+
+func TestLoadCatalogWithOptionsReportsStaleCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	catalog := ReferenceCatalogV1()
+	catalog.GeneratedAt = mustParseTime(t, "2026-01-01T00:00:00Z")
+	catalog.StaleAfter = mustParseTime(t, "2026-01-02T00:00:00Z")
+	if err := SaveCatalog(catalog, path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+
+	result, err := LoadCatalogWithOptions(CatalogLoadOptions{
+		CachePath: path,
+		Now:       func() time.Time { return mustParseTime(t, "2026-01-03T00:00:00Z") },
+	})
+	if err != nil {
+		t.Fatalf("LoadCatalogWithOptions: %v", err)
+	}
+	if result.Source != CatalogSourceCache {
+		t.Fatalf("Source = %q, want cache", result.Source)
+	}
+	if !hasDiagnostic(result.Diagnostics, "stale_catalog") {
+		t.Fatalf("diagnostics = %+v, want stale_catalog", result.Diagnostics)
+	}
+}
+
+func TestLoadCatalogWithOptionsFallsBackToEmbeddedWithDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := os.WriteFile(path, []byte(`{"schema_version":"model-catalog/v1","unknown":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadCatalogWithOptions(CatalogLoadOptions{CachePath: path})
+	if err != nil {
+		t.Fatalf("LoadCatalogWithOptions: %v", err)
+	}
+	if result.Source != CatalogSourceEmbedded {
+		t.Fatalf("Source = %q, want embedded", result.Source)
+	}
+	if result.Catalog == nil {
+		t.Fatal("Catalog is nil")
+	}
+	if !hasDiagnostic(result.Diagnostics, "cache_invalid") {
+		t.Fatalf("diagnostics = %+v, want cache_invalid", result.Diagnostics)
+	}
+}
+
+func TestRefreshCatalogCacheRemoteSuccessReplacesCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	oldCatalog := ReferenceCatalogV1()
+	oldCatalog.Provenance = &ProvenanceV1{Source: "old-cache", ObservedAt: oldCatalog.GeneratedAt}
+	if err := SaveCatalog(oldCatalog, path); err != nil {
+		t.Fatalf("SaveCatalog old: %v", err)
+	}
+
+	remoteCatalog := ReferenceCatalogV1()
+	remoteCatalog.GeneratedAt = mustParseTime(t, "2026-05-20T00:00:00Z")
+	remoteCatalog.StaleAfter = mustParseTime(t, "2026-06-20T00:00:00Z")
+	remoteCatalog.Provenance = &ProvenanceV1{Source: "remote-test", ObservedAt: remoteCatalog.GeneratedAt}
+	server := serveCatalog(t, remoteCatalog)
+	defer server.Close()
+
+	result, err := RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+		Now:       func() time.Time { return mustParseTime(t, "2026-05-21T00:00:00Z") },
+	})
+	if err != nil {
+		t.Fatalf("RefreshCatalogCache: %v", err)
+	}
+	if result.Source != CatalogSourceRemote || !result.ReplacedCache || result.Catalog == nil {
+		t.Fatalf("refresh result = %+v, want remote replacement", result)
+	}
+	loaded, err := LoadCatalog(path)
+	if err != nil {
+		t.Fatalf("LoadCatalog refreshed cache: %v", err)
+	}
+	if loaded.Provenance == nil || loaded.Provenance.Source != "remote-test" {
+		t.Fatalf("cache provenance = %+v, want remote-test", loaded.Provenance)
+	}
+}
+
+func TestRefreshCatalogCacheOptOutDoesNotFetch(t *testing.T) {
+	result, err := RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		Endpoint: "http://127.0.0.1:1/catalog.json",
+		Disabled: true,
+	})
+	if err != nil {
+		t.Fatalf("RefreshCatalogCache disabled: %v", err)
+	}
+	if result.Catalog != nil || result.ReplacedCache {
+		t.Fatalf("disabled result = %+v, want no catalog replacement", result)
+	}
+	if !hasDiagnostic(result.Diagnostics, "refresh_disabled") {
+		t.Fatalf("diagnostics = %+v, want refresh_disabled", result.Diagnostics)
+	}
+}
+
+func TestRefreshCatalogCacheTimeoutKeepsExistingCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err = RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   10 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("RefreshCatalogCache succeeded, want timeout error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after timeout")
+	}
+}
+
+func TestRefreshCatalogCacheInvalidRemoteKeepsExistingCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"schema_version":"model-catalog/v1","unknown":true}`))
+	}))
+	defer server.Close()
+
+	_, err = RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid remote catalog") {
+		t.Fatalf("err = %v, want invalid remote catalog", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after invalid remote catalog")
+	}
+}
+
+func TestRefreshCatalogCacheRejectsLegacyRemoteShape(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"updated_at":"2026-05-01T00:00:00Z","source":"legacy","providers":{}}`))
+	}))
+	defer server.Close()
+
+	_, err = RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+	})
+	if err == nil || !strings.Contains(err.Error(), "schema_version") {
+		t.Fatalf("err = %v, want schema_version rejection", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after legacy remote catalog")
+	}
+}
+
+func TestRefreshCatalogCacheRejectsEmptyRemoteObject(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	_, err = RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+	})
+	if err == nil || !strings.Contains(err.Error(), "schema_version") {
+		t.Fatalf("err = %v, want schema_version rejection", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after empty remote catalog")
+	}
+}
+
+func TestRefreshCatalogCacheStaleRemoteKeepsExistingCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remoteCatalog := ReferenceCatalogV1()
+	remoteCatalog.GeneratedAt = mustParseTime(t, "2026-01-01T00:00:00Z")
+	remoteCatalog.StaleAfter = mustParseTime(t, "2026-01-02T00:00:00Z")
+	server := serveCatalog(t, remoteCatalog)
+	defer server.Close()
+
+	result, err := RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+		Now:       func() time.Time { return mustParseTime(t, "2026-01-03T00:00:00Z") },
+	})
+	if err == nil {
+		t.Fatal("RefreshCatalogCache succeeded, want stale remote error")
+	}
+	if !hasDiagnostic(result.Diagnostics, "stale_catalog") {
+		t.Fatalf("diagnostics = %+v, want stale_catalog", result.Diagnostics)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after stale remote catalog")
+	}
+}
+
+func TestRefreshCatalogCachePartialRemoteKeepsExistingCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	if err := SaveCatalog(ReferenceCatalogV1(), path); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := ReferenceCatalogV1()
+	partial.Offerings = append(partial.Offerings, ModelOfferingV1{
+		ID:               "openai-direct:not-in-model-map",
+		CanonicalModelID: "openai/not-in-model-map",
+		DeploymentID:     "openai-direct",
+		NativeModelID:    "not-in-model-map",
+		Pricing: PricingV1{
+			Status:      PricingKnown,
+			Currency:    "USD",
+			RatesPer1M:  map[string]float64{"input_tokens": 1, "output_tokens": 1},
+			EffectiveAt: partial.GeneratedAt,
+		},
+	})
+	server := serveCatalogWithoutValidation(t, partial)
+	defer server.Close()
+
+	_, err = RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+	})
+	if err == nil {
+		t.Fatal("RefreshCatalogCache succeeded, want invalid partial remote error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("cache changed after partial remote catalog")
+	}
+}
+
+func TestCatalogRefreshOptionsFromEnv(t *testing.T) {
+	t.Setenv(envCatalogRefresh, "false")
+	t.Setenv(envCatalogURL, "http://example.test/catalog.json")
+	t.Setenv(envCatalogTimeout, "750ms")
+
+	opts := CatalogRefreshOptionsFromEnv("/tmp/catalog.json")
+	if !opts.Disabled {
+		t.Fatal("Disabled = false, want true")
+	}
+	if opts.Endpoint != "http://example.test/catalog.json" {
+		t.Fatalf("Endpoint = %q", opts.Endpoint)
+	}
+	if opts.Timeout != 750*time.Millisecond {
+		t.Fatalf("Timeout = %s", opts.Timeout)
+	}
+	if opts.CachePath != "/tmp/catalog.json" {
+		t.Fatalf("CachePath = %q", opts.CachePath)
+	}
+}
+
+func hasDiagnostic(diagnostics []CatalogDiagnosticV1, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func serveCatalog(t *testing.T, catalog *Catalog) *httptest.Server {
+	t.Helper()
+	if err := ValidateCatalogV1(catalog); err != nil {
+		t.Fatalf("test catalog is invalid: %v", err)
+	}
+	return serveCatalogWithoutValidation(t, catalog)
+}
+
+func serveCatalogWithoutValidation(t *testing.T, catalog *Catalog) *httptest.Server {
+	t.Helper()
+	data, err := json.Marshal(catalog)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+	}))
 }
 
 func TestFetchLatest(t *testing.T) {
