@@ -20,23 +20,27 @@ const (
 // Node represents a node in a conversation tree.
 // Root nodes (ParentID == "") carry metadata like Title and SystemPrompt.
 type Node struct {
-	ID           string    `json:"id"`
-	ParentID     string    `json:"parent_id,omitempty"`
-	RootID       string    `json:"root_id,omitempty"`
-	Sequence     int       `json:"sequence"`
-	Type         NodeType  `json:"node_type"`
-	Content      string    `json:"content"`
-	Model        string    `json:"model,omitempty"`
-	TokensIn     int       `json:"tokens_in,omitempty"`
-	TokensOut           int       `json:"tokens_out,omitempty"`
-	TokensCacheRead     int       `json:"tokens_cache_read,omitempty"`
-	TokensCacheCreation int       `json:"tokens_cache_creation,omitempty"`
-	TokensReasoning     int       `json:"tokens_reasoning,omitempty"`
-	LatencyMs           int       `json:"latency_ms,omitempty"`
-	Status       string    `json:"status,omitempty"`
-	Title        string    `json:"title,omitempty"`
-	SystemPrompt string    `json:"system_prompt,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                  string                 `json:"id"`
+	ParentID            string                 `json:"parent_id,omitempty"`
+	RootID              string                 `json:"root_id,omitempty"`
+	Sequence            int                    `json:"sequence"`
+	Type                NodeType               `json:"node_type"`
+	Content             string                 `json:"content"`
+	Provider            string                 `json:"provider,omitempty"`
+	Model               string                 `json:"model,omitempty"`
+	TokensIn            int                    `json:"tokens_in,omitempty"`
+	TokensOut           int                    `json:"tokens_out,omitempty"`
+	TokensCacheRead     int                    `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int                    `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int                    `json:"tokens_reasoning,omitempty"`
+	LatencyMs           int                    `json:"latency_ms,omitempty"`
+	StopReason          string                 `json:"stop_reason,omitempty"`
+	Status              string                 `json:"status,omitempty"`
+	Title               string                 `json:"title,omitempty"`
+	SystemPrompt        string                 `json:"system_prompt,omitempty"`
+	CreatedAt           time.Time              `json:"created_at"`
+	Metadata            *AssistantNodeMetadata `json:"metadata,omitempty"`
+	Cost                *CostResult            `json:"cost,omitempty"`
 
 	client *Client // unexported — enables Prompt()
 }
@@ -112,10 +116,82 @@ type promptRequest struct {
 
 // promptResponse is the JSON body returned from /prompt and /nodes/{id}/prompt.
 type promptResponse struct {
-	NodeID    string `json:"node_id"`
-	Content   string `json:"content"`
-	TokensIn  int    `json:"tokens_in,omitempty"`
-	TokensOut int    `json:"tokens_out,omitempty"`
+	NodeID              string                 `json:"node_id"`
+	Content             string                 `json:"content"`
+	TokensIn            int                    `json:"tokens_in,omitempty"`
+	TokensOut           int                    `json:"tokens_out,omitempty"`
+	TokensCacheRead     int                    `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int                    `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int                    `json:"tokens_reasoning,omitempty"`
+	Usage               *NormalizedUsage       `json:"usage,omitempty"`
+	Metadata            *AssistantNodeMetadata `json:"metadata,omitempty"`
+	Cost                *CostResult            `json:"cost,omitempty"`
+}
+
+type NormalizedUsage struct {
+	InputTokens              int              `json:"input_tokens,omitempty"`
+	OutputTokens             int              `json:"output_tokens,omitempty"`
+	CacheReadInputTokens     int              `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int              `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int              `json:"cache_write_input_tokens,omitempty"`
+	ReasoningTokens          int              `json:"reasoning_tokens,omitempty"`
+	ToolUsePromptTokens      int              `json:"tool_use_prompt_tokens,omitempty"`
+	AudioInputTokens         int              `json:"audio_input_tokens,omitempty"`
+	AudioOutputTokens        int              `json:"audio_output_tokens,omitempty"`
+	ImageInputTokens         int              `json:"image_input_tokens,omitempty"`
+	ImageOutputTokens        int              `json:"image_output_tokens,omitempty"`
+	AcceptedPredictionTokens int              `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int              `json:"rejected_prediction_tokens,omitempty"`
+	ServiceTier              string           `json:"service_tier,omitempty"`
+	Dimensions               map[string]int64 `json:"dimensions,omitempty"`
+}
+
+type ModelResolutionMetadata struct {
+	CanonicalModelID string `json:"canonical_model_id"`
+	OfferingID       string `json:"offering_id"`
+	DeploymentID     string `json:"deployment_id"`
+	ProviderID       string `json:"provider_id"`
+	APIProtocolID    string `json:"api_protocol_id"`
+	NativeModelID    string `json:"native_model_id"`
+}
+
+type PricingSnapshot struct {
+	Status            string             `json:"status"`
+	Currency          string             `json:"currency,omitempty"`
+	EffectiveAt       time.Time          `json:"effective_at,omitempty"`
+	Source            string             `json:"source,omitempty"`
+	RatesPer1M        map[string]float64 `json:"rates_per_1m,omitempty"`
+	MissingDimensions []string           `json:"missing_dimensions,omitempty"`
+}
+
+type ProviderCost struct {
+	Total    float64         `json:"total"`
+	Currency string          `json:"currency"`
+	Source   string          `json:"source"`
+	Raw      json.RawMessage `json:"raw,omitempty"`
+}
+
+type CostDimension struct {
+	Name      string  `json:"name"`
+	Quantity  int64   `json:"quantity"`
+	RatePer1M float64 `json:"rate_per_1m"`
+	Cost      float64 `json:"cost"`
+}
+
+type CostResult struct {
+	Status            string          `json:"status"`
+	Total             float64         `json:"total,omitempty"`
+	Currency          string          `json:"currency,omitempty"`
+	Source            string          `json:"source,omitempty"`
+	MissingDimensions []string        `json:"missing_dimensions,omitempty"`
+	Dimensions        []CostDimension `json:"dimensions,omitempty"`
+}
+
+type AssistantNodeMetadata struct {
+	ModelResolution *ModelResolutionMetadata `json:"model_resolution,omitempty"`
+	NormalizedUsage *NormalizedUsage         `json:"normalized_usage,omitempty"`
+	PricingSnapshot *PricingSnapshot         `json:"pricing_snapshot,omitempty"`
+	ProviderCost    *ProviderCost            `json:"provider_cost,omitempty"`
 }
 
 // HealthResponse represents the health check response.
@@ -128,4 +204,3 @@ type DeleteResponse struct {
 	Status string `json:"status"`
 	ID     string `json:"id"`
 }
-

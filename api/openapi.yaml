@@ -379,6 +379,9 @@ components:
           type: string
           format: uuid
           description: Parent node ID (null for root nodes)
+        root_id:
+          type: string
+          format: uuid
         sequence:
           type: integer
           description: Node sequence number
@@ -388,6 +391,9 @@ components:
         content:
           type: string
           description: Node content (message text)
+        provider:
+          type: string
+          description: Provider or deployment that served the response
         model:
           type: string
           description: LLM model used (on assistant nodes)
@@ -403,6 +409,8 @@ components:
           type: integer
         latency_ms:
           type: integer
+        stop_reason:
+          type: string
         status:
           type: string
         title:
@@ -414,6 +422,10 @@ components:
         created_at:
           type: string
           format: date-time
+        metadata:
+          $ref: '#/components/schemas/AssistantNodeMetadata'
+        cost:
+          $ref: '#/components/schemas/CostResult'
       required:
         - id
         - sequence
@@ -471,6 +483,111 @@ components:
           type: integer
         tokens_out:
           type: integer
+        tokens_cache_read:
+          type: integer
+        tokens_cache_creation:
+          type: integer
+        tokens_reasoning:
+          type: integer
+        usage:
+          $ref: '#/components/schemas/NormalizedUsage'
+        metadata:
+          $ref: '#/components/schemas/AssistantNodeMetadata'
+        cost:
+          $ref: '#/components/schemas/CostResult'
+
+    NormalizedUsage:
+      type: object
+      properties:
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        cache_read_input_tokens: { type: integer }
+        cache_creation_input_tokens: { type: integer }
+        cache_write_input_tokens: { type: integer }
+        reasoning_tokens: { type: integer }
+        tool_use_prompt_tokens: { type: integer }
+        audio_input_tokens: { type: integer }
+        audio_output_tokens: { type: integer }
+        image_input_tokens: { type: integer }
+        image_output_tokens: { type: integer }
+        accepted_prediction_tokens: { type: integer }
+        rejected_prediction_tokens: { type: integer }
+        service_tier: { type: string }
+        dimensions:
+          type: object
+          additionalProperties:
+            type: integer
+
+    ModelResolutionMetadata:
+      type: object
+      properties:
+        canonical_model_id: { type: string }
+        offering_id: { type: string }
+        deployment_id: { type: string }
+        provider_id: { type: string }
+        api_protocol_id: { type: string }
+        native_model_id: { type: string }
+
+    PricingSnapshot:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [known, partial, unknown, free]
+        currency: { type: string }
+        effective_at:
+          type: string
+          format: date-time
+        source: { type: string }
+        rates_per_1m:
+          type: object
+          additionalProperties:
+            type: number
+        missing_dimensions:
+          type: array
+          items: { type: string }
+
+    ProviderCost:
+      type: object
+      properties:
+        total: { type: number }
+        currency: { type: string }
+        source: { type: string }
+        raw: {}
+
+    CostResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [known, partial, unknown, free]
+        total: { type: number }
+        currency: { type: string }
+        source: { type: string }
+        missing_dimensions:
+          type: array
+          items: { type: string }
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              quantity: { type: integer }
+              rate_per_1m: { type: number }
+              cost: { type: number }
+
+    AssistantNodeMetadata:
+      type: object
+      properties:
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolutionMetadata'
+        normalized_usage:
+          $ref: '#/components/schemas/NormalizedUsage'
+        pricing_snapshot:
+          $ref: '#/components/schemas/PricingSnapshot'
+        provider_cost:
+          $ref: '#/components/schemas/ProviderCost'
 
     SSEStream:
       type: string
@@ -485,7 +602,7 @@ components:
         data: {"content": "..."}
 
         event: done
-        data: {"node_id": "..."}
+        data: {"node_id": "...", "usage": {...}, "metadata": {...}, "cost": {...}}
 
         event: error
         data: error message

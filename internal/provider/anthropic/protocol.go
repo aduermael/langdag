@@ -252,7 +252,7 @@ func convertResponse(resp *anthropic.Message) *types.CompletionResponse {
 		}
 	}
 
-	return &types.CompletionResponse{
+	response := &types.CompletionResponse{
 		ID:         resp.ID,
 		Model:      string(resp.Model),
 		Content:    content,
@@ -264,6 +264,13 @@ func convertResponse(resp *anthropic.Message) *types.CompletionResponse {
 			CacheCreationInputTokens: int(resp.Usage.CacheCreationInputTokens),
 		},
 	}
+	response.NormalizedUsage = normalizedUsagePtr(response.Usage)
+	return response
+}
+
+func normalizedUsagePtr(usage types.Usage) *types.NormalizedUsage {
+	normalized := types.NormalizedUsageFromUsage(usage)
+	return &normalized
 }
 
 // processStreamEvents reads from an Anthropic SDK stream and converts events
@@ -288,6 +295,7 @@ func processStreamEvents(stream *ssestream.Stream[anthropic.MessageStreamEventUn
 					CacheCreationInputTokens: int(event.Message.Usage.CacheCreationInputTokens),
 				},
 			}
+			fullResponse.NormalizedUsage = normalizedUsagePtr(fullResponse.Usage)
 			events <- types.StreamEvent{Type: types.StreamEventStart}
 
 		case "content_block_start":
@@ -348,6 +356,7 @@ func processStreamEvents(stream *ssestream.Stream[anthropic.MessageStreamEventUn
 			if fullResponse != nil {
 				fullResponse.StopReason = string(event.Delta.StopReason)
 				fullResponse.Usage.OutputTokens = int(event.Usage.OutputTokens)
+				fullResponse.NormalizedUsage = normalizedUsagePtr(fullResponse.Usage)
 			}
 
 		case "message_stop":

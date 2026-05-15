@@ -9,7 +9,10 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 	"time"
+
+	"langdag.com/langdag/types"
 )
 
 //go:embed catalog.json
@@ -186,6 +189,135 @@ func modelPricingFromOfferingV1(compiled *CompiledCatalogV1, offering *ModelOffe
 		}
 	}
 	sort.Strings(out.ServerTools)
+	return out
+}
+
+// MetadataForLegacyProviderModel returns best-effort deployment-aware metadata
+// for legacy callers that still pass provider/native model IDs directly. The
+// routing phase replaces this with explicit offering resolution before adapter
+// execution, but this keeps Phase 3 persistence typed and deterministic.
+func (c *CatalogV1) MetadataForLegacyProviderModel(providerName, requestedModel, responseModel string) (*types.ModelResolutionMetadata, *types.PricingSnapshot, bool) {
+	if c == nil {
+		return legacyResolutionOnly(providerName, requestedModel, responseModel), nil, false
+	}
+	compiled, err := CompileCatalogV1(c)
+	if err != nil {
+		return legacyResolutionOnly(providerName, requestedModel, responseModel), nil, false
+	}
+	for _, modelID := range compactStrings(responseModel, requestedModel) {
+		if offering, ok := compiled.OfferingForLegacyProviderModel(providerName, modelID); ok {
+			resolution := ModelResolutionMetadataFromOffering(offering)
+			snapshot := PricingSnapshotFromPricingV1(offering.Pricing)
+			return &resolution, &snapshot, true
+		}
+	}
+	return legacyResolutionOnly(providerName, requestedModel, responseModel), nil, false
+}
+
+func (c *CompiledCatalogV1) OfferingForLegacyProviderModel(providerName, modelID string) (*ModelOfferingV1, bool) {
+	if c == nil || modelID == "" {
+		return nil, false
+	}
+	deployments := legacyProviderDeploymentsV1(providerName)
+	if len(deployments) == 0 {
+		if c.Catalog == nil {
+			return nil, false
+		}
+		for i := range c.Catalog.Offerings {
+			offering := &c.Catalog.Offerings[i]
+			if offering.NativeModelID == modelID || offering.CanonicalModelID == modelID {
+				return offering, true
+			}
+		}
+		return nil, false
+	}
+	for _, deploymentID := range deployments {
+		for _, offering := range c.OfferingsByDeployment[deploymentID] {
+			if offering.NativeModelID == modelID || offering.CanonicalModelID == modelID {
+				return offering, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func ModelResolutionMetadataFromOffering(offering *ModelOfferingV1) types.ModelResolutionMetadata {
+	if offering == nil {
+		return types.ModelResolutionMetadata{}
+	}
+	resolution := types.ModelResolutionMetadata{
+		CanonicalModelID: offering.CanonicalModelID,
+		OfferingID:       offering.ID,
+		DeploymentID:     offering.DeploymentID,
+		NativeModelID:    offering.NativeModelID,
+	}
+	if offering.Deployment != nil {
+		resolution.ProviderID = offering.Deployment.ProviderID
+		resolution.APIProtocolID = offering.Deployment.APIProtocolID
+	}
+	if resolution.ProviderID == "" && offering.Provider != nil {
+		resolution.ProviderID = offering.Provider.ID
+	}
+	if resolution.APIProtocolID == "" && offering.APIProtocol != nil {
+		resolution.APIProtocolID = offering.APIProtocol.ID
+	}
+	return resolution
+}
+
+func PricingSnapshotFromPricingV1(pricing PricingV1) types.PricingSnapshot {
+	source := types.CostSourceCatalog
+	if pricing.Source != "" && pricing.Source != "catalog" {
+		source = types.CostSource(pricing.Source)
+	}
+	return types.PricingSnapshot{
+		Status:            types.CostStatus(pricing.Status),
+		Currency:          pricing.Currency,
+		EffectiveAt:       pricing.EffectiveAt,
+		Source:            source,
+		RatesPer1M:        cloneFloat64Map(pricing.RatesPer1M),
+		MissingDimensions: append([]string(nil), pricing.MissingDimensions...),
+	}
+}
+
+func legacyResolutionOnly(providerName, requestedModel, responseModel string) *types.ModelResolutionMetadata {
+	nativeID := responseModel
+	if nativeID == "" {
+		nativeID = requestedModel
+	}
+	if nativeID == "" && providerName == "" {
+		return nil
+	}
+	resolution := &types.ModelResolutionMetadata{NativeModelID: nativeID}
+	if strings.Contains(nativeID, "/") {
+		resolution.CanonicalModelID = nativeID
+	}
+	if deployments := legacyProviderDeploymentsV1(providerName); len(deployments) > 0 {
+		resolution.DeploymentID = deployments[0]
+	}
+	return resolution
+}
+
+func compactStrings(values ...string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func cloneFloat64Map(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
 	return out
 }
 

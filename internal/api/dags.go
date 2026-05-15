@@ -8,20 +8,27 @@ import (
 
 // NodeResponse represents a node in API responses.
 type NodeResponse struct {
-	ID           string `json:"id"`
-	ParentID     string `json:"parent_id,omitempty"`
-	RootID       string `json:"root_id,omitempty"`
-	Sequence     int    `json:"sequence"`
-	NodeType     string `json:"node_type"`
-	Content      string `json:"content"`
-	Model        string `json:"model,omitempty"`
-	TokensIn     int    `json:"tokens_in,omitempty"`
-	TokensOut    int    `json:"tokens_out,omitempty"`
-	LatencyMs    int    `json:"latency_ms,omitempty"`
-	Status       string `json:"status,omitempty"`
-	Title        string `json:"title,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	CreatedAt    string `json:"created_at"`
+	ID                  string                       `json:"id"`
+	ParentID            string                       `json:"parent_id,omitempty"`
+	RootID              string                       `json:"root_id,omitempty"`
+	Sequence            int                          `json:"sequence"`
+	NodeType            string                       `json:"node_type"`
+	Content             string                       `json:"content"`
+	Provider            string                       `json:"provider,omitempty"`
+	Model               string                       `json:"model,omitempty"`
+	TokensIn            int                          `json:"tokens_in,omitempty"`
+	TokensOut           int                          `json:"tokens_out,omitempty"`
+	TokensCacheRead     int                          `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int                          `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int                          `json:"tokens_reasoning,omitempty"`
+	LatencyMs           int                          `json:"latency_ms,omitempty"`
+	StopReason          string                       `json:"stop_reason,omitempty"`
+	Status              string                       `json:"status,omitempty"`
+	Title               string                       `json:"title,omitempty"`
+	SystemPrompt        string                       `json:"system_prompt,omitempty"`
+	CreatedAt           string                       `json:"created_at"`
+	Metadata            *types.AssistantNodeMetadata `json:"metadata,omitempty"`
+	Cost                *types.CostResult            `json:"cost,omitempty"`
 }
 
 // handleListNodes returns all root nodes ("list DAGs").
@@ -184,20 +191,63 @@ func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
 }
 
 func toNodeResponse(n *types.Node) NodeResponse {
+	metadata := nodeMetadata(n)
 	return NodeResponse{
-		ID:           n.ID,
-		ParentID:     n.ParentID,
-		RootID:       n.RootID,
-		Sequence:     n.Sequence,
-		NodeType:     string(n.NodeType),
-		Content:      n.Content,
-		Model:        n.Model,
-		TokensIn:     n.TokensIn,
-		TokensOut:    n.TokensOut,
-		LatencyMs:    n.LatencyMs,
-		Status:       n.Status,
-		Title:        n.Title,
-		SystemPrompt: n.SystemPrompt,
-		CreatedAt:    n.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                  n.ID,
+		ParentID:            n.ParentID,
+		RootID:              n.RootID,
+		Sequence:            n.Sequence,
+		NodeType:            string(n.NodeType),
+		Content:             n.Content,
+		Provider:            n.Provider,
+		Model:               n.Model,
+		TokensIn:            n.TokensIn,
+		TokensOut:           n.TokensOut,
+		TokensCacheRead:     n.TokensCacheRead,
+		TokensCacheCreation: n.TokensCacheCreation,
+		TokensReasoning:     n.TokensReasoning,
+		LatencyMs:           n.LatencyMs,
+		StopReason:          n.StopReason,
+		Status:              n.Status,
+		Title:               n.Title,
+		SystemPrompt:        n.SystemPrompt,
+		CreatedAt:           n.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		Metadata:            metadata,
+		Cost:                costFromMetadata(metadata),
 	}
+}
+
+func nodeMetadata(n *types.Node) *types.AssistantNodeMetadata {
+	if n == nil || n.NodeType != types.NodeTypeAssistant {
+		return nil
+	}
+	metadata, hadStored, err := types.AssistantMetadataFromNode(n)
+	if err != nil || metadata == nil {
+		return nil
+	}
+	if !hadStored && !nodeHasUsage(n) {
+		return nil
+	}
+	return metadata
+}
+
+func nodeHasUsage(n *types.Node) bool {
+	return n != nil &&
+		(n.TokensIn != 0 ||
+			n.TokensOut != 0 ||
+			n.TokensCacheRead != 0 ||
+			n.TokensCacheCreation != 0 ||
+			n.TokensReasoning != 0)
+}
+
+func costFromMetadata(metadata *types.AssistantNodeMetadata) *types.CostResult {
+	if metadata == nil {
+		return nil
+	}
+	var usage types.NormalizedUsage
+	if metadata.NormalizedUsage != nil {
+		usage = *metadata.NormalizedUsage
+	}
+	result := types.ComputeCost(metadata.ProviderCost, metadata.PricingSnapshot, usage)
+	return &result
 }

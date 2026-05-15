@@ -10,21 +10,23 @@ import (
 
 // SSEEvent represents a Server-Sent Event.
 type SSEEvent struct {
-	Type    string
-	Content string // For delta events
-	NodeID  string // For done events
-	Error   string // For error events
+	Type     string
+	Content  string // For delta events
+	NodeID   string // For done events
+	Error    string // For error events
+	Response *promptResponse
 }
 
 // Stream wraps an SSE response and provides a channel-based API.
 type Stream struct {
-	events  chan SSEEvent
-	body    io.ReadCloser
-	client  *Client
-	nodeID  string
-	err     error
-	content strings.Builder
-	done    sync.WaitGroup
+	events   chan SSEEvent
+	body     io.ReadCloser
+	client   *Client
+	nodeID   string
+	doneResp *promptResponse
+	err      error
+	content  strings.Builder
+	done     sync.WaitGroup
 }
 
 // newStream creates a new Stream from an HTTP response body.
@@ -52,6 +54,25 @@ func (s *Stream) Node() (*Node, error) {
 	}
 	if s.nodeID == "" {
 		return nil, &StreamError{Message: "stream completed without node_id"}
+	}
+	if s.doneResp != nil {
+		content := s.doneResp.Content
+		if content == "" {
+			content = s.content.String()
+		}
+		return &Node{
+			ID:                  s.doneResp.NodeID,
+			Type:                NodeTypeAssistant,
+			Content:             content,
+			TokensIn:            s.doneResp.TokensIn,
+			TokensOut:           s.doneResp.TokensOut,
+			TokensCacheRead:     s.doneResp.TokensCacheRead,
+			TokensCacheCreation: s.doneResp.TokensCacheCreation,
+			TokensReasoning:     s.doneResp.TokensReasoning,
+			Metadata:            s.doneResp.Metadata,
+			Cost:                s.doneResp.Cost,
+			client:              s.client,
+		}, nil
 	}
 	return &Node{
 		ID:     s.nodeID,
@@ -94,6 +115,7 @@ func (s *Stream) read() {
 				}
 				if event.Type == "done" {
 					s.nodeID = event.NodeID
+					s.doneResp = event.Response
 				}
 				if event.Type == "error" {
 					s.err = &StreamError{Message: event.Error}
@@ -124,6 +146,7 @@ func (s *Stream) read() {
 		}
 		if event.Type == "done" {
 			s.nodeID = event.NodeID
+			s.doneResp = event.Response
 		}
 		if event.Type == "error" {
 			s.err = &StreamError{Message: event.Error}
@@ -151,11 +174,10 @@ func (s *Stream) parseEvent(eventType, data string) SSEEvent {
 			event.Content = d.Content
 		}
 	case "done":
-		var d struct {
-			NodeID string `json:"node_id"`
-		}
+		var d promptResponse
 		if err := json.Unmarshal([]byte(data), &d); err == nil {
 			event.NodeID = d.NodeID
+			event.Response = &d
 		}
 	case "error":
 		event.Error = data

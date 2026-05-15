@@ -57,6 +57,9 @@ data: {"node_id":"node-456"}
 	if node.ID != "node-456" {
 		t.Errorf("expected node-456, got %s", node.ID)
 	}
+	if node.Content != "Hello world!" {
+		t.Errorf("expected streamed content fallback, got %q", node.Content)
+	}
 }
 
 func TestStream_ErrorEvent(t *testing.T) {

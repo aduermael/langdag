@@ -73,10 +73,11 @@ type requestToolFunction struct {
 // --- Response types ---
 
 type chatCompletionResponse struct {
-	ID      string   `json:"id"`
-	Model   string   `json:"model"`
-	Choices []choice `json:"choices"`
-	Usage   *usage   `json:"usage,omitempty"`
+	ID          string   `json:"id"`
+	Model       string   `json:"model"`
+	Choices     []choice `json:"choices"`
+	Usage       *usage   `json:"usage,omitempty"`
+	ServiceTier string   `json:"service_tier,omitempty"`
 }
 
 type choice struct {
@@ -109,11 +110,15 @@ type usage struct {
 	CompletionTokens        int           `json:"completion_tokens"`
 	PromptTokensDetails     *tokenDetails `json:"prompt_tokens_details,omitempty"`
 	CompletionTokensDetails *tokenDetails `json:"completion_tokens_details,omitempty"`
+	Cost                    *float64      `json:"cost,omitempty"`
 }
 
 type tokenDetails struct {
-	CachedTokens    int `json:"cached_tokens,omitempty"`
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	CachedTokens             int `json:"cached_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // Server tool name mappings per OpenAI-protocol variant.
@@ -319,24 +324,53 @@ func convertResponse(resp *chatCompletionResponse) *types.CompletionResponse {
 	}
 
 	if resp.Usage != nil {
-		cr.Usage = mapUsage(resp.Usage)
+		cr.Usage = mapUsage(resp.Usage, resp.ServiceTier)
+		cr.NormalizedUsage = normalizedUsagePtr(cr.Usage)
+		cr.ProviderCost = providerCostFromUsage(resp.Usage)
 	}
 
 	return cr
 }
 
-func mapUsage(u *usage) types.Usage {
+func mapUsage(u *usage, serviceTier string) types.Usage {
+	cachedTokens := 0
+	if u.PromptTokensDetails != nil {
+		cachedTokens = u.PromptTokensDetails.CachedTokens
+	}
 	result := types.Usage{
-		InputTokens:  u.PromptTokens,
+		InputTokens:  max(0, u.PromptTokens-cachedTokens),
 		OutputTokens: u.CompletionTokens,
+		ServiceTier:  serviceTier,
 	}
 	if u.PromptTokensDetails != nil {
-		result.CacheReadInputTokens = u.PromptTokensDetails.CachedTokens
+		result.CacheReadInputTokens = cachedTokens
+		result.AudioInputTokens = u.PromptTokensDetails.AudioTokens
 	}
 	if u.CompletionTokensDetails != nil {
 		result.ReasoningTokens = u.CompletionTokensDetails.ReasoningTokens
+		result.AudioOutputTokens = u.CompletionTokensDetails.AudioTokens
+		result.AcceptedPredictionTokens = u.CompletionTokensDetails.AcceptedPredictionTokens
+		result.RejectedPredictionTokens = u.CompletionTokensDetails.RejectedPredictionTokens
 	}
 	return result
+}
+
+func providerCostFromUsage(u *usage) *types.ProviderCost {
+	if u == nil || u.Cost == nil {
+		return nil
+	}
+	raw, _ := json.Marshal(u)
+	return &types.ProviderCost{
+		Total:    *u.Cost,
+		Currency: "USD",
+		Source:   types.CostSourceProviderResponse,
+		Raw:      raw,
+	}
+}
+
+func normalizedUsagePtr(usage types.Usage) *types.NormalizedUsage {
+	normalized := types.NormalizedUsageFromUsage(usage)
+	return &normalized
 }
 
 // --- SSE streaming ---
@@ -349,7 +383,8 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 	var currentToolCalls = map[int]*types.ContentBlock{}
 	var finalUsage *types.Usage
-	var responseID, responseModel string
+	var finalProviderCost *types.ProviderCost
+	var responseID, responseModel, serviceTier string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -374,10 +409,14 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 		if chunk.Model != "" {
 			responseModel = chunk.Model
 		}
+		if chunk.ServiceTier != "" {
+			serviceTier = chunk.ServiceTier
+		}
 
 		if chunk.Usage != nil {
-			u := mapUsage(chunk.Usage)
+			u := mapUsage(chunk.Usage, serviceTier)
 			finalUsage = &u
+			finalProviderCost = providerCostFromUsage(chunk.Usage)
 		}
 
 		if len(chunk.Choices) == 0 {
@@ -452,6 +491,8 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	}
 	if finalUsage != nil {
 		resp.Usage = *finalUsage
+		resp.NormalizedUsage = normalizedUsagePtr(*finalUsage)
+		resp.ProviderCost = finalProviderCost
 	}
 
 	events <- types.StreamEvent{

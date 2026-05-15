@@ -437,6 +437,12 @@ type StreamChunk struct {
 	// StopReason is the reason the LLM stopped generating (e.g. "end_turn", "tool_use").
 	// Set when Done=true.
 	StopReason string
+
+	Usage           *types.Usage
+	ModelResolution *types.ModelResolutionMetadata
+	NormalizedUsage *types.NormalizedUsage
+	PricingSnapshot *types.PricingSnapshot
+	ProviderCost    *types.ProviderCost
 }
 
 // Prompt starts a new conversation with the given message.
@@ -532,6 +538,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 		defer close(ch)
 		var accumulated string
 		var stopReason string
+		var doneResponse *types.CompletionResponse
 		var terminated bool
 		for event := range events {
 			switch event.Type {
@@ -543,6 +550,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 			case types.StreamEventDone:
 				if event.Response != nil {
 					stopReason = event.Response.StopReason
+					doneResponse = event.Response
 				}
 			case types.StreamEventError:
 				ch <- StreamChunk{Error: event.Error, Done: true}
@@ -553,7 +561,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 				result.NodeID = event.NodeID
 				result.Content = accumulated
 				result.mu.Unlock()
-				ch <- StreamChunk{Done: true, NodeID: event.NodeID, StopReason: stopReason}
+				ch <- streamDoneChunk(event.NodeID, stopReason, doneResponse)
 				terminated = true
 			}
 		}
@@ -573,6 +581,19 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 	}()
 
 	return result
+}
+
+func streamDoneChunk(nodeID, stopReason string, response *types.CompletionResponse) StreamChunk {
+	chunk := StreamChunk{Done: true, NodeID: nodeID, StopReason: stopReason}
+	if response == nil {
+		return chunk
+	}
+	chunk.Usage = &response.Usage
+	chunk.ModelResolution = response.ModelResolution
+	chunk.NormalizedUsage = response.NormalizedUsage
+	chunk.PricingSnapshot = response.PricingSnapshot
+	chunk.ProviderCost = response.ProviderCost
+	return chunk
 }
 
 // defaultStoragePath returns the default path for the SQLite database.

@@ -2,7 +2,7 @@
  * SSE (Server-Sent Events) parsing utilities
  */
 
-import type { SSEEvent } from './types.js';
+import type { PromptResponse, SSEEvent } from './types.js';
 import { SSEParseError } from './errors.js';
 
 /**
@@ -25,8 +25,8 @@ export function parseSSEEvent(eventType: string, data: string): SSEEvent {
 
     case 'done': {
       try {
-        const parsed = JSON.parse(data) as { node_id: string };
-        return { type: 'done', node_id: parsed.node_id };
+        const parsed = JSON.parse(data) as PromptResponse;
+        return { type: 'done', node_id: parsed.node_id, response: parsed };
       } catch {
         throw new SSEParseError(`Failed to parse 'done' event data`, data);
       }
@@ -123,4 +123,3 @@ function parseEventBlock(block: string): SSEEvent | null {
 
   return parseSSEEvent(eventType, data);
 }
-

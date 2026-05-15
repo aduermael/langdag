@@ -156,15 +156,33 @@ type CompletionResponse struct {
 	Content    []ContentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
 	Usage      Usage          `json:"usage"`
+
+	// Deployment-aware accounting metadata. Providers populate usage/cost
+	// dimensions they receive directly; routing/catalog layers fill resolution
+	// and pricing snapshots when known.
+	ModelResolution *ModelResolutionMetadata `json:"model_resolution,omitempty"`
+	NormalizedUsage *NormalizedUsage         `json:"normalized_usage,omitempty"`
+	PricingSnapshot *PricingSnapshot         `json:"pricing_snapshot,omitempty"`
+	ProviderCost    *ProviderCost            `json:"provider_cost,omitempty"`
 }
 
 // Usage represents token usage information.
 type Usage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	InputTokens              int              `json:"input_tokens"`
+	OutputTokens             int              `json:"output_tokens"`
+	CacheReadInputTokens     int              `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int              `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int              `json:"cache_write_input_tokens,omitempty"`
+	ReasoningTokens          int              `json:"reasoning_tokens,omitempty"`
+	ToolUsePromptTokens      int              `json:"tool_use_prompt_tokens,omitempty"`
+	AudioInputTokens         int              `json:"audio_input_tokens,omitempty"`
+	AudioOutputTokens        int              `json:"audio_output_tokens,omitempty"`
+	ImageInputTokens         int              `json:"image_input_tokens,omitempty"`
+	ImageOutputTokens        int              `json:"image_output_tokens,omitempty"`
+	AcceptedPredictionTokens int              `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int              `json:"rejected_prediction_tokens,omitempty"`
+	ServiceTier              string           `json:"service_tier,omitempty"`
+	Dimensions               map[string]int64 `json:"dimensions,omitempty"`
 }
 
 // NormalizedUsage preserves billable usage dimensions across providers. Common
@@ -176,8 +194,15 @@ type NormalizedUsage struct {
 	OutputTokens             int              `json:"output_tokens,omitempty"`
 	CacheReadInputTokens     int              `json:"cache_read_input_tokens,omitempty"`
 	CacheCreationInputTokens int              `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int              `json:"cache_write_input_tokens,omitempty"`
 	ReasoningTokens          int              `json:"reasoning_tokens,omitempty"`
 	ToolUsePromptTokens      int              `json:"tool_use_prompt_tokens,omitempty"`
+	AudioInputTokens         int              `json:"audio_input_tokens,omitempty"`
+	AudioOutputTokens        int              `json:"audio_output_tokens,omitempty"`
+	ImageInputTokens         int              `json:"image_input_tokens,omitempty"`
+	ImageOutputTokens        int              `json:"image_output_tokens,omitempty"`
+	AcceptedPredictionTokens int              `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int              `json:"rejected_prediction_tokens,omitempty"`
 	ServiceTier              string           `json:"service_tier,omitempty"`
 	Dimensions               map[string]int64 `json:"dimensions,omitempty"`
 }
@@ -190,8 +215,85 @@ func NormalizedUsageFromUsage(usage Usage) NormalizedUsage {
 		OutputTokens:             usage.OutputTokens,
 		CacheReadInputTokens:     usage.CacheReadInputTokens,
 		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheWriteInputTokens:    usage.CacheWriteInputTokens,
 		ReasoningTokens:          usage.ReasoningTokens,
+		ToolUsePromptTokens:      usage.ToolUsePromptTokens,
+		AudioInputTokens:         usage.AudioInputTokens,
+		AudioOutputTokens:        usage.AudioOutputTokens,
+		ImageInputTokens:         usage.ImageInputTokens,
+		ImageOutputTokens:        usage.ImageOutputTokens,
+		AcceptedPredictionTokens: usage.AcceptedPredictionTokens,
+		RejectedPredictionTokens: usage.RejectedPredictionTokens,
+		ServiceTier:              usage.ServiceTier,
+		Dimensions:               cloneInt64Map(usage.Dimensions),
 	}
+}
+
+func UsageFromNormalizedUsage(usage NormalizedUsage) Usage {
+	return Usage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheWriteInputTokens:    usage.CacheWriteInputTokens,
+		ReasoningTokens:          usage.ReasoningTokens,
+		ToolUsePromptTokens:      usage.ToolUsePromptTokens,
+		AudioInputTokens:         usage.AudioInputTokens,
+		AudioOutputTokens:        usage.AudioOutputTokens,
+		ImageInputTokens:         usage.ImageInputTokens,
+		ImageOutputTokens:        usage.ImageOutputTokens,
+		AcceptedPredictionTokens: usage.AcceptedPredictionTokens,
+		RejectedPredictionTokens: usage.RejectedPredictionTokens,
+		ServiceTier:              usage.ServiceTier,
+		Dimensions:               cloneInt64Map(usage.Dimensions),
+	}
+}
+
+func AddUsage(a, b Usage) Usage {
+	out := Usage{
+		InputTokens:              a.InputTokens + b.InputTokens,
+		OutputTokens:             a.OutputTokens + b.OutputTokens,
+		CacheReadInputTokens:     a.CacheReadInputTokens + b.CacheReadInputTokens,
+		CacheCreationInputTokens: a.CacheCreationInputTokens + b.CacheCreationInputTokens,
+		CacheWriteInputTokens:    a.CacheWriteInputTokens + b.CacheWriteInputTokens,
+		ReasoningTokens:          a.ReasoningTokens + b.ReasoningTokens,
+		ToolUsePromptTokens:      a.ToolUsePromptTokens + b.ToolUsePromptTokens,
+		AudioInputTokens:         a.AudioInputTokens + b.AudioInputTokens,
+		AudioOutputTokens:        a.AudioOutputTokens + b.AudioOutputTokens,
+		ImageInputTokens:         a.ImageInputTokens + b.ImageInputTokens,
+		ImageOutputTokens:        a.ImageOutputTokens + b.ImageOutputTokens,
+		AcceptedPredictionTokens: a.AcceptedPredictionTokens + b.AcceptedPredictionTokens,
+		RejectedPredictionTokens: a.RejectedPredictionTokens + b.RejectedPredictionTokens,
+		ServiceTier:              b.ServiceTier,
+		Dimensions:               cloneInt64Map(a.Dimensions),
+	}
+	if out.ServiceTier == "" {
+		out.ServiceTier = a.ServiceTier
+	}
+	for name, value := range b.Dimensions {
+		if out.Dimensions == nil {
+			out.Dimensions = map[string]int64{}
+		}
+		out.Dimensions[name] += value
+	}
+	return out
+}
+
+func UsageFromNode(node *Node) Usage {
+	if node == nil {
+		return Usage{}
+	}
+	return Usage{
+		InputTokens:              node.TokensIn,
+		OutputTokens:             node.TokensOut,
+		CacheReadInputTokens:     node.TokensCacheRead,
+		CacheCreationInputTokens: node.TokensCacheCreation,
+		ReasoningTokens:          node.TokensReasoning,
+	}
+}
+
+func NormalizedUsageFromNode(node *Node) NormalizedUsage {
+	return NormalizedUsageFromUsage(UsageFromNode(node))
 }
 
 func (u NormalizedUsage) BillableDimensions() map[string]int64 {
@@ -205,8 +307,15 @@ func (u NormalizedUsage) BillableDimensions() map[string]int64 {
 	add("output_tokens", u.OutputTokens)
 	add("cache_read_input_tokens", u.CacheReadInputTokens)
 	add("cache_creation_input_tokens", u.CacheCreationInputTokens)
+	add("cache_write_input_tokens", u.CacheWriteInputTokens)
 	add("reasoning_tokens", u.ReasoningTokens)
 	add("tool_use_prompt_tokens", u.ToolUsePromptTokens)
+	add("audio_input_tokens", u.AudioInputTokens)
+	add("audio_output_tokens", u.AudioOutputTokens)
+	add("image_input_tokens", u.ImageInputTokens)
+	add("image_output_tokens", u.ImageOutputTokens)
+	add("accepted_prediction_tokens", u.AcceptedPredictionTokens)
+	add("rejected_prediction_tokens", u.RejectedPredictionTokens)
 	for name, value := range u.Dimensions {
 		if name != "" && value > 0 {
 			dimensions[name] += value
@@ -277,7 +386,25 @@ func CostResultFromProviderCost(cost ProviderCost) CostResult {
 	}
 }
 
+func ComputeCost(providerCost *ProviderCost, snapshot *PricingSnapshot, usage NormalizedUsage) CostResult {
+	if providerCost != nil {
+		return CostResultFromProviderCost(*providerCost)
+	}
+	if snapshot == nil {
+		return CostResult{Status: CostStatusUnknown}
+	}
+	return ComputeCostFromPricingSnapshot(*snapshot, usage)
+}
+
 func ComputeCostFromPricingSnapshot(snapshot PricingSnapshot, usage NormalizedUsage) CostResult {
+	if !snapshot.EffectiveAt.IsZero() && snapshot.EffectiveAt.After(time.Now()) {
+		return CostResult{
+			Status:            CostStatusUnknown,
+			Currency:          snapshot.Currency,
+			Source:            snapshot.Source,
+			MissingDimensions: []string{"pricing_effective_at"},
+		}
+	}
 	if snapshot.Status == CostStatusFree {
 		return CostResult{Status: CostStatusFree, Currency: snapshot.Currency, Source: snapshot.Source}
 	}
@@ -353,6 +480,68 @@ type AssistantNodeMetadata struct {
 	NormalizedUsage *NormalizedUsage         `json:"normalized_usage,omitempty"`
 	PricingSnapshot *PricingSnapshot         `json:"pricing_snapshot,omitempty"`
 	ProviderCost    *ProviderCost            `json:"provider_cost,omitempty"`
+}
+
+func (r *CompletionResponse) EnsureNormalizedUsage() {
+	if r == nil || r.NormalizedUsage != nil {
+		return
+	}
+	usage := NormalizedUsageFromUsage(r.Usage)
+	r.NormalizedUsage = &usage
+}
+
+func (r *CompletionResponse) AssistantMetadata() AssistantNodeMetadata {
+	if r == nil {
+		return AssistantNodeMetadata{}
+	}
+	r.EnsureNormalizedUsage()
+	return AssistantNodeMetadata{
+		ModelResolution: r.ModelResolution,
+		NormalizedUsage: r.NormalizedUsage,
+		PricingSnapshot: r.PricingSnapshot,
+		ProviderCost:    r.ProviderCost,
+	}
+}
+
+func ParseAssistantNodeMetadata(raw json.RawMessage) (*AssistantNodeMetadata, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var meta AssistantNodeMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func AssistantMetadataFromNode(node *Node) (*AssistantNodeMetadata, bool, error) {
+	if node == nil {
+		return nil, false, nil
+	}
+	meta, err := ParseAssistantNodeMetadata(node.Metadata)
+	if err != nil {
+		return nil, false, err
+	}
+	if meta == nil {
+		usage := NormalizedUsageFromNode(node)
+		return &AssistantNodeMetadata{NormalizedUsage: &usage}, false, nil
+	}
+	if meta.NormalizedUsage == nil {
+		usage := NormalizedUsageFromNode(node)
+		meta.NormalizedUsage = &usage
+	}
+	return meta, true, nil
+}
+
+func cloneInt64Map(in map[string]int64) map[string]int64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // StreamEventType represents the type of a streaming event.
