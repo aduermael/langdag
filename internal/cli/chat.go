@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"langdag.com/langdag"
 	"langdag.com/langdag/internal/config"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -147,6 +147,27 @@ func newLibraryClient(ctx context.Context) (*langdag.Client, error) {
 			APIVersion: cfg.Providers.OpenAIAzure.APIVersion,
 		}
 	}
+	if len(cfg.Deployments) > 0 {
+		libCfg.Deployments = make(map[string]langdag.DeploymentConfig, len(cfg.Deployments))
+		for id, deployment := range cfg.Deployments {
+			libCfg.Deployments[id] = langdag.DeploymentConfig{
+				APIKey:        deployment.APIKey,
+				BaseURL:       deployment.BaseURL,
+				Endpoint:      deployment.Endpoint,
+				APIVersion:    deployment.APIVersion,
+				ProjectID:     deployment.ProjectID,
+				Region:        deployment.Region,
+				ModelMappings: deployment.ModelMappings,
+			}
+		}
+	}
+	if cfg.Routing != nil {
+		libCfg.RoutingPolicy = &langdag.RoutingPolicy{
+			Default:   convertRoutingStages(cfg.Routing.Default),
+			Providers: convertRoutingStageMap(cfg.Routing.Providers),
+			Models:    convertRoutingStageMap(cfg.Routing.Models),
+		}
+	}
 
 	if cfg.Retry.MaxRetries > 0 || cfg.Retry.BaseDelay != "" || cfg.Retry.MaxDelay != "" {
 		rc := &langdag.RetryConfig{}
@@ -167,6 +188,34 @@ func newLibraryClient(ctx context.Context) (*langdag.Client, error) {
 	libCfg.FallbackOrder = cfg.Providers.FallbackOrder
 
 	return langdag.New(libCfg)
+}
+
+func convertRoutingStageMap(in map[string][]config.RoutingStage) map[string][]langdag.RoutingStage {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]langdag.RoutingStage, len(in))
+	for key, stages := range in {
+		out[key] = convertRoutingStages(stages)
+	}
+	return out
+}
+
+func convertRoutingStages(in []config.RoutingStage) []langdag.RoutingStage {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]langdag.RoutingStage, len(in))
+	for i, stage := range in {
+		out[i].Retries = stage.Retries
+		for _, choice := range stage.Deployments {
+			out[i].Deployments = append(out[i].Deployments, langdag.DeploymentChoice{
+				DeploymentID: choice.DeploymentID,
+				Weight:       choice.Weight,
+			})
+		}
+	}
+	return out
 }
 
 // sendAndPrintNew creates a new conversation and prints the response.

@@ -251,15 +251,22 @@ func ModelResolutionMetadataFromOffering(offering *ModelOfferingV1) types.ModelR
 		DeploymentID:     offering.DeploymentID,
 		NativeModelID:    offering.NativeModelID,
 	}
-	if offering.Deployment != nil {
-		resolution.ProviderID = offering.Deployment.ProviderID
-		resolution.APIProtocolID = offering.Deployment.APIProtocolID
+	if offering.Model != nil {
+		resolution.ProviderID = offering.Model.ProviderID
 	}
 	if resolution.ProviderID == "" && offering.Provider != nil {
 		resolution.ProviderID = offering.Provider.ID
 	}
+	if resolution.ProviderID == "" {
+		if owner, _, ok := strings.Cut(offering.CanonicalModelID, "/"); ok {
+			resolution.ProviderID = owner
+		}
+	}
 	if resolution.APIProtocolID == "" && offering.APIProtocol != nil {
 		resolution.APIProtocolID = offering.APIProtocol.ID
+	}
+	if resolution.APIProtocolID == "" && offering.Deployment != nil {
+		resolution.APIProtocolID = offering.Deployment.APIProtocolID
 	}
 	return resolution
 }

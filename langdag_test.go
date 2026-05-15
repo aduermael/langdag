@@ -94,6 +94,23 @@ func TestNew_UnknownProvider(t *testing.T) {
 	}
 }
 
+func TestNew_DeploymentConfigMissingCredentials(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	_, err := langdag.New(langdag.Config{
+		StoragePath: dbPath,
+		Deployments: map[string]langdag.DeploymentConfig{
+			"openai-direct": {},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when openai-direct credentials are missing")
+	}
+	if !strings.Contains(err.Error(), "OPENAI_API_KEY not set") {
+		t.Fatalf("error = %v, want missing OPENAI_API_KEY", err)
+	}
+}
+
 func TestNew_WithTempStoragePath(t *testing.T) {
 	// The constructor must create the directory and DB file without error.
 	// We give it a non-existent nested path; New() should mkdir it.
@@ -1937,7 +1954,7 @@ func TestOrphanedToolUse_PublicAPI_PreIndexedOrphan(t *testing.T) {
 		{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "hi",
 			Model: "test", Title: "test", CreatedAt: now},
 		{ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1, NodeType: types.NodeTypeAssistant,
-			Content: `[{"type":"text","text":"checking"},{"type":"tool_use","id":"orphan_id","name":"search","input":{}}]`,
+			Content:   `[{"type":"text","text":"checking"},{"type":"tool_use","id":"orphan_id","name":"search","input":{}}]`,
 			CreatedAt: now},
 	}
 	for _, n := range nodes {
@@ -2352,7 +2369,7 @@ type callSequenceProvider struct {
 	callIdx int
 }
 
-func (p *callSequenceProvider) Name() string             { return "mock-sequence" }
+func (p *callSequenceProvider) Name() string              { return "mock-sequence" }
 func (p *callSequenceProvider) Models() []types.ModelInfo { return nil }
 
 func (p *callSequenceProvider) Complete(ctx context.Context, req *types.CompletionRequest) (*types.CompletionResponse, error) {
