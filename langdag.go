@@ -39,7 +39,8 @@ var ContextWithRetryCallback = internalprovider.ContextWithRetryCallback
 // ModelPricing contains pricing and capability information for a model.
 type ModelPricing = models.ModelPricing
 
-// ModelCatalog contains model pricing and capability information organized by provider.
+// ModelCatalog contains deployment-aware model, offering, pricing, and
+// capability information.
 type ModelCatalog = models.Catalog
 
 // Deployment-aware model catalog v1 contract types.
@@ -54,10 +55,32 @@ type PricingV1 = models.PricingV1
 type PricingStatus = models.PricingStatus
 type CapabilityState = models.CapabilityState
 type CapabilitySetV1 = models.CapabilitySetV1
+type NativeModelIDSource = models.NativeModelIDSource
+type ResponseCostSource = models.ResponseCostSource
+type ProvenanceV1 = models.ProvenanceV1
+type CredentialV1 = models.CredentialV1
+type EnvFallbackV1 = models.EnvFallbackV1
+type CatalogDiagnosticV1 = models.CatalogDiagnosticV1
 type CompiledCatalogV1 = models.CompiledCatalogV1
 type DeploymentBindingV1 = models.DeploymentBindingV1
 
 const CatalogV1SchemaVersion = models.CatalogV1SchemaVersion
+const CatalogV1JSONSchema = models.CatalogV1JSONSchema
+const PricingKnown = models.PricingKnown
+const PricingPartial = models.PricingPartial
+const PricingUnknown = models.PricingUnknown
+const PricingFree = models.PricingFree
+const CapabilitySupported = models.CapabilitySupported
+const CapabilityUnsupported = models.CapabilityUnsupported
+const CapabilityUnknown = models.CapabilityUnknown
+const NativeModelIDCatalogKnown = models.NativeModelIDCatalogKnown
+const NativeModelIDDiscovered = models.NativeModelIDDiscovered
+const NativeModelIDUserConfigured = models.NativeModelIDUserConfigured
+const NativeModelIDCatalogOrUser = models.NativeModelIDCatalogOrUser
+const ResponseCostUsageCountersOnly = models.ResponseCostUsageCountersOnly
+const ResponseCostProviderExact = models.ResponseCostProviderExact
+const ResponseCostProviderAsync = models.ResponseCostProviderAsync
+const ResponseCostLocalFree = models.ResponseCostLocalFree
 
 var ReferenceCatalogV1 = models.ReferenceCatalogV1
 var CompileCatalogV1 = models.CompileCatalogV1

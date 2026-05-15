@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefaultCatalog(t *testing.T) {
@@ -15,8 +16,11 @@ func TestDefaultCatalog(t *testing.T) {
 		t.Fatalf("DefaultCatalog() error: %v", err)
 	}
 
-	if catalog.Source != "providers" {
-		t.Errorf("Source = %q, want %q", catalog.Source, "providers")
+	if catalog.SchemaVersion != CatalogV1SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q", catalog.SchemaVersion, CatalogV1SchemaVersion)
+	}
+	if catalog.GeneratedAt.IsZero() {
+		t.Error("GeneratedAt is zero")
 	}
 
 	expectedProviders := []string{"anthropic", "openai", "gemini", "grok"}
@@ -101,8 +105,8 @@ func TestLoadCatalog_FallsBackToDefault(t *testing.T) {
 		t.Fatalf("LoadCatalog() error: %v", err)
 	}
 
-	if catalog.Source != "providers" {
-		t.Errorf("Source = %q, want %q", catalog.Source, "providers")
+	if catalog.SchemaVersion != CatalogV1SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q", catalog.SchemaVersion, CatalogV1SchemaVersion)
 	}
 }
 
@@ -112,8 +116,8 @@ func TestLoadCatalog_EmptyPath(t *testing.T) {
 		t.Fatalf("LoadCatalog(\"\") error: %v", err)
 	}
 
-	if len(catalog.Providers) == 0 {
-		t.Error("expected non-empty providers from default catalog")
+	if len(catalog.Offerings) == 0 {
+		t.Error("expected non-empty offerings from default catalog")
 	}
 }
 
@@ -135,15 +139,12 @@ func TestSaveAndLoadCatalog(t *testing.T) {
 		t.Fatalf("LoadCatalog() error: %v", err)
 	}
 
-	if loaded.Source != original.Source {
-		t.Errorf("Source = %q, want %q", loaded.Source, original.Source)
+	if !loaded.GeneratedAt.Equal(original.GeneratedAt) {
+		t.Errorf("GeneratedAt = %s, want %s", loaded.GeneratedAt, original.GeneratedAt)
 	}
 
-	for provider, originalModels := range original.Providers {
-		loadedModels := loaded.Providers[provider]
-		if len(loadedModels) != len(originalModels) {
-			t.Errorf("provider %q: got %d models, want %d", provider, len(loadedModels), len(originalModels))
-		}
+	if len(loaded.Offerings) != len(original.Offerings) {
+		t.Errorf("offerings: got %d, want %d", len(loaded.Offerings), len(original.Offerings))
 	}
 }
 
@@ -151,12 +152,10 @@ func TestLoadCatalog_PrefersCache(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
 
-	custom := &Catalog{
-		Source: "custom",
-		Providers: map[string][]ModelPricing{
-			"test": {{ID: "test-model", InputPricePer1M: 1.0, OutputPricePer1M: 2.0, ContextWindow: 1000, MaxOutput: 500}},
-		},
-	}
+	custom := ReferenceCatalogV1()
+	custom.GeneratedAt = custom.GeneratedAt.Add(24 * time.Hour)
+	custom.StaleAfter = custom.GeneratedAt.Add(30 * 24 * time.Hour)
+	custom.Provenance = &ProvenanceV1{Source: "custom-cache", ObservedAt: custom.GeneratedAt}
 
 	if err := SaveCatalog(custom, path); err != nil {
 		t.Fatalf("SaveCatalog() error: %v", err)
@@ -167,8 +166,8 @@ func TestLoadCatalog_PrefersCache(t *testing.T) {
 		t.Fatalf("LoadCatalog() error: %v", err)
 	}
 
-	if loaded.Source != "custom" {
-		t.Errorf("Source = %q, want %q (cache should take precedence)", loaded.Source, "custom")
+	if loaded.Provenance == nil || loaded.Provenance.Source != "custom-cache" {
+		t.Errorf("Provenance = %+v, want custom-cache (cache should take precedence)", loaded.Provenance)
 	}
 }
 
@@ -185,8 +184,8 @@ func TestLoadCatalog_InvalidCacheFallsBack(t *testing.T) {
 		t.Fatalf("LoadCatalog() error: %v", err)
 	}
 
-	if catalog.Source != "providers" {
-		t.Errorf("Source = %q, want %q (should fall back to default)", catalog.Source, "providers")
+	if catalog.SchemaVersion != CatalogV1SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q (should fall back to default)", catalog.SchemaVersion, CatalogV1SchemaVersion)
 	}
 }
 
@@ -255,8 +254,8 @@ func TestFetchLatest(t *testing.T) {
 		t.Fatalf("FetchLatest() error: %v", err)
 	}
 
-	if catalog.Source != "providers" {
-		t.Errorf("Source = %q, want %q", catalog.Source, "providers")
+	if catalog.SchemaVersion != CatalogV1SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q", catalog.SchemaVersion, CatalogV1SchemaVersion)
 	}
 
 	// Check at least one model per provider
@@ -294,6 +293,36 @@ func TestFetchLatest(t *testing.T) {
 	}
 	if gm.MaxOutput != 65536 {
 		t.Errorf("gemini maxOutput = %d, want 65536", gm.MaxOutput)
+	}
+
+	compiled, err := CompileCatalogV1(catalog)
+	if err != nil {
+		t.Fatalf("CompileCatalogV1: %v", err)
+	}
+	bedrockOffering, ok := compiled.OfferingForDeployment("anthropic/claude-sonnet-4-6", "anthropic-bedrock")
+	if !ok {
+		t.Fatal("FetchLatest should generate an Anthropic Bedrock offering")
+	}
+	if bedrockOffering.Pricing.Status != PricingUnknown {
+		t.Fatalf("generated Bedrock pricing status = %q, want unknown placeholder", bedrockOffering.Pricing.Status)
+	}
+	if bedrockOffering.Capabilities.ServerTools["web_search"] != CapabilityUnknown {
+		t.Fatalf("generated Bedrock web_search capability = %q, want unknown", bedrockOffering.Capabilities.ServerTools["web_search"])
+	}
+	if _, ok := compiled.OfferingForDeployment("anthropic/claude-sonnet-4-6", "anthropic-vertex"); !ok {
+		t.Fatal("FetchLatest should generate an Anthropic Vertex offering")
+	}
+	if _, ok := compiled.OfferingForDeployment("google/gemini-3-flash-preview", "gemini-vertex"); !ok {
+		t.Fatal("FetchLatest should generate a Gemini Vertex offering")
+	}
+	if len(compiled.OfferingTemplatesByDeployment["openai-azure"]) == 0 {
+		t.Fatal("FetchLatest should generate Azure mapping-required templates")
+	}
+	if len(compiled.OfferingsByDeployment["openrouter"]) == 0 {
+		t.Fatal("FetchLatest should include an OpenRouter placeholder offering")
+	}
+	if len(compiled.OfferingsByDeployment["ollama-local"]) == 0 {
+		t.Fatal("FetchLatest should include an Ollama local placeholder offering")
 	}
 }
 
@@ -361,8 +390,8 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 	}
 
 	// All models should have both pricing and context window
-	for provider, models := range catalog.Providers {
-		for _, m := range models {
+	for _, provider := range []string{"openai", "anthropic", "gemini", "grok"} {
+		for _, m := range catalog.ForProvider(provider) {
 			if m.InputPricePer1M <= 0 && m.OutputPricePer1M <= 0 {
 				t.Errorf("%s/%s: missing pricing", provider, m.ID)
 			}

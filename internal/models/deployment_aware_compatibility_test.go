@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
@@ -13,7 +14,7 @@ func TestOldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	var fixture Catalog
+	var fixture LegacyCatalog
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatalf("unmarshal fixture: %v", err)
 	}
@@ -25,11 +26,11 @@ func TestOldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadCatalog: %v", err)
 	}
-	if !catalog.UpdatedAt.Equal(fixture.UpdatedAt) {
-		t.Fatalf("LoadCatalog did not load the fixture; UpdatedAt = %s, want %s", catalog.UpdatedAt, fixture.UpdatedAt)
+	if !catalog.GeneratedAt.Equal(fixture.UpdatedAt) {
+		t.Fatalf("LoadCatalog did not load the fixture; GeneratedAt = %s, want %s", catalog.GeneratedAt, fixture.UpdatedAt)
 	}
-	if catalog.Source != "providers" {
-		t.Fatalf("Source = %q, want providers", catalog.Source)
+	if catalog.SchemaVersion != CatalogV1SchemaVersion {
+		t.Fatalf("SchemaVersion = %q, want %q", catalog.SchemaVersion, CatalogV1SchemaVersion)
 	}
 
 	for _, provider := range []string{"anthropic", "openai", "gemini", "gemini-vertex", "grok"} {
@@ -54,4 +55,80 @@ func TestOldProviderKeyedCatalogCacheFixtureLoads(t *testing.T) {
 	if len(model.ServerTools) != 1 || model.ServerTools[0] != "web_search" {
 		t.Errorf("ServerTools = %v, want [web_search]", model.ServerTools)
 	}
+}
+
+func TestLookupModelIncludesLegacyDeploymentProviderKeys(t *testing.T) {
+	legacy := &LegacyCatalog{
+		UpdatedAt: mustParseTime(t, "2026-05-01T00:00:00Z"),
+		Source:    "providers",
+		Providers: map[string][]ModelPricing{
+			"anthropic-bedrock": {
+				{ID: "anthropic.claude-sonnet-4-20250514-v1:0", InputPricePer1M: 3, OutputPricePer1M: 15, ContextWindow: 200000},
+			},
+			"anthropic-vertex": {
+				{ID: "claude-sonnet-4@20250514", InputPricePer1M: 3, OutputPricePer1M: 15, ContextWindow: 200000},
+			},
+			"openai-azure": {
+				{ID: "my-gpt-4-1-prod", InputPricePer1M: 2, OutputPricePer1M: 8, ContextWindow: 1048576},
+			},
+		},
+	}
+	catalog := CatalogV1FromLegacyCatalog(legacy)
+
+	tests := []struct {
+		modelID      string
+		wantProvider string
+	}{
+		{"anthropic.claude-sonnet-4-20250514-v1:0", "anthropic-bedrock"},
+		{"claude-sonnet-4@20250514", "anthropic-vertex"},
+		{"my-gpt-4-1-prod", "openai-azure"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			_, provider, ok := catalog.LookupModel(tt.modelID)
+			if !ok {
+				t.Fatalf("LookupModel(%q) did not find legacy deployment-keyed offering", tt.modelID)
+			}
+			if provider != tt.wantProvider {
+				t.Fatalf("provider = %q, want %q", provider, tt.wantProvider)
+			}
+		})
+	}
+}
+
+func TestOpenRouterLegacyMigrationDoesNotLeakOwner(t *testing.T) {
+	legacy := &LegacyCatalog{
+		UpdatedAt: mustParseTime(t, "2026-05-01T00:00:00Z"),
+		Source:    "providers",
+		Providers: map[string][]ModelPricing{
+			"openrouter": {
+				{ID: "anthropic/claude-sonnet-4.5", InputPricePer1M: 3, OutputPricePer1M: 15, ContextWindow: 200000},
+				{ID: "unqualified-openrouter-model", InputPricePer1M: 1, OutputPricePer1M: 2, ContextWindow: 100000},
+			},
+		},
+	}
+
+	catalog := CatalogV1FromLegacyCatalog(legacy)
+	if catalog.Models["anthropic/claude-sonnet-4.5"] == nil {
+		t.Fatal("slash-qualified OpenRouter model did not keep owner-qualified canonical ID")
+	}
+	model := catalog.Models["openrouter/unqualified-openrouter-model"]
+	if model == nil {
+		t.Fatal("unqualified OpenRouter model missing openrouter canonical ID")
+	}
+	if model.ProviderID != "openrouter" {
+		t.Fatalf("unqualified OpenRouter provider_id = %q, want openrouter", model.ProviderID)
+	}
+	if got := catalog.Aliases["unqualified-openrouter-model"]; got != "openrouter/unqualified-openrouter-model" {
+		t.Fatalf("alias = %q, want openrouter/unqualified-openrouter-model", got)
+	}
+}
+
+func mustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("parse time %q: %v", value, err)
+	}
+	return parsed
 }
