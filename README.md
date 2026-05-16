@@ -53,7 +53,7 @@ LangDAG is a **high-performance Go tool** that persists LLM conversations as dir
 | 🔄 **Auto Retry** | Exponential backoff for transient LLM failures |
 | 💾 **Persistent Storage** | SQLite with WAL mode, full history replay |
 | 🔧 **Tool Use** | First-class tool definitions with tool_use/tool_result flows |
-| 🌐 **Multi-Provider** | Anthropic, OpenAI, Gemini, Grok — plus Azure, Vertex AI, Bedrock variants |
+| 🌐 **Multi-Provider** | Canonical model routing across Anthropic, OpenAI, Gemini, Grok, OpenRouter, Ollama, Azure, Vertex AI, and Bedrock deployments |
 
 ---
 
@@ -98,21 +98,39 @@ for chunk := range result.Stream {
 result2, err := client.PromptFrom(ctx, result.NodeID, "Tell me more")
 ```
 
-### Multi-Provider Routing
+### Deployment-Aware Routing
 
 ```go
 client, err := langdag.New(langdag.Config{
-    Routing: []langdag.RoutingEntry{
-        {Provider: "anthropic", Weight: 80},
-        {Provider: "openai", Weight: 20},
+    Deployments: map[string]langdag.DeploymentConfig{
+        "openai-direct": {APIKey: os.Getenv("OPENAI_API_KEY")},
+        "openrouter":    {APIKey: os.Getenv("OPENROUTER_API_KEY")},
     },
-    FallbackOrder: []string{"anthropic", "openai"},
-    APIKeys: map[string]string{
-        "anthropic": os.Getenv("ANTHROPIC_API_KEY"),
-        "openai":    os.Getenv("OPENAI_API_KEY"),
+    RoutingPolicy: &langdag.RoutingPolicy{
+        Providers: map[string][]langdag.RoutingStage{
+            "openai": {{
+                Deployments: []langdag.DeploymentChoice{
+                    {DeploymentID: "openai-direct", Weight: 80},
+                    {DeploymentID: "openrouter", Weight: 20},
+                },
+                Retries: 1,
+            }},
+        },
+        Default: []langdag.RoutingStage{{
+            Deployments: []langdag.DeploymentChoice{{DeploymentID: "openrouter", Weight: 100}},
+        }},
     },
 })
+
+result, err := client.Prompt(ctx, "Review this change",
+    langdag.WithModel("openai/gpt-4.1-2025-04-14"),
+)
 ```
+
+The request targets a canonical model ID. LangDAG resolves it to an eligible
+deployment offering, passes the deployment's native model ID to the adapter, and
+records served identity, normalized usage, pricing snapshot, and provider exact
+cost metadata when available.
 
 ### Config Options
 
@@ -121,8 +139,11 @@ client, err := langdag.New(langdag.Config{
 | `StoragePath` | Path to SQLite database file |
 | `APIKeys` | Map of provider name to API key (`"anthropic"`, `"openai"`, `"gemini"`, `"grok"`) |
 | `Provider` | Default provider name (anthropic, openai, gemini, grok) |
-| `Routing` | Weighted routing rules across multiple providers |
-| `FallbackOrder` | Provider fallback order on failure |
+| `ModelCatalog` | Deployment-aware catalog used for canonical model resolution |
+| `Deployments` | Routeable deployment credentials, base URLs, cloud settings, and Azure model mappings |
+| `RoutingPolicy` | Weighted deployment stages by default, provider, or exact canonical model |
+| `Routing` | Deprecated provider-keyed routing rules |
+| `FallbackOrder` | Deprecated provider fallback order |
 | `RetryConfig` | Retry settings (max retries, base/max delay) |
 
 ### Available Methods
@@ -140,8 +161,18 @@ client, err := langdag.New(langdag.Config{
 Use `NewWithDeps` to inject custom storage and provider implementations — no API keys required in tests:
 
 ```go
-client, err := langdag.NewWithDeps(mockProvider, tempStorage)
+client := langdag.NewWithDeps(tempStorage, mockProvider)
 ```
+
+## Model Catalog Refresh
+
+LangDAG ships an embedded catalog and can refresh a cache from
+`https://langdag.com/model-catalog/v1/catalog.json`. Runtime loading is cache or
+embedded first, so applications can start immediately, then refresh in the
+background. Remote refresh is enabled by default and can be controlled with
+`LANGDAG_MODEL_CATALOG_REFRESH`, `LANGDAG_MODEL_CATALOG_URL`, and
+`LANGDAG_MODEL_CATALOG_TIMEOUT`. Invalid, stale, or partially generated remote
+catalogs are rejected before cache replacement.
 
 ---
 

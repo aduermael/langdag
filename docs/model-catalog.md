@@ -84,5 +84,93 @@ or partially generated remote data leaves the existing cache untouched.
 
 `native_model_id` is the exact value passed to the selected adapter. Direct
 provider deployments usually use catalog-known native IDs. OpenRouter and
-Ollama IDs are discovered. Azure OpenAI requires deployment-scoped model
-mappings because the user's Azure deployment name is the route path segment.
+Ollama IDs are discovered. Azure OpenAI requires deployment-scoped
+`model_mappings` because the user's Azure deployment name is the route path
+segment. Static catalog data records an Azure offering template, not a routeable
+offering; resolution materializes the real offering ID and `native_model_id`
+only after config supplies the exact mapping value.
+
+## Routing And Fallback
+
+Callers target canonical model IDs. The deployment router resolves that
+canonical model to an eligible offering, rewrites the request to the selected
+deployment's `native_model_id`, calls the adapter, and attaches served identity
+and pricing metadata to the response.
+
+Routing is selected in this order:
+
+1. `routing.models[canonical_model_id]`
+2. `routing.providers[provider_id]`
+3. `routing.default`
+
+Model and provider overrides are authoritative. If an override has no eligible
+deployment, langdag reports the failure instead of appending default stages.
+Each stage contains weighted deployments and a retry count. A stage skips
+deployments that are not configured, cannot serve the canonical model, or
+require a missing Azure `model_mappings` entry. When server tools are requested,
+langdag prefers eligible deployments with known support; if none exist, it keeps
+the route but strips unsupported or unknown server tools before calling the
+adapter. The next explicit stage is tried only after the current stage's retries
+fail.
+
+Streaming fallback is conservative: langdag can retry or fall back before any
+output has been emitted. After a stream sends output, any later error is
+surfaced to the caller without switching deployments.
+
+Example:
+
+```go
+client, err := langdag.New(langdag.Config{
+    Deployments: map[string]langdag.DeploymentConfig{
+        "openai-direct": {APIKey: os.Getenv("OPENAI_API_KEY")},
+        "openai-azure": {
+            APIKey:     os.Getenv("AZURE_OPENAI_API_KEY"),
+            Endpoint:   os.Getenv("AZURE_OPENAI_ENDPOINT"),
+            APIVersion: "2024-08-01-preview",
+            ModelMappings: map[string]string{
+                "openai/gpt-4.1-2025-04-14": "gpt-41-prod",
+            },
+        },
+        "openrouter": {APIKey: os.Getenv("OPENROUTER_API_KEY")},
+    },
+    RoutingPolicy: &langdag.RoutingPolicy{
+        Providers: map[string][]langdag.RoutingStage{
+            "openai": {{
+                Deployments: []langdag.DeploymentChoice{
+                    {DeploymentID: "openai-direct", Weight: 70},
+                    {DeploymentID: "openai-azure", Weight: 30},
+                },
+                Retries: 1,
+            }},
+        },
+        Default: []langdag.RoutingStage{{
+            Deployments: []langdag.DeploymentChoice{{DeploymentID: "openrouter", Weight: 100}},
+        }},
+    },
+})
+```
+
+Then target the canonical model:
+
+```go
+result, err := client.Prompt(ctx, "Summarize this diff",
+    langdag.WithModel("openai/gpt-4.1-2025-04-14"),
+)
+```
+
+## Cost Source Audit
+
+The catalog is the upfront comparison and estimate source. For the currently
+supported adapters, direct Anthropic, Bedrock, Vertex, OpenAI Chat Completions,
+Azure OpenAI, Gemini, Gemini Vertex, and Grok preserve usage counters
+synchronously. Ollama is local/free in catalog accounting. OpenRouter returns
+synchronous usage counters through the current adapter; exact credit accounting,
+when needed, requires an asynchronous generation lookup and is not the current
+per-response source of truth.
+
+Responses carry normalized usage dimensions and a pricing snapshot copied from
+the served offering. If a provider returns exact per-response cost, that exact
+cost is preserved with source `provider_response` and should be preferred over
+catalog estimates for that response. Otherwise callers can compute structured
+cost results from the saved usage and pricing snapshot, including `known`,
+`partial`, `unknown`, and `free` statuses.
