@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"langdag.com/langdag/internal/config"
 	"langdag.com/langdag/internal/conversation"
 	mockprovider "langdag.com/langdag/internal/provider/mock"
 	"langdag.com/langdag/internal/storage/sqlite"
@@ -59,6 +60,26 @@ func testServer(t *testing.T, apiKey string) (*Server, *http.ServeMux) {
 	mux.HandleFunc("DELETE /nodes/{id}", s.authMiddleware(s.handleDeleteNode))
 
 	return s, mux
+}
+
+func TestAPIRoutingPolicyPreservesExplicitEmptyDefault(t *testing.T) {
+	policy := apiRoutingPolicy(&config.RoutingPolicy{Default: []config.RoutingStage{}})
+	if policy.Default == nil || len(policy.Default) != 0 {
+		t.Fatalf("empty default route was not preserved: %+v", policy.Default)
+	}
+
+	policy = apiRoutingPolicy(&config.RoutingPolicy{Default: nil})
+	if policy.Default != nil {
+		t.Fatalf("nil default route should remain nil: %+v", policy.Default)
+	}
+
+	policy = apiRoutingPolicy(&config.RoutingPolicy{Providers: map[string][]config.RoutingStage{
+		"openai": {},
+	}})
+	stages, ok := policy.Providers["openai"]
+	if !ok || stages == nil || len(stages) != 0 {
+		t.Fatalf("empty provider route was not preserved: %+v", policy.Providers)
+	}
 }
 
 func TestHealthEndpoint(t *testing.T) {

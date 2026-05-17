@@ -97,14 +97,17 @@ canonical model to an eligible offering, rewrites the request to the selected
 deployment's `native_model_id`, calls the adapter, and attaches served identity
 and pricing metadata to the response.
 
-Routing is selected in this order:
+Scoped routing is selected in this order:
 
 1. `routing.models[canonical_model_id]`
 2. `routing.providers[provider_id]`
-3. `routing.default`
+3. `routing.default`, only when explicitly configured
 
-Model and provider overrides are authoritative. If an override has no eligible
-deployment, langdag reports the failure instead of appending default stages.
+Model and provider overrides apply only to matching canonical models. If a
+matching override has no eligible deployment, langdag reports the failure
+instead of appending default stages. Non-matching models keep using automatic
+eligible deployment resolution unless `routing.default` is explicitly
+configured as an advanced global baseline.
 Each stage contains weighted deployments and a retry count. A stage skips
 deployments that are not configured, cannot serve the canonical model, or
 require a missing Azure `model_mappings` entry. When server tools are requested,
@@ -117,7 +120,7 @@ Streaming fallback is conservative: langdag can retry or fall back before any
 output has been emitted. After a stream sends output, any later error is
 surfaced to the caller without switching deployments.
 
-Example:
+Advanced example with an explicit global default route:
 
 ```go
 client, err := langdag.New(langdag.Config{

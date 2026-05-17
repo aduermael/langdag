@@ -154,7 +154,8 @@ type Config struct {
 	Deployments map[string]DeploymentConfig
 
 	// RoutingPolicy configures canonical-model deployment routing. Exact model
-	// routes override provider routes, provider routes override default routes.
+	// routes override matching provider routes. Non-matching models use
+	// automatic eligible deployment resolution unless Default is explicitly set.
 	RoutingPolicy *RoutingPolicy
 
 	// Routing configures multi-provider routing (optional).

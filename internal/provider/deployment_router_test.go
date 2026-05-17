@@ -344,6 +344,93 @@ func TestDeploymentRouterProviderOverrideDoesNotCascadeToDefault(t *testing.T) {
 	}
 }
 
+func TestDeploymentRouterScopedProviderRouteDoesNotBlockUnmatchedModel(t *testing.T) {
+	openAI := &captureProvider{name: "openai-direct"}
+	openRouter := &captureProvider{name: "openrouter"}
+	router := newTestDeploymentRouter(t, map[string]DeploymentAdapter{
+		"openai-direct": deploymentAdapter("openai-direct", openAI),
+		"openrouter":    deploymentAdapter("openrouter", openRouter),
+	}, RoutingPolicy{
+		Providers: map[string][]RoutingStage{
+			"openai": {{Deployments: []DeploymentChoice{{DeploymentID: "openai-direct", Weight: 100}}}},
+		},
+	})
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{Model: "z-ai/glm-4.5-air:free"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openAI.calls != 0 {
+		t.Fatalf("unmatched model should not use openai provider rule, calls=%d", openAI.calls)
+	}
+	if openRouter.calls != 1 || resp.Provider != "openrouter" {
+		t.Fatalf("openrouter calls/provider = %d/%q, want 1/openrouter", openRouter.calls, resp.Provider)
+	}
+}
+
+func TestDeploymentRouterScopedModelRouteDoesNotBlockUnmatchedModel(t *testing.T) {
+	openAI := &captureProvider{name: "openai-direct"}
+	openRouter := &captureProvider{name: "openrouter"}
+	router := newTestDeploymentRouter(t, map[string]DeploymentAdapter{
+		"openai-direct": deploymentAdapter("openai-direct", openAI),
+		"openrouter":    deploymentAdapter("openrouter", openRouter),
+	}, RoutingPolicy{
+		Models: map[string][]RoutingStage{
+			"openai/gpt-4.1-2025-04-14": {{Deployments: []DeploymentChoice{{DeploymentID: "openai-direct", Weight: 100}}}},
+		},
+	})
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{Model: "z-ai/glm-4.5-air:free"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openAI.calls != 0 {
+		t.Fatalf("unmatched model should not use exact model rule, calls=%d", openAI.calls)
+	}
+	if openRouter.calls != 1 || resp.Provider != "openrouter" {
+		t.Fatalf("openrouter calls/provider = %d/%q, want 1/openrouter", openRouter.calls, resp.Provider)
+	}
+}
+
+func TestDeploymentRouterExplicitDefaultRouteOverridesAutomaticBaseline(t *testing.T) {
+	openAI := &captureProvider{name: "openai-direct"}
+	openRouter := &captureProvider{name: "openrouter"}
+	router := newTestDeploymentRouter(t, map[string]DeploymentAdapter{
+		"openai-direct": deploymentAdapter("openai-direct", openAI),
+		"openrouter":    deploymentAdapter("openrouter", openRouter),
+	}, RoutingPolicy{
+		Default: []RoutingStage{{Deployments: []DeploymentChoice{{DeploymentID: "openrouter", Weight: 100}}}},
+	})
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{Model: "openai/gpt-4.1-2025-04-14"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openAI.calls != 0 {
+		t.Fatalf("explicit default route should replace automatic openai baseline, calls=%d", openAI.calls)
+	}
+	if openRouter.calls != 1 || resp.Provider != "openrouter" {
+		t.Fatalf("openrouter calls/provider = %d/%q, want 1/openrouter", openRouter.calls, resp.Provider)
+	}
+}
+
+func TestDeploymentRouterExplicitEmptyDefaultRouteDisablesAutomaticBaseline(t *testing.T) {
+	openAI := &captureProvider{name: "openai-direct"}
+	router := newTestDeploymentRouter(t, map[string]DeploymentAdapter{
+		"openai-direct": deploymentAdapter("openai-direct", openAI),
+	}, RoutingPolicy{
+		Default: []RoutingStage{},
+	})
+
+	_, err := router.Complete(context.Background(), &types.CompletionRequest{Model: "openai/gpt-4.1-2025-04-14"})
+	if err == nil {
+		t.Fatal("expected explicit empty default route to fail")
+	}
+	if openAI.calls != 0 {
+		t.Fatalf("explicit empty default should not use automatic deployment baseline, calls=%d", openAI.calls)
+	}
+}
+
 func TestDeploymentRouterWeightedSelectionUsesPositiveEligibleChoices(t *testing.T) {
 	openAI := &captureProvider{name: "openai-direct"}
 	azure := &captureProvider{name: "openai-azure"}

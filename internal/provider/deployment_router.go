@@ -26,8 +26,10 @@ type RoutingStage struct {
 }
 
 // RoutingPolicy selects stages by exact canonical model, model owner provider,
-// then default. Overrides are authoritative: a model/provider route that has no
-// eligible deployment does not cascade to the default route.
+// then default. Model/provider overrides are scoped and authoritative: a
+// matching route that has no eligible deployment does not cascade, while
+// unrelated models keep using automatic eligible deployment resolution unless
+// an explicit default route is configured.
 type RoutingPolicy struct {
 	Default   []RoutingStage            `json:"default,omitempty" mapstructure:"default"`
 	Providers map[string][]RoutingStage `json:"providers,omitempty" mapstructure:"providers"`
@@ -91,7 +93,7 @@ func NewDeploymentRouter(opts DeploymentRouterOptions) (*DeploymentRouter, error
 		deployments[id] = adapter
 	}
 	defaultStages := defaultStagesForDeployments(deployments)
-	if len(opts.Routing.Default) > 0 || len(opts.Routing.Providers) > 0 || len(opts.Routing.Models) > 0 {
+	if opts.Routing.Default != nil {
 		defaultStages = opts.Routing.Default
 	}
 	return &DeploymentRouter{

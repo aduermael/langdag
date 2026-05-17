@@ -116,9 +116,6 @@ client, err := langdag.New(langdag.Config{
                 Retries: 1,
             }},
         },
-        Default: []langdag.RoutingStage{{
-            Deployments: []langdag.DeploymentChoice{{DeploymentID: "openrouter", Weight: 100}},
-        }},
     },
 })
 
@@ -131,6 +128,10 @@ The request targets a canonical model ID. LangDAG resolves it to an eligible
 deployment offering, passes the deployment's native model ID to the adapter, and
 records served identity, normalized usage, pricing snapshot, and provider exact
 cost metadata when available.
+Provider and model routing rules are scoped, so unrelated models continue to
+use automatic eligible deployment resolution. Set `RoutingPolicy.Default` only
+when you intentionally want an advanced global baseline for every unmatched
+model.
 
 ### Config Options
 

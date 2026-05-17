@@ -410,7 +410,7 @@ func apiRoutingStageMap(in map[string][]config.RoutingStage) map[string][]provid
 }
 
 func apiRoutingStages(in []config.RoutingStage) []provider.RoutingStage {
-	if len(in) == 0 {
+	if in == nil {
 		return nil
 	}
 	out := make([]provider.RoutingStage, len(in))

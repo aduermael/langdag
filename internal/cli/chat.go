@@ -202,7 +202,7 @@ func convertRoutingStageMap(in map[string][]config.RoutingStage) map[string][]la
 }
 
 func convertRoutingStages(in []config.RoutingStage) []langdag.RoutingStage {
-	if len(in) == 0 {
+	if in == nil {
 		return nil
 	}
 	out := make([]langdag.RoutingStage, len(in))
