@@ -294,7 +294,11 @@ describe('LangDAGClient', () => {
       expect(events[0]).toEqual({ type: 'start' });
       expect(events[1]).toEqual({ type: 'delta', content: 'Hello ' });
       expect(events[2]).toEqual({ type: 'delta', content: 'world!' });
-      expect(events[3]).toEqual({ type: 'done', node_id: 'n-1' });
+      expect(events[3]).toEqual({
+        type: 'done',
+        node_id: 'n-1',
+        response: { node_id: 'n-1' },
+      });
     });
 
     it('stream.node() returns final Node', async () => {

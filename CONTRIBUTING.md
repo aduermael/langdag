@@ -11,6 +11,8 @@ Be respectful and constructive. We're all here to build great software.
 ### Prerequisites
 
 - Go 1.23 or higher
+- Node.js 20 or higher
+- Python 3.10 or higher
 - Git
 
 ### Setup
@@ -23,8 +25,15 @@ cd langdag
 # Build
 go build -o langdag ./cmd/langdag
 
-# Run tests
-go test ./...
+# Install SDK test dependencies
+cd sdks/python && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..
+cd sdks/typescript && npm install && cd ../..
+
+# Enable the shared pre-commit checks
+git config core.hooksPath .githooks
+
+# Run all pre-commit checks
+.githooks/pre-commit
 ```
 
 ## Development Workflow
@@ -46,8 +55,8 @@ git checkout -b fix/your-bug-fix
 ### 3. Test Your Changes
 
 ```bash
-# Run all tests
-go test ./...
+# Run all pre-commit checks
+.githooks/pre-commit
 
 # Run tests with coverage
 go test -cover ./...

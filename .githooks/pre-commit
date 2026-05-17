@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -u
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
+git_local_env="$(git rev-parse --local-env-vars)"
+unset $git_local_env
+export GOWORK=off
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/langdag-pre-commit.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+pids=()
+names=()
+logs=()
+
+start_task() {
+	local name="$1"
+	shift
+	local safe_name="${name//\//-}"
+	local log="$tmpdir/$safe_name.log"
+
+	echo "pre-commit: starting $name"
+	("$@") >"$log" 2>&1 &
+	pids+=("$!")
+	names+=("$name")
+	logs+=("$log")
+}
+
+require_file() {
+	local path="$1"
+	local hint="$2"
+	if [ -e "$path" ]; then
+		return 0
+	fi
+	echo "pre-commit: missing $path"
+	echo "pre-commit: $hint"
+	return 1
+}
+
+if ! require_file "sdks/python/.venv/bin/pytest" "run: cd sdks/python && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'"; then
+	exit 1
+fi
+
+if ! require_file "sdks/typescript/node_modules/.bin/vitest" "run: cd sdks/typescript && npm install"; then
+	exit 1
+fi
+
+start_task "go-test-root" go test ./...
+start_task "go-test-sdk" bash -c 'cd sdks/go && go test -v ./...'
+start_task "python-sdk" bash -c 'cd sdks/python && .venv/bin/pytest tests/test_client.py tests/test_async_client.py -v'
+start_task "typescript-sdk" bash -c 'cd sdks/typescript && npx vitest run src/client.test.ts src/sse.test.ts'
+
+failed=0
+for i in "${!pids[@]}"; do
+	name="${names[$i]}"
+	log="${logs[$i]}"
+	if wait "${pids[$i]}"; then
+		echo "pre-commit: passed $name"
+		continue
+	fi
+
+	failed=1
+	echo
+	echo "pre-commit: failed $name"
+	sed 's/^/  /' "$log"
+done
+
+if [ "$failed" -ne 0 ]; then
+	echo
+	echo "pre-commit: checks failed"
+	exit 1
+fi
+
+echo "pre-commit: starting e2e"
+if ! ./scripts/test-e2e.sh; then
+	echo
+	echo "pre-commit: failed e2e"
+	exit 1
+fi
+
+echo "pre-commit: all checks passed"
