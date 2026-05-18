@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -146,8 +147,14 @@ type Config struct {
 
 	// ModelCatalog is the deployment-aware catalog used for canonical model
 	// resolution. Defaults to the embedded catalog generated from the published
-	// model-catalog branch when nil.
+	// model-catalog branch when nil. Mutually exclusive with RemoteModelCatalog.
 	ModelCatalog *ModelCatalog
+
+	// RemoteModelCatalog, when non-nil, makes New fetch the published catalog
+	// instead of using the embedded catalog. Fetch failures are returned from
+	// New; no local cache file is read or written. Mutually exclusive with
+	// ModelCatalog.
+	RemoteModelCatalog *RemoteModelCatalogConfig
 
 	// Deployments configures routeable deployment credentials and deployment-
 	// scoped model mappings. Legacy provider-specific fields above remain
@@ -169,6 +176,14 @@ type Config struct {
 
 	// RetryConfig configures retry behavior.
 	RetryConfig *RetryConfig
+}
+
+// RemoteModelCatalogConfig configures an explicit runtime fetch of the
+// published model catalog. Leave Endpoint empty to use DefaultRemoteCatalogURL.
+type RemoteModelCatalogConfig struct {
+	Endpoint   string
+	Timeout    time.Duration
+	HTTPClient *http.Client
 }
 
 // AnthropicConfig holds Anthropic-specific configuration.
@@ -660,13 +675,9 @@ func buildProvider(ctx context.Context, cfg Config) (internalprovider.Provider, 
 		return buildRouter(ctx, cfg, globalRetry)
 	}
 
-	catalog := cfg.ModelCatalog
-	if catalog == nil {
-		result, err := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
-		if err != nil {
-			return nil, err
-		}
-		catalog = result.Catalog
+	catalog, err := resolveModelCatalog(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 	compiled, err := models.CompileCatalogV1(catalog)
 	if err != nil {
@@ -677,7 +688,35 @@ func buildProvider(ctx context.Context, cfg Config) (internalprovider.Provider, 
 }
 
 func hasDeploymentAwareRuntimeConfig(cfg Config) bool {
-	return cfg.ModelCatalog != nil || len(cfg.Deployments) > 0 || cfg.RoutingPolicy != nil
+	return cfg.ModelCatalog != nil || cfg.RemoteModelCatalog != nil || len(cfg.Deployments) > 0 || cfg.RoutingPolicy != nil
+}
+
+func resolveModelCatalog(ctx context.Context, cfg Config) (*models.Catalog, error) {
+	if cfg.ModelCatalog != nil && cfg.RemoteModelCatalog != nil {
+		return nil, fmt.Errorf("langdag: ModelCatalog and RemoteModelCatalog cannot both be set")
+	}
+	if cfg.ModelCatalog != nil {
+		return cfg.ModelCatalog, nil
+	}
+	if cfg.RemoteModelCatalog != nil {
+		result, err := models.LoadRemoteCatalog(ctx, models.CatalogRefreshOptions{
+			Endpoint:   cfg.RemoteModelCatalog.Endpoint,
+			Timeout:    cfg.RemoteModelCatalog.Timeout,
+			HTTPClient: cfg.RemoteModelCatalog.HTTPClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("langdag: failed to fetch remote model catalog: %w", err)
+		}
+		if result.Catalog == nil {
+			return nil, fmt.Errorf("langdag: remote model catalog was not loaded")
+		}
+		return result.Catalog, nil
+	}
+	result, err := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Catalog, nil
 }
 
 func buildDeploymentAwareProvider(ctx context.Context, cfg Config, catalog *models.CompiledCatalogV1, globalRetry internalprovider.RetryConfig) (internalprovider.Provider, error) {
@@ -1206,15 +1245,21 @@ func LoadRuntimeModelCatalog() (*CatalogLoadResult, error) {
 }
 
 // LoadRuntimeModelCatalogWithOptions loads the prompt/runtime catalog with
-// explicit load options. If opts.CachePath is empty, the default user cache path
-// is used.
+// explicit load options. If opts.CachePath is empty, the embedded catalog is
+// used and no user cache path is read implicitly.
 func LoadRuntimeModelCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
 	return models.LoadRuntimeCatalog(opts)
 }
 
-// RefreshModelCatalogCache refreshes the catalog cache from the published
-// remote catalog artifact. Invalid, stale, or partial remote data does not
-// replace the existing cache.
+// LoadRemoteModelCatalog fetches the published remote model catalog and
+// validates it without reading or writing any local cache file.
+func LoadRemoteModelCatalog(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	return models.LoadRemoteCatalog(ctx, opts)
+}
+
+// RefreshModelCatalogCache fetches the published remote catalog artifact. If
+// opts.CachePath is non-empty, the fetched catalog replaces that cache.
+// Invalid, stale, or partial remote data does not replace an existing cache.
 func RefreshModelCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
 	return models.RefreshCatalogCache(ctx, opts)
 }

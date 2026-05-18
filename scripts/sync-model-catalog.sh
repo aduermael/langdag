@@ -41,3 +41,4 @@ fi
 
 mv "$tmp_dest" "$catalog_dest"
 echo "Synced internal/models/catalog.json from ${catalog_ref}:${catalog_source_path}"
+echo "Commit internal/models/catalog.json if you want releases to embed this catalog snapshot."

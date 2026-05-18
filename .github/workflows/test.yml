@@ -25,8 +25,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Sync embedded model catalog
-        run: ./scripts/sync-model-catalog.sh
+      - name: Check embedded model catalog
+        run: ./scripts/check-model-catalog.sh
 
       - name: Build LangDAG server
         run: go build -o bin/langdag ./cmd/langdag

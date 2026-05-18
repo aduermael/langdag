@@ -23,8 +23,10 @@ git clone https://github.com/aduermael/langdag.git
 cd langdag
 
 # Build
-./scripts/sync-model-catalog.sh
 go build -o langdag ./cmd/langdag
+
+# Refresh the embedded catalog snapshot when intentionally updating it
+./scripts/sync-model-catalog.sh
 
 # Install SDK test dependencies
 cd sdks/python && python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && cd ../..

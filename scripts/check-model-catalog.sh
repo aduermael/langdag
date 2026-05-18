@@ -14,8 +14,8 @@ Missing embedded model catalog at internal/models/catalog.json.
 Run:
   ./scripts/sync-model-catalog.sh
 
-This file is generated from origin/model-catalog and is intentionally ignored
-so main does not become a second catalog source of truth.
+Then commit internal/models/catalog.json. Release tags need this committed file
+because Go embeds catalog data from repository source.
 EOF
 
 exit 1

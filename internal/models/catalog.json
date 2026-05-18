@@ -1,0 +1,3732 @@
+{
+  "schema_version": "model-catalog/v1",
+  "generated_at": "2026-05-18T16:56:50.234519Z",
+  "stale_after": "2026-06-17T16:56:50.234519Z",
+  "providers": {
+    "anthropic": {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "homepage_url": "https://www.anthropic.com",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "google": {
+      "id": "google",
+      "name": "Google",
+      "homepage_url": "https://ai.google.dev",
+      "aliases": [
+        "gemini"
+      ],
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "ollama": {
+      "id": "ollama",
+      "name": "Ollama",
+      "homepage_url": "https://ollama.com",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai": {
+      "id": "openai",
+      "name": "OpenAI",
+      "homepage_url": "https://openai.com",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openrouter": {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "homepage_url": "https://openrouter.ai",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "xai": {
+      "id": "xai",
+      "name": "xAI",
+      "homepage_url": "https://x.ai",
+      "aliases": [
+        "grok"
+      ],
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "z-ai": {
+      "id": "z-ai",
+      "name": "Z.AI",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    }
+  },
+  "api_protocols": {
+    "anthropic-messages": {
+      "id": "anthropic-messages",
+      "name": "Anthropic Messages",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "gemini-generate-content": {
+      "id": "gemini-generate-content",
+      "name": "Gemini generateContent",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai-chat-completions": {
+      "id": "openai-chat-completions",
+      "name": "OpenAI Chat Completions",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai-responses": {
+      "id": "openai-responses",
+      "name": "OpenAI Responses",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    }
+  },
+  "deployments": {
+    "anthropic-bedrock": {
+      "id": "anthropic-bedrock",
+      "name": "Anthropic on Bedrock",
+      "provider_id": "anthropic",
+      "api_protocol_id": "anthropic-messages",
+      "adapter_constructor": "anthropic.NewBedrock",
+      "credential_requirements": [
+        {
+          "field": "region",
+          "required": true
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "region",
+          "env": [
+            "AWS_REGION"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "anthropic-direct": {
+      "id": "anthropic-direct",
+      "name": "Anthropic direct",
+      "provider_id": "anthropic",
+      "api_protocol_id": "anthropic-messages",
+      "adapter_constructor": "anthropic.New",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "ANTHROPIC_API_KEY"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "anthropic-vertex": {
+      "id": "anthropic-vertex",
+      "name": "Anthropic on Vertex",
+      "provider_id": "anthropic",
+      "api_protocol_id": "anthropic-messages",
+      "adapter_constructor": "anthropic.NewVertex",
+      "credential_requirements": [
+        {
+          "field": "project_id",
+          "required": true
+        },
+        {
+          "field": "region",
+          "required": true
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "project_id",
+          "env": [
+            "VERTEX_PROJECT_ID"
+          ]
+        },
+        {
+          "field": "region",
+          "env": [
+            "VERTEX_REGION"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "gemini-direct": {
+      "id": "gemini-direct",
+      "name": "Gemini direct",
+      "provider_id": "google",
+      "api_protocol_id": "gemini-generate-content",
+      "adapter_constructor": "gemini.New",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "GEMINI_API_KEY"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "gemini-vertex": {
+      "id": "gemini-vertex",
+      "name": "Gemini on Vertex",
+      "provider_id": "google",
+      "api_protocol_id": "gemini-generate-content",
+      "adapter_constructor": "gemini.NewVertex",
+      "credential_requirements": [
+        {
+          "field": "project_id",
+          "required": true
+        },
+        {
+          "field": "region",
+          "required": true
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "project_id",
+          "env": [
+            "VERTEX_PROJECT_ID"
+          ]
+        },
+        {
+          "field": "region",
+          "env": [
+            "VERTEX_REGION"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "grok-direct": {
+      "id": "grok-direct",
+      "name": "Grok direct",
+      "provider_id": "xai",
+      "api_protocol_id": "openai-responses",
+      "adapter_constructor": "openai.NewGrok",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "XAI_API_KEY"
+          ]
+        },
+        {
+          "field": "base_url",
+          "env": [
+            "XAI_BASE_URL"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "ollama-local": {
+      "id": "ollama-local",
+      "name": "Ollama local",
+      "provider_id": "ollama",
+      "api_protocol_id": "openai-chat-completions",
+      "adapter_constructor": "openai.NewOllama",
+      "credential_requirements": [
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "base_url",
+          "env": [
+            "OLLAMA_BASE_URL"
+          ]
+        }
+      ],
+      "native_model_id_source": "discovered",
+      "local": true,
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai-azure": {
+      "id": "openai-azure",
+      "name": "Azure OpenAI",
+      "provider_id": "openai",
+      "api_protocol_id": "openai-chat-completions",
+      "adapter_constructor": "openai.NewAzure",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "endpoint",
+          "required": true
+        },
+        {
+          "field": "api_version",
+          "required": true
+        },
+        {
+          "field": "model_mappings",
+          "required": true
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "AZURE_OPENAI_API_KEY"
+          ]
+        },
+        {
+          "field": "endpoint",
+          "env": [
+            "AZURE_OPENAI_ENDPOINT"
+          ]
+        },
+        {
+          "field": "api_version",
+          "env": [
+            "AZURE_OPENAI_API_VERSION"
+          ]
+        }
+      ],
+      "native_model_id_source": "user_configured",
+      "model_mappings_required": true,
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai-direct": {
+      "id": "openai-direct",
+      "name": "OpenAI direct",
+      "provider_id": "openai",
+      "api_protocol_id": "openai-chat-completions",
+      "adapter_constructor": "openai.New",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "OPENAI_API_KEY"
+          ]
+        },
+        {
+          "field": "base_url",
+          "env": [
+            "OPENAI_BASE_URL"
+          ]
+        }
+      ],
+      "native_model_id_source": "catalog_known",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openrouter": {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "provider_id": "openrouter",
+      "api_protocol_id": "openai-chat-completions",
+      "adapter_constructor": "openai.NewOpenRouter",
+      "credential_requirements": [
+        {
+          "field": "api_key",
+          "secret": true,
+          "required": true
+        },
+        {
+          "field": "base_url"
+        }
+      ],
+      "env_fallbacks": [
+        {
+          "field": "api_key",
+          "env": [
+            "OPENROUTER_API_KEY"
+          ]
+        },
+        {
+          "field": "base_url",
+          "env": [
+            "OPENROUTER_BASE_URL"
+          ]
+        }
+      ],
+      "native_model_id_source": "discovered",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    }
+  },
+  "models": {
+    "anthropic/claude-haiku-4-5": {
+      "id": "anthropic/claude-haiku-4-5",
+      "provider_id": "anthropic",
+      "name": "claude-haiku-4-5",
+      "context_window": 200000,
+      "max_output": 64000,
+      "aliases": [
+        "claude-haiku-4-5"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "anthropic/claude-haiku-4-5-20251001": {
+      "id": "anthropic/claude-haiku-4-5-20251001",
+      "provider_id": "anthropic",
+      "name": "claude-haiku-4-5-20251001",
+      "context_window": 200000,
+      "max_output": 64000,
+      "aliases": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "anthropic/claude-opus-4-7": {
+      "id": "anthropic/claude-opus-4-7",
+      "provider_id": "anthropic",
+      "name": "claude-opus-4-7",
+      "context_window": 1000000,
+      "max_output": 128000,
+      "aliases": [
+        "claude-opus-4-7"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "anthropic/claude-sonnet-4-6": {
+      "id": "anthropic/claude-sonnet-4-6",
+      "provider_id": "anthropic",
+      "name": "claude-sonnet-4-6",
+      "context_window": 1000000,
+      "max_output": 64000,
+      "aliases": [
+        "claude-sonnet-4-6"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemini-3-flash-preview": {
+      "id": "google/gemini-3-flash-preview",
+      "provider_id": "google",
+      "name": "gemini-3-flash-preview",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "aliases": [
+        "gemini-3-flash-preview"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemini-3.1-pro-preview": {
+      "id": "google/gemini-3.1-pro-preview",
+      "provider_id": "google",
+      "name": "gemini-3.1-pro-preview",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "aliases": [
+        "gemini-3.1-pro-preview"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-3-12b-it": {
+      "id": "google/gemma-3-12b-it",
+      "provider_id": "google",
+      "name": "gemma-3-12b-it",
+      "context_window": 131072,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-3-12b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-3-1b-it": {
+      "id": "google/gemma-3-1b-it",
+      "provider_id": "google",
+      "name": "gemma-3-1b-it",
+      "context_window": 32768,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-3-1b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-3-27b-it": {
+      "id": "google/gemma-3-27b-it",
+      "provider_id": "google",
+      "name": "gemma-3-27b-it",
+      "context_window": 131072,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-3-27b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-3-4b-it": {
+      "id": "google/gemma-3-4b-it",
+      "provider_id": "google",
+      "name": "gemma-3-4b-it",
+      "context_window": 131072,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-3-4b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-4-26b-a4b-it": {
+      "id": "google/gemma-4-26b-a4b-it",
+      "provider_id": "google",
+      "name": "gemma-4-26b-a4b-it",
+      "context_window": 262144,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-4-26b-a4b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "google/gemma-4-31b-it": {
+      "id": "google/gemma-4-31b-it",
+      "provider_id": "google",
+      "name": "gemma-4-31b-it",
+      "context_window": 262144,
+      "max_output": 8192,
+      "aliases": [
+        "gemma-4-31b-it"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "ollama/llama3.1:8b": {
+      "id": "ollama/llama3.1:8b",
+      "provider_id": "ollama",
+      "name": "llama3.1:8b",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    "openai/computer-use-preview-2025-03-11": {
+      "id": "openai/computer-use-preview-2025-03-11",
+      "provider_id": "openai",
+      "name": "computer-use-preview-2025-03-11",
+      "context_window": 8192,
+      "max_output": 1024,
+      "aliases": [
+        "computer-use-preview-2025-03-11"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4.1-2025-04-14": {
+      "id": "openai/gpt-4.1-2025-04-14",
+      "provider_id": "openai",
+      "name": "gpt-4.1-2025-04-14",
+      "context_window": 1047576,
+      "max_output": 32768,
+      "aliases": [
+        "gpt-4.1-2025-04-14"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4.1-mini-2025-04-14": {
+      "id": "openai/gpt-4.1-mini-2025-04-14",
+      "provider_id": "openai",
+      "name": "gpt-4.1-mini-2025-04-14",
+      "context_window": 1047576,
+      "max_output": 32768,
+      "aliases": [
+        "gpt-4.1-mini-2025-04-14"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4.1-nano-2025-04-14": {
+      "id": "openai/gpt-4.1-nano-2025-04-14",
+      "provider_id": "openai",
+      "name": "gpt-4.1-nano-2025-04-14",
+      "context_window": 1047576,
+      "max_output": 32768,
+      "aliases": [
+        "gpt-4.1-nano-2025-04-14"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4.5-preview-2025-02-27": {
+      "id": "openai/gpt-4.5-preview-2025-02-27",
+      "provider_id": "openai",
+      "name": "gpt-4.5-preview-2025-02-27",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4.5-preview-2025-02-27"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-2024-05-13": {
+      "id": "openai/gpt-4o-2024-05-13",
+      "provider_id": "openai",
+      "name": "gpt-4o-2024-05-13",
+      "context_window": 128000,
+      "max_output": 4096,
+      "aliases": [
+        "gpt-4o-2024-05-13"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-2024-08-06": {
+      "id": "openai/gpt-4o-2024-08-06",
+      "provider_id": "openai",
+      "name": "gpt-4o-2024-08-06",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-2024-08-06"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-2024-11-20": {
+      "id": "openai/gpt-4o-2024-11-20",
+      "provider_id": "openai",
+      "name": "gpt-4o-2024-11-20",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-2024-11-20"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-audio-preview-2024-10-01": {
+      "id": "openai/gpt-4o-audio-preview-2024-10-01",
+      "provider_id": "openai",
+      "name": "gpt-4o-audio-preview-2024-10-01",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-audio-preview-2024-10-01"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-audio-preview-2024-12-17": {
+      "id": "openai/gpt-4o-audio-preview-2024-12-17",
+      "provider_id": "openai",
+      "name": "gpt-4o-audio-preview-2024-12-17",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-audio-preview-2024-12-17"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-audio-preview-2025-06-03": {
+      "id": "openai/gpt-4o-audio-preview-2025-06-03",
+      "provider_id": "openai",
+      "name": "gpt-4o-audio-preview-2025-06-03",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-audio-preview-2025-06-03"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-mini-2024-07-18": {
+      "id": "openai/gpt-4o-mini-2024-07-18",
+      "provider_id": "openai",
+      "name": "gpt-4o-mini-2024-07-18",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-mini-2024-07-18"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-mini-audio-preview-2024-12-17": {
+      "id": "openai/gpt-4o-mini-audio-preview-2024-12-17",
+      "provider_id": "openai",
+      "name": "gpt-4o-mini-audio-preview-2024-12-17",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-mini-audio-preview-2024-12-17"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-mini-realtime-preview-2024-12-17": {
+      "id": "openai/gpt-4o-mini-realtime-preview-2024-12-17",
+      "provider_id": "openai",
+      "name": "gpt-4o-mini-realtime-preview-2024-12-17",
+      "context_window": 128000,
+      "max_output": 4096,
+      "aliases": [
+        "gpt-4o-mini-realtime-preview-2024-12-17"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-mini-search-preview-2025-03-11": {
+      "id": "openai/gpt-4o-mini-search-preview-2025-03-11",
+      "provider_id": "openai",
+      "name": "gpt-4o-mini-search-preview-2025-03-11",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-mini-search-preview-2025-03-11"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-realtime-preview-2024-10-01": {
+      "id": "openai/gpt-4o-realtime-preview-2024-10-01",
+      "provider_id": "openai",
+      "name": "gpt-4o-realtime-preview-2024-10-01",
+      "context_window": 16000,
+      "max_output": 4096,
+      "aliases": [
+        "gpt-4o-realtime-preview-2024-10-01"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-realtime-preview-2024-12-17": {
+      "id": "openai/gpt-4o-realtime-preview-2024-12-17",
+      "provider_id": "openai",
+      "name": "gpt-4o-realtime-preview-2024-12-17",
+      "context_window": 16000,
+      "max_output": 4096,
+      "aliases": [
+        "gpt-4o-realtime-preview-2024-12-17"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-realtime-preview-2025-06-03": {
+      "id": "openai/gpt-4o-realtime-preview-2025-06-03",
+      "provider_id": "openai",
+      "name": "gpt-4o-realtime-preview-2025-06-03",
+      "context_window": 32000,
+      "max_output": 4096,
+      "aliases": [
+        "gpt-4o-realtime-preview-2025-06-03"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-4o-search-preview-2025-03-11": {
+      "id": "openai/gpt-4o-search-preview-2025-03-11",
+      "provider_id": "openai",
+      "name": "gpt-4o-search-preview-2025-03-11",
+      "context_window": 128000,
+      "max_output": 16384,
+      "aliases": [
+        "gpt-4o-search-preview-2025-03-11"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-5-2025-08-07": {
+      "id": "openai/gpt-5-2025-08-07",
+      "provider_id": "openai",
+      "name": "gpt-5-2025-08-07",
+      "context_window": 400000,
+      "max_output": 128000,
+      "aliases": [
+        "gpt-5-2025-08-07"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-5-mini-2025-08-07": {
+      "id": "openai/gpt-5-mini-2025-08-07",
+      "provider_id": "openai",
+      "name": "gpt-5-mini-2025-08-07",
+      "context_window": 400000,
+      "max_output": 128000,
+      "aliases": [
+        "gpt-5-mini-2025-08-07"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/gpt-5-nano-2025-08-07": {
+      "id": "openai/gpt-5-nano-2025-08-07",
+      "provider_id": "openai",
+      "name": "gpt-5-nano-2025-08-07",
+      "context_window": 400000,
+      "max_output": 128000,
+      "aliases": [
+        "gpt-5-nano-2025-08-07"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o1-2024-12-17": {
+      "id": "openai/o1-2024-12-17",
+      "provider_id": "openai",
+      "name": "o1-2024-12-17",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o1-2024-12-17"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o1-mini-2024-09-12": {
+      "id": "openai/o1-mini-2024-09-12",
+      "provider_id": "openai",
+      "name": "o1-mini-2024-09-12",
+      "context_window": 128000,
+      "max_output": 65536,
+      "aliases": [
+        "o1-mini-2024-09-12"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o1-preview-2024-09-12": {
+      "id": "openai/o1-preview-2024-09-12",
+      "provider_id": "openai",
+      "name": "o1-preview-2024-09-12",
+      "context_window": 128000,
+      "max_output": 32768,
+      "aliases": [
+        "o1-preview-2024-09-12"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o1-pro-2025-03-19": {
+      "id": "openai/o1-pro-2025-03-19",
+      "provider_id": "openai",
+      "name": "o1-pro-2025-03-19",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o1-pro-2025-03-19"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o3-2025-04-16": {
+      "id": "openai/o3-2025-04-16",
+      "provider_id": "openai",
+      "name": "o3-2025-04-16",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o3-2025-04-16"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o3-deep-research-2025-06-26": {
+      "id": "openai/o3-deep-research-2025-06-26",
+      "provider_id": "openai",
+      "name": "o3-deep-research-2025-06-26",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o3-deep-research-2025-06-26"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o3-mini-2025-01-31": {
+      "id": "openai/o3-mini-2025-01-31",
+      "provider_id": "openai",
+      "name": "o3-mini-2025-01-31",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o3-mini-2025-01-31"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o3-pro-2025-06-10": {
+      "id": "openai/o3-pro-2025-06-10",
+      "provider_id": "openai",
+      "name": "o3-pro-2025-06-10",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o3-pro-2025-06-10"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o4-mini-2025-04-16": {
+      "id": "openai/o4-mini-2025-04-16",
+      "provider_id": "openai",
+      "name": "o4-mini-2025-04-16",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o4-mini-2025-04-16"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "openai/o4-mini-deep-research-2025-06-26": {
+      "id": "openai/o4-mini-deep-research-2025-06-26",
+      "provider_id": "openai",
+      "name": "o4-mini-deep-research-2025-06-26",
+      "context_window": 200000,
+      "max_output": 100000,
+      "aliases": [
+        "o4-mini-deep-research-2025-06-26"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "xai/grok-4.20-0309-non-reasoning": {
+      "id": "xai/grok-4.20-0309-non-reasoning",
+      "provider_id": "xai",
+      "name": "grok-4.20-0309-non-reasoning",
+      "context_window": 1000000,
+      "aliases": [
+        "grok-4.20-0309-non-reasoning"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "xai/grok-4.20-0309-reasoning": {
+      "id": "xai/grok-4.20-0309-reasoning",
+      "provider_id": "xai",
+      "name": "grok-4.20-0309-reasoning",
+      "context_window": 1000000,
+      "aliases": [
+        "grok-4.20-0309-reasoning"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "xai/grok-4.20-multi-agent-0309": {
+      "id": "xai/grok-4.20-multi-agent-0309",
+      "provider_id": "xai",
+      "name": "grok-4.20-multi-agent-0309",
+      "context_window": 2000000,
+      "aliases": [
+        "grok-4.20-multi-agent-0309"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "xai/grok-4.3": {
+      "id": "xai/grok-4.3",
+      "provider_id": "xai",
+      "name": "grok-4.3",
+      "context_window": 1000000,
+      "aliases": [
+        "grok-4.3"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    "z-ai/glm-4.5-air:free": {
+      "id": "z-ai/glm-4.5-air:free",
+      "provider_id": "z-ai",
+      "name": "Z.AI GLM 4.5 Air Free",
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    }
+  },
+  "offerings": [
+    {
+      "id": "anthropic-bedrock:anthropic.claude-haiku-4-5-v1:0",
+      "canonical_model_id": "anthropic/claude-haiku-4-5",
+      "deployment_id": "anthropic-bedrock",
+      "native_model_id": "anthropic.claude-haiku-4-5-v1:0",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-direct:claude-haiku-4-5",
+      "canonical_model_id": "anthropic/claude-haiku-4-5",
+      "deployment_id": "anthropic-direct",
+      "native_model_id": "claude-haiku-4-5",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1,
+          "output_tokens": 5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-vertex:claude-haiku-4-5",
+      "canonical_model_id": "anthropic/claude-haiku-4-5",
+      "deployment_id": "anthropic-vertex",
+      "native_model_id": "claude-haiku-4-5",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-bedrock:anthropic.claude-haiku-4-5-20251001-v1:0",
+      "canonical_model_id": "anthropic/claude-haiku-4-5-20251001",
+      "deployment_id": "anthropic-bedrock",
+      "native_model_id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-direct:claude-haiku-4-5-20251001",
+      "canonical_model_id": "anthropic/claude-haiku-4-5-20251001",
+      "deployment_id": "anthropic-direct",
+      "native_model_id": "claude-haiku-4-5-20251001",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1,
+          "output_tokens": 5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-vertex:claude-haiku-4-5@20251001",
+      "canonical_model_id": "anthropic/claude-haiku-4-5-20251001",
+      "deployment_id": "anthropic-vertex",
+      "native_model_id": "claude-haiku-4-5@20251001",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-bedrock:anthropic.claude-opus-4-7-v1:0",
+      "canonical_model_id": "anthropic/claude-opus-4-7",
+      "deployment_id": "anthropic-bedrock",
+      "native_model_id": "anthropic.claude-opus-4-7-v1:0",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-direct:claude-opus-4-7",
+      "canonical_model_id": "anthropic/claude-opus-4-7",
+      "deployment_id": "anthropic-direct",
+      "native_model_id": "claude-opus-4-7",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 5,
+          "output_tokens": 25
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-vertex:claude-opus-4-7",
+      "canonical_model_id": "anthropic/claude-opus-4-7",
+      "deployment_id": "anthropic-vertex",
+      "native_model_id": "claude-opus-4-7",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-bedrock:anthropic.claude-sonnet-4-6-v1:0",
+      "canonical_model_id": "anthropic/claude-sonnet-4-6",
+      "deployment_id": "anthropic-bedrock",
+      "native_model_id": "anthropic.claude-sonnet-4-6-v1:0",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-direct:claude-sonnet-4-6",
+      "canonical_model_id": "anthropic/claude-sonnet-4-6",
+      "deployment_id": "anthropic-direct",
+      "native_model_id": "claude-sonnet-4-6",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 3,
+          "output_tokens": 15
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "anthropic-vertex:claude-sonnet-4-6",
+      "canonical_model_id": "anthropic/claude-sonnet-4-6",
+      "deployment_id": "anthropic-vertex",
+      "native_model_id": "claude-sonnet-4-6",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemini-3-flash-preview",
+      "canonical_model_id": "google/gemini-3-flash-preview",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemini-3-flash-preview",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.5,
+          "output_tokens": 3
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemini-3-flash-preview",
+      "canonical_model_id": "google/gemini-3-flash-preview",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemini-3-flash-preview",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemini-3.1-pro-preview",
+      "canonical_model_id": "google/gemini-3.1-pro-preview",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemini-3.1-pro-preview",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2,
+          "output_tokens": 12
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemini-3.1-pro-preview",
+      "canonical_model_id": "google/gemini-3.1-pro-preview",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemini-3.1-pro-preview",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-3-12b-it",
+      "canonical_model_id": "google/gemma-3-12b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-3-12b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.025,
+          "output_tokens": 0.075
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-3-12b-it",
+      "canonical_model_id": "google/gemma-3-12b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-3-12b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-3-1b-it",
+      "canonical_model_id": "google/gemma-3-1b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-3-1b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.005,
+          "output_tokens": 0.015
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-3-1b-it",
+      "canonical_model_id": "google/gemma-3-1b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-3-1b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-3-27b-it",
+      "canonical_model_id": "google/gemma-3-27b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-3-27b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.05,
+          "output_tokens": 0.15
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-3-27b-it",
+      "canonical_model_id": "google/gemma-3-27b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-3-27b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-3-4b-it",
+      "canonical_model_id": "google/gemma-3-4b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-3-4b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.01,
+          "output_tokens": 0.03
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-3-4b-it",
+      "canonical_model_id": "google/gemma-3-4b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-3-4b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-4-26b-a4b-it",
+      "canonical_model_id": "google/gemma-4-26b-a4b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-4-26b-a4b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.05,
+          "output_tokens": 0.15
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-4-26b-a4b-it",
+      "canonical_model_id": "google/gemma-4-26b-a4b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-4-26b-a4b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemma-4-31b-it",
+      "canonical_model_id": "google/gemma-4-31b-it",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemma-4-31b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.05,
+          "output_tokens": 0.15
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemma-4-31b-it",
+      "canonical_model_id": "google/gemma-4-31b-it",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemma-4-31b-it",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "ollama-local:llama3.1:8b",
+      "canonical_model_id": "ollama/llama3.1:8b",
+      "deployment_id": "ollama-local",
+      "native_model_id": "llama3.1:8b",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "free",
+        "currency": "USD",
+        "effective_at": "2026-05-15T00:00:00Z",
+        "rates_per_1m": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "source": "local"
+      },
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    },
+    {
+      "id": "openai-direct:computer-use-preview-2025-03-11",
+      "canonical_model_id": "openai/computer-use-preview-2025-03-11",
+      "deployment_id": "openai-direct",
+      "native_model_id": "computer-use-preview-2025-03-11",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 3,
+          "output_tokens": 12
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4.1-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-2025-04-14",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4.1-2025-04-14",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2,
+          "output_tokens": 8
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4.1-mini-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-mini-2025-04-14",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4.1-mini-2025-04-14",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.4,
+          "output_tokens": 1.6
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4.1-nano-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-nano-2025-04-14",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4.1-nano-2025-04-14",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.1,
+          "output_tokens": 0.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4.5-preview-2025-02-27",
+      "canonical_model_id": "openai/gpt-4.5-preview-2025-02-27",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4.5-preview-2025-02-27",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 75,
+          "output_tokens": 150
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-2024-05-13",
+      "canonical_model_id": "openai/gpt-4o-2024-05-13",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-2024-05-13",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 5,
+          "output_tokens": 15
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-2024-08-06",
+      "canonical_model_id": "openai/gpt-4o-2024-08-06",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-2024-08-06",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-2024-11-20",
+      "canonical_model_id": "openai/gpt-4o-2024-11-20",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-2024-11-20",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-audio-preview-2024-10-01",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2024-10-01",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-audio-preview-2024-10-01",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-audio-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2024-12-17",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-audio-preview-2024-12-17",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-audio-preview-2025-06-03",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2025-06-03",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-audio-preview-2025-06-03",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-mini-2024-07-18",
+      "canonical_model_id": "openai/gpt-4o-mini-2024-07-18",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-mini-2024-07-18",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.15,
+          "output_tokens": 0.6
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-mini-audio-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-mini-audio-preview-2024-12-17",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-mini-audio-preview-2024-12-17",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.15,
+          "output_tokens": 0.6
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-mini-realtime-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-mini-realtime-preview-2024-12-17",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-mini-realtime-preview-2024-12-17",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.6,
+          "output_tokens": 2.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-mini-search-preview-2025-03-11",
+      "canonical_model_id": "openai/gpt-4o-mini-search-preview-2025-03-11",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-mini-search-preview-2025-03-11",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.15,
+          "output_tokens": 0.6
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-realtime-preview-2024-10-01",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2024-10-01",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-realtime-preview-2024-10-01",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 5,
+          "output_tokens": 20
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-realtime-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2024-12-17",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-realtime-preview-2024-12-17",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 5,
+          "output_tokens": 20
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-realtime-preview-2025-06-03",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2025-06-03",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-realtime-preview-2025-06-03",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 5,
+          "output_tokens": 20
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-4o-search-preview-2025-03-11",
+      "canonical_model_id": "openai/gpt-4o-search-preview-2025-03-11",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-4o-search-preview-2025-03-11",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2.5,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-5-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-2025-08-07",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-5-2025-08-07",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.25,
+          "output_tokens": 10
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-5-mini-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-mini-2025-08-07",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-5-mini-2025-08-07",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.25,
+          "output_tokens": 2
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:gpt-5-nano-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-nano-2025-08-07",
+      "deployment_id": "openai-direct",
+      "native_model_id": "gpt-5-nano-2025-08-07",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 0.05,
+          "output_tokens": 0.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o1-2024-12-17",
+      "canonical_model_id": "openai/o1-2024-12-17",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o1-2024-12-17",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 15,
+          "output_tokens": 60
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o1-mini-2024-09-12",
+      "canonical_model_id": "openai/o1-mini-2024-09-12",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o1-mini-2024-09-12",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.1,
+          "output_tokens": 4.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o1-preview-2024-09-12",
+      "canonical_model_id": "openai/o1-preview-2024-09-12",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o1-preview-2024-09-12",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 15,
+          "output_tokens": 60
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o1-pro-2025-03-19",
+      "canonical_model_id": "openai/o1-pro-2025-03-19",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o1-pro-2025-03-19",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 150,
+          "output_tokens": 600
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o3-2025-04-16",
+      "canonical_model_id": "openai/o3-2025-04-16",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o3-2025-04-16",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2,
+          "output_tokens": 8
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o3-deep-research-2025-06-26",
+      "canonical_model_id": "openai/o3-deep-research-2025-06-26",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o3-deep-research-2025-06-26",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 10,
+          "output_tokens": 40
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o3-mini-2025-01-31",
+      "canonical_model_id": "openai/o3-mini-2025-01-31",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o3-mini-2025-01-31",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.1,
+          "output_tokens": 4.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o3-pro-2025-06-10",
+      "canonical_model_id": "openai/o3-pro-2025-06-10",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o3-pro-2025-06-10",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 20,
+          "output_tokens": 80
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o4-mini-2025-04-16",
+      "canonical_model_id": "openai/o4-mini-2025-04-16",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o4-mini-2025-04-16",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.1,
+          "output_tokens": 4.4
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-direct:o4-mini-deep-research-2025-06-26",
+      "canonical_model_id": "openai/o4-mini-deep-research-2025-06-26",
+      "deployment_id": "openai-direct",
+      "native_model_id": "o4-mini-deep-research-2025-06-26",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 2,
+          "output_tokens": 8
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "grok-direct:grok-4.20-0309-non-reasoning",
+      "canonical_model_id": "xai/grok-4.20-0309-non-reasoning",
+      "deployment_id": "grok-direct",
+      "native_model_id": "grok-4.20-0309-non-reasoning",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.25,
+          "output_tokens": 2.5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "grok-direct:grok-4.20-0309-reasoning",
+      "canonical_model_id": "xai/grok-4.20-0309-reasoning",
+      "deployment_id": "grok-direct",
+      "native_model_id": "grok-4.20-0309-reasoning",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.25,
+          "output_tokens": 2.5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "grok-direct:grok-4.20-multi-agent-0309",
+      "canonical_model_id": "xai/grok-4.20-multi-agent-0309",
+      "deployment_id": "grok-direct",
+      "native_model_id": "grok-4.20-multi-agent-0309",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.25,
+          "output_tokens": 2.5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "grok-direct:grok-4.3",
+      "canonical_model_id": "xai/grok-4.3",
+      "deployment_id": "grok-direct",
+      "native_model_id": "grok-4.3",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "rates_per_1m": {
+          "input_tokens": 1.25,
+          "output_tokens": 2.5
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openrouter:z-ai/glm-4.5-air:free",
+      "canonical_model_id": "z-ai/glm-4.5-air:free",
+      "deployment_id": "openrouter",
+      "native_model_id": "z-ai/glm-4.5-air:free",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "free",
+        "currency": "USD",
+        "effective_at": "2026-05-15T00:00:00Z",
+        "rates_per_1m": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "source": "openrouter"
+      },
+      "provenance": {
+        "source": "reference-catalog",
+        "observed_at": "2026-05-15T00:00:00Z"
+      }
+    }
+  ],
+  "offering_templates": [
+    {
+      "id": "openai-azure:openai/computer-use-preview-2025-03-11",
+      "canonical_model_id": "openai/computer-use-preview-2025-03-11",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4.1-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-2025-04-14",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4.1-mini-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-mini-2025-04-14",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4.1-nano-2025-04-14",
+      "canonical_model_id": "openai/gpt-4.1-nano-2025-04-14",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4.5-preview-2025-02-27",
+      "canonical_model_id": "openai/gpt-4.5-preview-2025-02-27",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-2024-05-13",
+      "canonical_model_id": "openai/gpt-4o-2024-05-13",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-2024-08-06",
+      "canonical_model_id": "openai/gpt-4o-2024-08-06",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-2024-11-20",
+      "canonical_model_id": "openai/gpt-4o-2024-11-20",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-audio-preview-2024-10-01",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2024-10-01",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-audio-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2024-12-17",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-audio-preview-2025-06-03",
+      "canonical_model_id": "openai/gpt-4o-audio-preview-2025-06-03",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-mini-2024-07-18",
+      "canonical_model_id": "openai/gpt-4o-mini-2024-07-18",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-mini-audio-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-mini-audio-preview-2024-12-17",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-mini-realtime-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-mini-realtime-preview-2024-12-17",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-mini-search-preview-2025-03-11",
+      "canonical_model_id": "openai/gpt-4o-mini-search-preview-2025-03-11",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-realtime-preview-2024-10-01",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2024-10-01",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-realtime-preview-2024-12-17",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2024-12-17",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-realtime-preview-2025-06-03",
+      "canonical_model_id": "openai/gpt-4o-realtime-preview-2025-06-03",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-4o-search-preview-2025-03-11",
+      "canonical_model_id": "openai/gpt-4o-search-preview-2025-03-11",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-5-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-2025-08-07",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-5-mini-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-mini-2025-08-07",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/gpt-5-nano-2025-08-07",
+      "canonical_model_id": "openai/gpt-5-nano-2025-08-07",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o1-2024-12-17",
+      "canonical_model_id": "openai/o1-2024-12-17",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o1-mini-2024-09-12",
+      "canonical_model_id": "openai/o1-mini-2024-09-12",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o1-preview-2024-09-12",
+      "canonical_model_id": "openai/o1-preview-2024-09-12",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o1-pro-2025-03-19",
+      "canonical_model_id": "openai/o1-pro-2025-03-19",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o3-2025-04-16",
+      "canonical_model_id": "openai/o3-2025-04-16",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o3-deep-research-2025-06-26",
+      "canonical_model_id": "openai/o3-deep-research-2025-06-26",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o3-mini-2025-01-31",
+      "canonical_model_id": "openai/o3-mini-2025-01-31",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o3-pro-2025-06-10",
+      "canonical_model_id": "openai/o3-pro-2025-06-10",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o4-mini-2025-04-16",
+      "canonical_model_id": "openai/o4-mini-2025-04-16",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    },
+    {
+      "id": "openai-azure:openai/o4-mini-deep-research-2025-06-26",
+      "canonical_model_id": "openai/o4-mini-deep-research-2025-06-26",
+      "deployment_id": "openai-azure",
+      "native_model_id_source": "user_configured",
+      "mapping_required": true,
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "source": "user-configured-azure-deployment"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-18T16:56:50.234519Z"
+      }
+    }
+  ],
+  "aliases": {
+    "claude-haiku-4-5": "anthropic/claude-haiku-4-5",
+    "claude-haiku-4-5-20251001": "anthropic/claude-haiku-4-5-20251001",
+    "claude-opus-4-7": "anthropic/claude-opus-4-7",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
+    "computer-use-preview-2025-03-11": "openai/computer-use-preview-2025-03-11",
+    "gemini-3-flash-preview": "google/gemini-3-flash-preview",
+    "gemini-3.1-pro-preview": "google/gemini-3.1-pro-preview",
+    "gemma-3-12b-it": "google/gemma-3-12b-it",
+    "gemma-3-1b-it": "google/gemma-3-1b-it",
+    "gemma-3-27b-it": "google/gemma-3-27b-it",
+    "gemma-3-4b-it": "google/gemma-3-4b-it",
+    "gemma-4-26b-a4b-it": "google/gemma-4-26b-a4b-it",
+    "gemma-4-31b-it": "google/gemma-4-31b-it",
+    "gpt-4.1-2025-04-14": "openai/gpt-4.1-2025-04-14",
+    "gpt-4.1-mini-2025-04-14": "openai/gpt-4.1-mini-2025-04-14",
+    "gpt-4.1-nano-2025-04-14": "openai/gpt-4.1-nano-2025-04-14",
+    "gpt-4.5-preview-2025-02-27": "openai/gpt-4.5-preview-2025-02-27",
+    "gpt-4o-2024-05-13": "openai/gpt-4o-2024-05-13",
+    "gpt-4o-2024-08-06": "openai/gpt-4o-2024-08-06",
+    "gpt-4o-2024-11-20": "openai/gpt-4o-2024-11-20",
+    "gpt-4o-audio-preview-2024-10-01": "openai/gpt-4o-audio-preview-2024-10-01",
+    "gpt-4o-audio-preview-2024-12-17": "openai/gpt-4o-audio-preview-2024-12-17",
+    "gpt-4o-audio-preview-2025-06-03": "openai/gpt-4o-audio-preview-2025-06-03",
+    "gpt-4o-mini-2024-07-18": "openai/gpt-4o-mini-2024-07-18",
+    "gpt-4o-mini-audio-preview-2024-12-17": "openai/gpt-4o-mini-audio-preview-2024-12-17",
+    "gpt-4o-mini-realtime-preview-2024-12-17": "openai/gpt-4o-mini-realtime-preview-2024-12-17",
+    "gpt-4o-mini-search-preview-2025-03-11": "openai/gpt-4o-mini-search-preview-2025-03-11",
+    "gpt-4o-realtime-preview-2024-10-01": "openai/gpt-4o-realtime-preview-2024-10-01",
+    "gpt-4o-realtime-preview-2024-12-17": "openai/gpt-4o-realtime-preview-2024-12-17",
+    "gpt-4o-realtime-preview-2025-06-03": "openai/gpt-4o-realtime-preview-2025-06-03",
+    "gpt-4o-search-preview-2025-03-11": "openai/gpt-4o-search-preview-2025-03-11",
+    "gpt-5-2025-08-07": "openai/gpt-5-2025-08-07",
+    "gpt-5-mini-2025-08-07": "openai/gpt-5-mini-2025-08-07",
+    "gpt-5-nano-2025-08-07": "openai/gpt-5-nano-2025-08-07",
+    "grok-4.20-0309-non-reasoning": "xai/grok-4.20-0309-non-reasoning",
+    "grok-4.20-0309-reasoning": "xai/grok-4.20-0309-reasoning",
+    "grok-4.20-multi-agent-0309": "xai/grok-4.20-multi-agent-0309",
+    "grok-4.3": "xai/grok-4.3",
+    "o1-2024-12-17": "openai/o1-2024-12-17",
+    "o1-mini-2024-09-12": "openai/o1-mini-2024-09-12",
+    "o1-preview-2024-09-12": "openai/o1-preview-2024-09-12",
+    "o1-pro-2025-03-19": "openai/o1-pro-2025-03-19",
+    "o3-2025-04-16": "openai/o3-2025-04-16",
+    "o3-deep-research-2025-06-26": "openai/o3-deep-research-2025-06-26",
+    "o3-mini-2025-01-31": "openai/o3-mini-2025-01-31",
+    "o3-pro-2025-06-10": "openai/o3-pro-2025-06-10",
+    "o4-mini-2025-04-16": "openai/o4-mini-2025-04-16",
+    "o4-mini-deep-research-2025-06-26": "openai/o4-mini-deep-research-2025-06-26",
+    "openrouter/z-ai/glm-4.5-air:free": "z-ai/glm-4.5-air:free"
+  },
+  "provenance": {
+    "source": "reference-catalog",
+    "observed_at": "2026-05-15T00:00:00Z"
+  }
+}

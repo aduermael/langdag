@@ -111,6 +111,21 @@ func TestNew_DeploymentConfigMissingCredentials(t *testing.T) {
 	}
 }
 
+func TestNew_ConflictingModelCatalogSources(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	_, err := langdag.New(langdag.Config{
+		StoragePath:        dbPath,
+		ModelCatalog:       langdag.ReferenceCatalogV1(),
+		RemoteModelCatalog: &langdag.RemoteModelCatalogConfig{},
+	})
+	if err == nil {
+		t.Fatal("expected error when ModelCatalog and RemoteModelCatalog are both set")
+	}
+	if !strings.Contains(err.Error(), "ModelCatalog and RemoteModelCatalog cannot both be set") {
+		t.Fatalf("error = %v, want conflicting catalog source error", err)
+	}
+}
+
 func TestNew_WithTempStoragePath(t *testing.T) {
 	// The constructor must create the directory and DB file without error.
 	// We give it a non-existent nested path; New() should mkdir it.

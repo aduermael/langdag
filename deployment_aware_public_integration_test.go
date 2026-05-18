@@ -119,6 +119,86 @@ data: [DONE]
 	}
 }
 
+func TestNewCanUseExplicitRemoteRuntimeCatalog(t *testing.T) {
+	const canonicalID = "openai/gpt-remote-public"
+	const nativeID = "gpt-remote-public-native"
+
+	catalog := ReferenceCatalogV1()
+	generatedAt := time.Now().UTC().Truncate(time.Second)
+	catalog.GeneratedAt = generatedAt
+	catalog.StaleAfter = generatedAt.Add(30 * 24 * time.Hour)
+	catalog.Models[canonicalID] = &ModelV1{
+		ID:            canonicalID,
+		ProviderID:    "openai",
+		Name:          "GPT Remote Public",
+		ContextWindow: 128000,
+	}
+	catalog.Offerings = append(catalog.Offerings, ModelOfferingV1{
+		ID:               "openai-direct:" + nativeID,
+		CanonicalModelID: canonicalID,
+		DeploymentID:     "openai-direct",
+		NativeModelID:    nativeID,
+		Pricing: PricingV1{
+			Status:      PricingKnown,
+			Currency:    "USD",
+			EffectiveAt: generatedAt,
+			RatesPer1M:  map[string]float64{"input_tokens": 2, "output_tokens": 8},
+		},
+	})
+	if err := ValidateCatalogV1(catalog); err != nil {
+		t.Fatalf("test catalog is invalid: %v", err)
+	}
+	catalogServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(catalog); err != nil {
+			t.Errorf("encode catalog: %v", err)
+		}
+	}))
+	defer catalogServer.Close()
+
+	body := `data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[{"index":0,"delta":{"content":"remote route"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}
+
+data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	server := newPhase8OpenAICompatServer(t, http.StatusOK, body)
+	server.contentType = "text/event-stream"
+
+	client, err := New(Config{
+		StoragePath: filepath.Join(t.TempDir(), "remote-catalog.db"),
+		Provider:    "openai",
+		APIKeys:     map[string]string{"openai": "sk-test"},
+		OpenAIConfig: &OpenAIConfig{
+			BaseURL: server.URL(),
+		},
+		RemoteModelCatalog: &RemoteModelCatalogConfig{
+			Endpoint: catalogServer.URL,
+			Timeout:  time.Second,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer client.Close()
+
+	result, err := client.Prompt(context.Background(), "use the remote catalog", WithModel(canonicalID))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	for chunk := range result.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+	}
+	if got := server.Models(); len(got) != 1 || got[0] != nativeID {
+		t.Fatalf("request models = %+v, want native id %q from remote catalog", got, nativeID)
+	}
+}
+
 func TestDeploymentAwarePublicClientRoutingAndMetadataIntegration(t *testing.T) {
 	const canonicalID = "openai/gpt-phase8-public"
 	const directNativeID = "gpt-phase8-public-direct"

@@ -19,8 +19,8 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Sync embedded model catalog
-        run: ./scripts/sync-model-catalog.sh
+      - name: Check embedded model catalog
+        run: ./scripts/check-model-catalog.sh
 
       - name: Verify release build
         run: go test -count=1 ./...

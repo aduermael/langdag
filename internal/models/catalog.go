@@ -235,9 +235,10 @@ func CatalogRefreshOptionsFromEnv(cachePath string) CatalogRefreshOptions {
 	return opts
 }
 
-// RefreshCatalogCache fetches the published remote catalog, validates it
-// strictly, and then atomically replaces the cache file. Invalid, stale, or
-// partial remote data never overwrites an existing cache.
+// RefreshCatalogCache fetches the published remote catalog and validates it
+// strictly. If opts.CachePath is non-empty, it atomically replaces that cache
+// file. Invalid, stale, or partial remote data never overwrites an existing
+// cache.
 func RefreshCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
 	endpoint := strings.TrimSpace(opts.Endpoint)
 	if endpoint == "" {
@@ -276,6 +277,13 @@ func RefreshCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*Cata
 	}
 	result.Catalog = catalog
 	return result, nil
+}
+
+// LoadRemoteCatalog fetches the published remote catalog and validates it
+// without writing any local cache file.
+func LoadRemoteCatalog(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	opts.CachePath = ""
+	return RefreshCatalogCache(ctx, opts)
 }
 
 func fetchRemoteCatalog(ctx context.Context, client *http.Client, endpoint string, now time.Time) (*Catalog, []CatalogDiagnosticV1, error) {

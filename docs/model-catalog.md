@@ -6,7 +6,8 @@ and the deployment that hosts it.
 
 ## Source Of Truth
 
-The catalog JSON is committed only on the dedicated publishing branch:
+The website-served catalog JSON is committed only on the dedicated publishing
+branch:
 
 `origin/model-catalog`
 
@@ -18,10 +19,12 @@ GitHub Pages serves that file at:
 
 `https://langdag.com/model-catalog/v1/catalog.json`
 
-The catalog file is intentionally not committed to `main` or feature branches.
-Normal website deploys upload the docs tree from `main`, then overlay the
-catalog from `origin/model-catalog` when that branch exists. This keeps a
-website redeploy from rolling the catalog back to an older copy.
+The website catalog file is intentionally not committed to `main` or feature
+branches. Normal website deploys upload the docs tree from `main`, then overlay
+the catalog from `origin/model-catalog` when that branch exists. This keeps a
+website redeploy from rolling the catalog back to an older copy. The embedded
+Go release artifact at `internal/models/catalog.json` is generated from that
+same branch and committed so module release tags are self-contained.
 
 ## Automated Updates
 
@@ -57,15 +60,18 @@ arbitrary endpoints, auth flows, request templates, or new protocol behavior.
 ## Runtime Loading
 
 Prompt/runtime loading uses the embedded catalog generated from
-`origin/model-catalog`. Main does not commit that generated JSON; local builds
-should run `./scripts/sync-model-catalog.sh` first, which writes the ignored
-`internal/models/catalog.json` file used by Go embedding.
+`origin/model-catalog`. Maintainers update the committed
+`internal/models/catalog.json` artifact manually by running
+`./scripts/sync-model-catalog.sh` before cutting a release.
 
 LangDAG does not implicitly read `~/.config/langdag/model_catalog.json`, so a
-stale user cache cannot override the published catalog snapshot. `langdag models
---update` can fetch the published artifact for the current command.
-`LANGDAG_MODEL_CATALOG_URL` overrides the static endpoint and
-`LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the fetch timeout. Remote data is
+stale user cache cannot override the published catalog snapshot. Apps that want
+the freshest catalog at startup can set `RemoteModelCatalog`; apps that want a
+one-shot fetch can call `LoadRemoteModelCatalog` or `RefreshModelCatalogCache`
+with no cache path and pass the returned catalog via `Config.ModelCatalog`.
+`langdag models --update` can fetch the published artifact for one command.
+`LANGDAG_MODEL_CATALOG_URL` overrides the CLI endpoint and
+`LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the CLI fetch timeout. Remote data is
 strictly schema-validated before use.
 
 ## Current Adapter Mapping

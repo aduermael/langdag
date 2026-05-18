@@ -189,6 +189,34 @@ func TestLoadRuntimeCatalogUsesEmbeddedByDefault(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeCatalogIgnoresImplicitUserCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cachePath := filepath.Join(home, ".config", "langdag", "model_catalog.json")
+
+	custom := ReferenceCatalogV1()
+	custom.GeneratedAt = custom.GeneratedAt.Add(24 * time.Hour)
+	custom.StaleAfter = custom.GeneratedAt.Add(30 * 24 * time.Hour)
+	custom.Provenance = &ProvenanceV1{Source: "implicit-user-cache", ObservedAt: custom.GeneratedAt}
+	if err := SaveCatalog(custom, cachePath); err != nil {
+		t.Fatalf("SaveCatalog user cache: %v", err)
+	}
+
+	result, err := LoadRuntimeCatalog(CatalogLoadOptions{})
+	if err != nil {
+		t.Fatalf("LoadRuntimeCatalog() error: %v", err)
+	}
+	if result.Source != CatalogSourceEmbedded {
+		t.Fatalf("Source = %q, want embedded", result.Source)
+	}
+	if result.Catalog == nil {
+		t.Fatal("Catalog is nil")
+	}
+	if result.Catalog.Provenance != nil && result.Catalog.Provenance.Source == "implicit-user-cache" {
+		t.Fatal("runtime catalog loaded implicit ~/.config/langdag/model_catalog.json cache")
+	}
+}
+
 func TestLoadCatalog_InvalidCacheFallsBack(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
@@ -288,6 +316,59 @@ func TestRefreshCatalogCacheRemoteSuccessReplacesCache(t *testing.T) {
 	}
 	if loaded.Provenance == nil || loaded.Provenance.Source != "remote-test" {
 		t.Fatalf("cache provenance = %+v, want remote-test", loaded.Provenance)
+	}
+}
+
+func TestRefreshCatalogCacheRemoteSuccessWithoutCachePath(t *testing.T) {
+	remoteCatalog := ReferenceCatalogV1()
+	remoteCatalog.GeneratedAt = mustParseTime(t, "2026-05-20T00:00:00Z")
+	remoteCatalog.StaleAfter = mustParseTime(t, "2026-06-20T00:00:00Z")
+	remoteCatalog.Provenance = &ProvenanceV1{Source: "remote-test", ObservedAt: remoteCatalog.GeneratedAt}
+	server := serveCatalog(t, remoteCatalog)
+	defer server.Close()
+
+	result, err := RefreshCatalogCache(context.Background(), CatalogRefreshOptions{
+		Endpoint: server.URL,
+		Timeout:  time.Second,
+		Now:      func() time.Time { return mustParseTime(t, "2026-05-21T00:00:00Z") },
+	})
+	if err != nil {
+		t.Fatalf("RefreshCatalogCache: %v", err)
+	}
+	if result.Source != CatalogSourceRemote || result.ReplacedCache {
+		t.Fatalf("refresh result = %+v, want remote catalog without cache replacement", result)
+	}
+	if result.CachePath != "" {
+		t.Fatalf("CachePath = %q, want empty", result.CachePath)
+	}
+	if result.Catalog == nil || result.Catalog.Provenance == nil || result.Catalog.Provenance.Source != "remote-test" {
+		t.Fatalf("remote catalog provenance = %+v, want remote-test", result.Catalog)
+	}
+}
+
+func TestLoadRemoteCatalogDoesNotWriteCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+	remoteCatalog := ReferenceCatalogV1()
+	remoteCatalog.GeneratedAt = mustParseTime(t, "2026-05-20T00:00:00Z")
+	remoteCatalog.StaleAfter = mustParseTime(t, "2026-06-20T00:00:00Z")
+	server := serveCatalog(t, remoteCatalog)
+	defer server.Close()
+
+	result, err := LoadRemoteCatalog(context.Background(), CatalogRefreshOptions{
+		CachePath: path,
+		Endpoint:  server.URL,
+		Timeout:   time.Second,
+		Now:       func() time.Time { return mustParseTime(t, "2026-05-21T00:00:00Z") },
+	})
+	if err != nil {
+		t.Fatalf("LoadRemoteCatalog: %v", err)
+	}
+	if result.Source != CatalogSourceRemote || result.ReplacedCache || result.Catalog == nil {
+		t.Fatalf("remote result = %+v, want remote without cache replacement", result)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("cache file exists after LoadRemoteCatalog: %v", err)
 	}
 }
 

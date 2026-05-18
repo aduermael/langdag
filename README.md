@@ -141,6 +141,7 @@ model.
 | `APIKeys` | Map of provider name to API key (`"anthropic"`, `"openai"`, `"gemini"`, `"grok"`) |
 | `Provider` | Default provider name (anthropic, openai, gemini, grok) |
 | `ModelCatalog` | Deployment-aware catalog used for canonical model resolution |
+| `RemoteModelCatalog` | Explicit opt-in to fetch the latest published catalog at startup |
 | `Deployments` | Routeable deployment credentials, base URLs, cloud settings, and Azure model mappings |
 | `RoutingPolicy` | Weighted deployment stages by default, provider, or exact canonical model |
 | `Routing` | Deprecated provider-keyed routing rules |
@@ -168,16 +169,20 @@ client := langdag.NewWithDeps(tempStorage, mockProvider)
 ## Model Catalog Refresh
 
 LangDAG ships an embedded catalog generated from the published
-`origin/model-catalog` branch. Main does not commit the generated catalog JSON;
-local builds should run `./scripts/sync-model-catalog.sh` first, which writes
-the ignored `internal/models/catalog.json` file used by Go embedding.
+`origin/model-catalog` branch. The generated `internal/models/catalog.json`
+file is committed so Go module release tags include the data used by
+`go:embed`. Maintainers can update it manually with
+`./scripts/sync-model-catalog.sh`.
 
 Prompt/runtime routing uses the embedded catalog by default. It does not read
 `~/.config/langdag/model_catalog.json` implicitly, so a stale user cache cannot
-override the published catalog snapshot. `langdag models --update` can fetch
-`https://langdag.com/model-catalog/v1/catalog.json` for the current command, and
-`LANGDAG_MODEL_CATALOG_URL` / `LANGDAG_MODEL_CATALOG_TIMEOUT` can override that
-fetch.
+override the published catalog snapshot. Apps that want the freshest catalog at
+startup can set `RemoteModelCatalog`; apps that want a one-shot fetch can call
+`LoadRemoteModelCatalog` or `RefreshModelCatalogCache` with no cache path and
+pass the returned catalog via `Config.ModelCatalog`. `langdag models --update`
+can fetch `https://langdag.com/model-catalog/v1/catalog.json` for the current
+command. `LANGDAG_MODEL_CATALOG_URL` / `LANGDAG_MODEL_CATALOG_TIMEOUT` can
+override CLI fetches.
 
 ---
 
