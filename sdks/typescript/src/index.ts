@@ -20,6 +20,12 @@ export type {
   // Core models
   NodeData,
   NodeType,
+  NormalizedUsage,
+  ModelResolutionMetadata,
+  PricingSnapshot,
+  ProviderCost,
+  CostResult,
+  AssistantNodeMetadata,
 
   // SSE types
   SSEEvent,
@@ -29,6 +35,7 @@ export type {
   SSEErrorEvent,
 
   // Response types
+  PromptResponse,
   DeleteResponse,
   HealthResponse,
   ApiErrorBody,

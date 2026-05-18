@@ -176,13 +176,22 @@ describe('LangDAGClient', () => {
 
   describe('prompt', () => {
     it('returns a Node', async () => {
-      const promptResp = { node_id: 'n-1', content: 'Hello back!' };
+      const promptResp = {
+        node_id: 'n-1',
+        content: 'Hello back!',
+        usage: {
+          input_tokens: 12,
+          output_tokens: 4,
+          dimensions: { provider_cached_audio_tokens: 7 },
+        },
+      };
       const fetchFn = mockFetch({ json: () => Promise.resolve(promptResp) });
       const client = new LangDAGClient({ fetch: fetchFn });
       const result = await client.prompt('Hello');
       expect(result).toBeInstanceOf(Node);
       expect(result.id).toBe('n-1');
       expect(result.content).toBe('Hello back!');
+      expect(result.usage).toEqual(promptResp.usage);
     });
 
     it('sends correct request body', async () => {
@@ -294,7 +303,11 @@ describe('LangDAGClient', () => {
       expect(events[0]).toEqual({ type: 'start' });
       expect(events[1]).toEqual({ type: 'delta', content: 'Hello ' });
       expect(events[2]).toEqual({ type: 'delta', content: 'world!' });
-      expect(events[3]).toEqual({ type: 'done', node_id: 'n-1' });
+      expect(events[3]).toEqual({
+        type: 'done',
+        node_id: 'n-1',
+        response: { node_id: 'n-1' },
+      });
     });
 
     it('stream.node() returns final Node', async () => {
@@ -309,7 +322,7 @@ describe('LangDAGClient', () => {
         'data: {"content":"world!"}',
         '',
         'event: done',
-        'data: {"node_id":"n-1"}',
+        'data: {"node_id":"n-1","content":"Hello world!","usage":{"input_tokens":8,"output_tokens":2}}',
         '',
       ].join('\n');
 
@@ -326,6 +339,7 @@ describe('LangDAGClient', () => {
       expect(node).toBeInstanceOf(Node);
       expect(node.id).toBe('n-1');
       expect(node.content).toBe('Hello world!');
+      expect(node.usage).toEqual({ input_tokens: 8, output_tokens: 2 });
     });
 
     it('stream.node() auto-consumes if not iterated', async () => {

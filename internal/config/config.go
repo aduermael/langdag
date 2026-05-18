@@ -13,11 +13,13 @@ import (
 
 // Config represents the application configuration.
 type Config struct {
-	Storage   StorageConfig   `mapstructure:"storage"`
-	Providers ProvidersConfig `mapstructure:"providers"`
-	Server    ServerConfig    `mapstructure:"server"`
-	Logging   LoggingConfig   `mapstructure:"logging"`
-	Retry     RetryConfig     `mapstructure:"retry"`
+	Storage     StorageConfig               `mapstructure:"storage"`
+	Providers   ProvidersConfig             `mapstructure:"providers"`
+	Deployments map[string]DeploymentConfig `mapstructure:"deployments"`
+	Routing     *RoutingPolicy              `mapstructure:"routing"`
+	Server      ServerConfig                `mapstructure:"server"`
+	Logging     LoggingConfig               `mapstructure:"logging"`
+	Retry       RetryConfig                 `mapstructure:"retry"`
 }
 
 // StorageConfig represents storage configuration.
@@ -73,6 +75,34 @@ type AzureConfig struct {
 	APIKey     string `mapstructure:"api_key"`
 	Endpoint   string `mapstructure:"endpoint"`
 	APIVersion string `mapstructure:"api_version"`
+}
+
+// DeploymentConfig represents deployment-scoped runtime configuration.
+type DeploymentConfig struct {
+	APIKey        string            `mapstructure:"api_key"`
+	BaseURL       string            `mapstructure:"base_url"`
+	Endpoint      string            `mapstructure:"endpoint"`
+	APIVersion    string            `mapstructure:"api_version"`
+	ProjectID     string            `mapstructure:"project_id"`
+	Region        string            `mapstructure:"region"`
+	ModelMappings map[string]string `mapstructure:"model_mappings"`
+}
+
+// RoutingPolicy represents deployment-aware routing configuration.
+type RoutingPolicy struct {
+	Default   []RoutingStage            `mapstructure:"default"`
+	Providers map[string][]RoutingStage `mapstructure:"providers"`
+	Models    map[string][]RoutingStage `mapstructure:"models"`
+}
+
+type RoutingStage struct {
+	Deployments []DeploymentChoice `mapstructure:"deployments"`
+	Retries     int                `mapstructure:"retries"`
+}
+
+type DeploymentChoice struct {
+	DeploymentID string `mapstructure:"deployment_id"`
+	Weight       int    `mapstructure:"weight"`
 }
 
 // RoutingEntry represents a single entry in the routing configuration.

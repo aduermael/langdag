@@ -40,8 +40,14 @@ from .exceptions import (
     StreamError,
 )
 from .models import (
+    AssistantNodeMetadata,
+    CostResult,
+    ModelResolutionMetadata,
     Node,
     NodeType,
+    NormalizedUsage,
+    PricingSnapshot,
+    ProviderCost,
     PromptResponse,
     SSEEvent,
     SSEEventType,
@@ -57,6 +63,12 @@ __all__ = [
     # Models
     "Node",
     "NodeType",
+    "NormalizedUsage",
+    "ModelResolutionMetadata",
+    "PricingSnapshot",
+    "ProviderCost",
+    "CostResult",
+    "AssistantNodeMetadata",
     "PromptResponse",
     "SSEEvent",
     "SSEEventType",

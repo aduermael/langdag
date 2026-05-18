@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -39,8 +40,66 @@ var ContextWithRetryCallback = internalprovider.ContextWithRetryCallback
 // ModelPricing contains pricing and capability information for a model.
 type ModelPricing = models.ModelPricing
 
-// ModelCatalog contains model pricing and capability information organized by provider.
+// ModelCatalog contains deployment-aware model, offering, pricing, and
+// capability information.
 type ModelCatalog = models.Catalog
+
+// Deployment-aware model catalog v1 contract types.
+type CatalogV1 = models.CatalogV1
+type ProviderV1 = models.ProviderV1
+type APIProtocolV1 = models.APIProtocolV1
+type DeploymentV1 = models.DeploymentV1
+type ModelV1 = models.ModelV1
+type ModelOfferingV1 = models.ModelOfferingV1
+type ModelOfferingTemplateV1 = models.ModelOfferingTemplateV1
+type PricingV1 = models.PricingV1
+type PricingStatus = models.PricingStatus
+type CapabilityState = models.CapabilityState
+type CapabilitySetV1 = models.CapabilitySetV1
+type NativeModelIDSource = models.NativeModelIDSource
+type ResponseCostSource = models.ResponseCostSource
+type ProvenanceV1 = models.ProvenanceV1
+type CredentialV1 = models.CredentialV1
+type EnvFallbackV1 = models.EnvFallbackV1
+type CatalogDiagnosticV1 = models.CatalogDiagnosticV1
+type CompiledCatalogV1 = models.CompiledCatalogV1
+type DeploymentBindingV1 = models.DeploymentBindingV1
+type CatalogSource = models.CatalogSource
+type CatalogLoadOptions = models.CatalogLoadOptions
+type CatalogLoadResult = models.CatalogLoadResult
+type CatalogRefreshOptions = models.CatalogRefreshOptions
+type CatalogRefreshResult = models.CatalogRefreshResult
+
+const CatalogV1SchemaVersion = models.CatalogV1SchemaVersion
+const CatalogV1JSONSchema = models.CatalogV1JSONSchema
+const DefaultRemoteCatalogURL = models.DefaultRemoteCatalogURL
+const PricingKnown = models.PricingKnown
+const PricingPartial = models.PricingPartial
+const PricingUnknown = models.PricingUnknown
+const PricingFree = models.PricingFree
+const CatalogSourceEmbedded = models.CatalogSourceEmbedded
+const CatalogSourceCache = models.CatalogSourceCache
+const CatalogSourceRemote = models.CatalogSourceRemote
+const CapabilitySupported = models.CapabilitySupported
+const CapabilityUnsupported = models.CapabilityUnsupported
+const CapabilityUnknown = models.CapabilityUnknown
+const NativeModelIDCatalogKnown = models.NativeModelIDCatalogKnown
+const NativeModelIDDiscovered = models.NativeModelIDDiscovered
+const NativeModelIDUserConfigured = models.NativeModelIDUserConfigured
+const NativeModelIDCatalogOrUser = models.NativeModelIDCatalogOrUser
+const ResponseCostUsageCountersOnly = models.ResponseCostUsageCountersOnly
+const ResponseCostProviderExact = models.ResponseCostProviderExact
+const ResponseCostProviderAsync = models.ResponseCostProviderAsync
+const ResponseCostLocalFree = models.ResponseCostLocalFree
+
+var ReferenceCatalogV1 = models.ReferenceCatalogV1
+var CompileCatalogV1 = models.CompileCatalogV1
+var ValidateCatalogV1 = models.ValidateCatalogV1
+var ParseCatalogV1 = models.ParseCatalogV1
+var ParseRemoteCatalogV1 = models.ParseRemoteCatalogV1
+var SplitOfferingIDV1 = models.SplitOfferingIDV1
+var DeploymentBindingsV1 = models.DeploymentBindingsV1
+var CatalogRefreshOptionsFromEnv = models.CatalogRefreshOptionsFromEnv
 
 // Config holds all configuration for the langdag client.
 type Config struct {
@@ -86,14 +145,45 @@ type Config struct {
 	// OllamaConfig holds Ollama-specific config (local LLM server).
 	OllamaConfig *OllamaConfig
 
+	// ModelCatalog is the deployment-aware catalog used for canonical model
+	// resolution. Defaults to the embedded catalog generated from the published
+	// model-catalog branch when nil. Mutually exclusive with RemoteModelCatalog.
+	ModelCatalog *ModelCatalog
+
+	// RemoteModelCatalog, when non-nil, makes New fetch the published catalog
+	// instead of using the embedded catalog. Fetch failures are returned from
+	// New; no local cache file is read or written. Mutually exclusive with
+	// ModelCatalog.
+	RemoteModelCatalog *RemoteModelCatalogConfig
+
+	// Deployments configures routeable deployment credentials and deployment-
+	// scoped model mappings. Legacy provider-specific fields above remain
+	// readable and are merged into this shape.
+	Deployments map[string]DeploymentConfig
+
+	// RoutingPolicy configures canonical-model deployment routing. Exact model
+	// routes override matching provider routes. Non-matching models use
+	// automatic eligible deployment resolution unless Default is explicitly set.
+	RoutingPolicy *RoutingPolicy
+
 	// Routing configures multi-provider routing (optional).
+	// Deprecated: use RoutingPolicy with deployment IDs.
 	Routing []RoutingEntry
 
 	// FallbackOrder specifies provider fallback order (optional).
+	// Deprecated: use RoutingPolicy with deployment IDs.
 	FallbackOrder []string
 
 	// RetryConfig configures retry behavior.
 	RetryConfig *RetryConfig
+}
+
+// RemoteModelCatalogConfig configures an explicit runtime fetch of the
+// published model catalog. Leave Endpoint empty to use DefaultRemoteCatalogURL.
+type RemoteModelCatalogConfig struct {
+	Endpoint   string
+	Timeout    time.Duration
+	HTTPClient *http.Client
 }
 
 // AnthropicConfig holds Anthropic-specific configuration.
@@ -146,12 +236,30 @@ type OpenRouterConfig struct {
 	BaseURL string
 }
 
+// DeploymentConfig holds deployment-scoped credentials and native model
+// mappings. Azure OpenAI uses ModelMappings to translate canonical model IDs to
+// the caller's Azure deployment names.
+type DeploymentConfig struct {
+	APIKey        string
+	BaseURL       string
+	Endpoint      string
+	APIVersion    string
+	ProjectID     string
+	Region        string
+	ModelMappings map[string]string
+}
+
 // RoutingEntry configures a single provider entry in the routing table.
+// Deprecated: use RoutingPolicy with deployment IDs.
 type RoutingEntry struct {
 	Provider string
 	Weight   int
 	Retry    *RetryConfig
 }
+
+type DeploymentChoice = internalprovider.DeploymentChoice
+type RoutingStage = internalprovider.RoutingStage
+type RoutingPolicy = internalprovider.RoutingPolicy
 
 // RetryEvent holds information about a retry attempt.
 type RetryEvent = internalprovider.RetryEvent
@@ -390,6 +498,12 @@ type StreamChunk struct {
 	// StopReason is the reason the LLM stopped generating (e.g. "end_turn", "tool_use").
 	// Set when Done=true.
 	StopReason string
+
+	Usage           *types.Usage
+	ModelResolution *types.ModelResolutionMetadata
+	NormalizedUsage *types.NormalizedUsage
+	PricingSnapshot *types.PricingSnapshot
+	ProviderCost    *types.ProviderCost
 }
 
 // Prompt starts a new conversation with the given message.
@@ -485,6 +599,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 		defer close(ch)
 		var accumulated string
 		var stopReason string
+		var doneResponse *types.CompletionResponse
 		var terminated bool
 		for event := range events {
 			switch event.Type {
@@ -496,6 +611,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 			case types.StreamEventDone:
 				if event.Response != nil {
 					stopReason = event.Response.StopReason
+					doneResponse = event.Response
 				}
 			case types.StreamEventError:
 				ch <- StreamChunk{Error: event.Error, Done: true}
@@ -506,7 +622,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 				result.NodeID = event.NodeID
 				result.Content = accumulated
 				result.mu.Unlock()
-				ch <- StreamChunk{Done: true, NodeID: event.NodeID, StopReason: stopReason}
+				ch <- streamDoneChunk(event.NodeID, stopReason, doneResponse)
 				terminated = true
 			}
 		}
@@ -528,6 +644,19 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 	return result
 }
 
+func streamDoneChunk(nodeID, stopReason string, response *types.CompletionResponse) StreamChunk {
+	chunk := StreamChunk{Done: true, NodeID: nodeID, StopReason: stopReason}
+	if response == nil {
+		return chunk
+	}
+	chunk.Usage = &response.Usage
+	chunk.ModelResolution = response.ModelResolution
+	chunk.NormalizedUsage = response.NormalizedUsage
+	chunk.PricingSnapshot = response.PricingSnapshot
+	chunk.ProviderCost = response.ProviderCost
+	return chunk
+}
+
 // defaultStoragePath returns the default path for the SQLite database.
 func defaultStoragePath() string {
 	homeDir, err := os.UserHomeDir()
@@ -542,24 +671,85 @@ func buildProvider(ctx context.Context, cfg Config) (internalprovider.Provider, 
 	// Resolve global retry config
 	globalRetry := resolveRetryConfig(cfg.RetryConfig)
 
-	// If routing is configured, build a Router
-	if len(cfg.Routing) > 0 {
+	if !hasDeploymentAwareRuntimeConfig(cfg) && len(cfg.Routing) > 0 {
 		return buildRouter(ctx, cfg, globalRetry)
 	}
 
-	// Single-provider mode
-	providerName := cfg.Provider
-	if providerName == "" {
-		providerName = "anthropic"
-	}
-
-	prov, err := createSingleProvider(ctx, providerName, cfg)
+	catalog, err := resolveModelCatalog(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
+	compiled, err := models.CompileCatalogV1(catalog)
+	if err != nil {
+		return nil, fmt.Errorf("langdag: invalid model catalog: %w", err)
+	}
 
-	log.Printf("langdag: using provider: %s", providerName)
-	return internalprovider.WithRetry(internalprovider.WithServerToolFilter(prov), globalRetry), nil
+	return buildDeploymentAwareProvider(ctx, cfg, compiled, globalRetry)
+}
+
+func hasDeploymentAwareRuntimeConfig(cfg Config) bool {
+	return cfg.ModelCatalog != nil || cfg.RemoteModelCatalog != nil || len(cfg.Deployments) > 0 || cfg.RoutingPolicy != nil
+}
+
+func resolveModelCatalog(ctx context.Context, cfg Config) (*models.Catalog, error) {
+	if cfg.ModelCatalog != nil && cfg.RemoteModelCatalog != nil {
+		return nil, fmt.Errorf("langdag: ModelCatalog and RemoteModelCatalog cannot both be set")
+	}
+	if cfg.ModelCatalog != nil {
+		return cfg.ModelCatalog, nil
+	}
+	if cfg.RemoteModelCatalog != nil {
+		result, err := models.LoadRemoteCatalog(ctx, models.CatalogRefreshOptions{
+			Endpoint:   cfg.RemoteModelCatalog.Endpoint,
+			Timeout:    cfg.RemoteModelCatalog.Timeout,
+			HTTPClient: cfg.RemoteModelCatalog.HTTPClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("langdag: failed to fetch remote model catalog: %w", err)
+		}
+		if result.Catalog == nil {
+			return nil, fmt.Errorf("langdag: remote model catalog was not loaded")
+		}
+		return result.Catalog, nil
+	}
+	result, err := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Catalog, nil
+}
+
+func buildDeploymentAwareProvider(ctx context.Context, cfg Config, catalog *models.CompiledCatalogV1, globalRetry internalprovider.RetryConfig) (internalprovider.Provider, error) {
+	deploymentIDs, routingConfigured := deploymentIDsForConfig(cfg)
+	adapters := map[string]internalprovider.DeploymentAdapter{}
+	for _, deploymentID := range deploymentIDs {
+		adapter, err := createDeploymentAdapter(ctx, deploymentID, cfg, globalRetry)
+		if err != nil {
+			if !routingConfigured && len(deploymentIDs) == 1 {
+				return nil, err
+			}
+			log.Printf("langdag: skipping unavailable deployment %q: %v", deploymentID, err)
+			continue
+		}
+		adapters[deploymentID] = adapter
+		log.Printf("langdag: configured deployment: %s", deploymentID)
+	}
+	if len(adapters) == 0 {
+		return nil, fmt.Errorf("langdag: no configured deployments are available")
+	}
+
+	policy := internalprovider.RoutingPolicy{}
+	if cfg.RoutingPolicy != nil {
+		policy = *cfg.RoutingPolicy
+	} else if len(cfg.Routing) > 0 || len(cfg.FallbackOrder) > 0 {
+		policy = legacyRoutingPolicyFromConfig(cfg, globalRetry)
+	}
+
+	return internalprovider.NewDeploymentRouter(internalprovider.DeploymentRouterOptions{
+		Catalog:     catalog,
+		Deployments: adapters,
+		Routing:     policy,
+	})
 }
 
 // createSingleProvider constructs a single provider by name.
@@ -613,7 +803,14 @@ func createSingleProvider(ctx context.Context, name string, cfg Config) (interna
 		return anthropicprovider.NewVertex(ctx, vc.Region, vc.ProjectID)
 
 	case "anthropic-bedrock":
-		return anthropicprovider.NewBedrock(ctx)
+		region := ""
+		if cfg.BedrockConfig != nil {
+			region = cfg.BedrockConfig.Region
+		}
+		if region == "" {
+			region = os.Getenv("AWS_REGION")
+		}
+		return anthropicprovider.NewBedrock(ctx, region)
 
 	case "openai-azure":
 		ac := cfg.AzureOpenAIConfig
@@ -681,6 +878,293 @@ func createSingleProvider(ctx context.Context, name string, cfg Config) (interna
 	}
 }
 
+func createDeploymentAdapter(ctx context.Context, deploymentID string, cfg Config, globalRetry internalprovider.RetryConfig) (internalprovider.DeploymentAdapter, error) {
+	deploymentCfg := deploymentConfigForID(deploymentID, cfg)
+	var prov internalprovider.Provider
+	var err error
+	switch deploymentID {
+	case "anthropic-direct":
+		if deploymentCfg.APIKey == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: ANTHROPIC_API_KEY not set")
+		}
+		prov = anthropicprovider.New(deploymentCfg.APIKey)
+	case "anthropic-bedrock":
+		prov, err = anthropicprovider.NewBedrock(ctx, deploymentCfg.Region)
+	case "anthropic-vertex":
+		if deploymentCfg.ProjectID == "" || deploymentCfg.Region == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: project_id and region must be set for anthropic-vertex")
+		}
+		prov, err = anthropicprovider.NewVertex(ctx, deploymentCfg.Region, deploymentCfg.ProjectID)
+	case "openai-direct":
+		if deploymentCfg.APIKey == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: OPENAI_API_KEY not set")
+		}
+		prov = openaiprovider.New(deploymentCfg.APIKey, deploymentCfg.BaseURL)
+	case "openai-azure":
+		if deploymentCfg.APIKey == "" || deploymentCfg.Endpoint == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set for openai-azure")
+		}
+		prov = openaiprovider.NewAzure(deploymentCfg.APIKey, deploymentCfg.Endpoint, deploymentCfg.APIVersion)
+	case "gemini-direct":
+		if deploymentCfg.APIKey == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: GEMINI_API_KEY not set")
+		}
+		prov = geminiprovider.New(deploymentCfg.APIKey)
+	case "gemini-vertex":
+		if deploymentCfg.ProjectID == "" || deploymentCfg.Region == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: project_id and region must be set for gemini-vertex")
+		}
+		prov, err = geminiprovider.NewVertex(ctx, deploymentCfg.ProjectID, deploymentCfg.Region)
+	case "grok-direct":
+		if deploymentCfg.APIKey == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: XAI_API_KEY not set")
+		}
+		prov = openaiprovider.NewGrok(deploymentCfg.APIKey, deploymentCfg.BaseURL)
+	case "openrouter":
+		if deploymentCfg.APIKey == "" {
+			return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: OPENROUTER_API_KEY not set")
+		}
+		prov = openaiprovider.NewOpenRouter(deploymentCfg.APIKey, deploymentCfg.BaseURL)
+	case "ollama-local":
+		prov = openaiprovider.NewOllama(deploymentCfg.BaseURL)
+	default:
+		return internalprovider.DeploymentAdapter{}, fmt.Errorf("langdag: unknown deployment: %s", deploymentID)
+	}
+	if err != nil {
+		return internalprovider.DeploymentAdapter{}, err
+	}
+	prov = internalprovider.WithRetry(prov, globalRetry)
+	return internalprovider.DeploymentAdapter{
+		DeploymentID:  deploymentID,
+		Provider:      prov,
+		ModelMappings: deploymentCfg.ModelMappings,
+	}, nil
+}
+
+func deploymentIDsForConfig(cfg Config) ([]string, bool) {
+	seen := map[string]bool{}
+	var ids []string
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	routingConfigured := cfg.RoutingPolicy != nil || len(cfg.Routing) > 0
+	for deploymentID := range cfg.Deployments {
+		add(deploymentID)
+	}
+	if cfg.RoutingPolicy != nil {
+		collectDeploymentChoices := func(stages []internalprovider.RoutingStage) {
+			for _, stage := range stages {
+				for _, choice := range stage.Deployments {
+					add(choice.DeploymentID)
+				}
+			}
+		}
+		collectDeploymentChoices(cfg.RoutingPolicy.Default)
+		for _, stages := range cfg.RoutingPolicy.Providers {
+			collectDeploymentChoices(stages)
+		}
+		for _, stages := range cfg.RoutingPolicy.Models {
+			collectDeploymentChoices(stages)
+		}
+	}
+	for _, entry := range cfg.Routing {
+		add(deploymentIDForProviderName(entry.Provider))
+	}
+	if len(cfg.Routing) > 0 || len(cfg.Deployments) > 0 {
+		for _, providerName := range cfg.FallbackOrder {
+			add(deploymentIDForProviderName(providerName))
+		}
+	}
+	if len(ids) == 0 {
+		providerName := cfg.Provider
+		if providerName == "" {
+			providerName = "anthropic"
+		}
+		add(deploymentIDForProviderName(providerName))
+	}
+	return ids, routingConfigured
+}
+
+func legacyRoutingPolicyFromConfig(cfg Config, globalRetry internalprovider.RetryConfig) internalprovider.RoutingPolicy {
+	var defaultStage internalprovider.RoutingStage
+	for _, entry := range cfg.Routing {
+		deploymentID := deploymentIDForProviderName(entry.Provider)
+		if deploymentID == "" {
+			continue
+		}
+		defaultStage.Deployments = append(defaultStage.Deployments, internalprovider.DeploymentChoice{
+			DeploymentID: deploymentID,
+			Weight:       entry.Weight,
+		})
+		if entry.Retry != nil && entry.Retry.MaxRetries > defaultStage.Retries {
+			defaultStage.Retries = entry.Retry.MaxRetries
+		}
+	}
+	if defaultStage.Retries == 0 {
+		defaultStage.Retries = globalRetry.MaxRetries
+	}
+	var stages []internalprovider.RoutingStage
+	if len(defaultStage.Deployments) > 0 {
+		stages = append(stages, defaultStage)
+	}
+	for _, providerName := range cfg.FallbackOrder {
+		deploymentID := deploymentIDForProviderName(providerName)
+		if deploymentID == "" {
+			continue
+		}
+		stages = append(stages, internalprovider.RoutingStage{
+			Deployments: []internalprovider.DeploymentChoice{{DeploymentID: deploymentID, Weight: 100}},
+			Retries:     globalRetry.MaxRetries,
+		})
+	}
+	return internalprovider.RoutingPolicy{Default: stages}
+}
+
+func deploymentIDForProviderName(providerName string) string {
+	switch providerName {
+	case "", "anthropic":
+		return "anthropic-direct"
+	case "openai":
+		return "openai-direct"
+	case "gemini", "gemma":
+		return "gemini-direct"
+	case "grok":
+		return "grok-direct"
+	case "ollama":
+		return "ollama-local"
+	case "anthropic-direct", "anthropic-bedrock", "anthropic-vertex", "openai-direct", "openai-azure", "gemini-direct", "gemini-vertex", "grok-direct", "openrouter", "ollama-local":
+		return providerName
+	default:
+		return ""
+	}
+}
+
+func deploymentConfigForID(deploymentID string, cfg Config) DeploymentConfig {
+	out := cfg.Deployments[deploymentID]
+	if out.ModelMappings != nil {
+		out.ModelMappings = cloneLangdagStringMap(out.ModelMappings)
+	}
+	applyEnv := func(field *string, names ...string) {
+		if *field != "" {
+			return
+		}
+		for _, name := range names {
+			if value := os.Getenv(name); value != "" {
+				*field = value
+				return
+			}
+		}
+	}
+	switch deploymentID {
+	case "anthropic-direct":
+		if out.APIKey == "" {
+			out.APIKey = cfg.APIKeys["anthropic"]
+		}
+		if out.BaseURL == "" && cfg.AnthropicConfig != nil {
+			out.BaseURL = cfg.AnthropicConfig.BaseURL
+		}
+		applyEnv(&out.APIKey, "ANTHROPIC_API_KEY")
+	case "anthropic-bedrock":
+		if cfg.BedrockConfig != nil && out.Region == "" {
+			out.Region = cfg.BedrockConfig.Region
+		}
+		applyEnv(&out.Region, "AWS_REGION")
+	case "anthropic-vertex":
+		if cfg.VertexConfig != nil {
+			if out.ProjectID == "" {
+				out.ProjectID = cfg.VertexConfig.ProjectID
+			}
+			if out.Region == "" {
+				out.Region = cfg.VertexConfig.Region
+			}
+		}
+		applyEnv(&out.ProjectID, "VERTEX_PROJECT_ID")
+		applyEnv(&out.Region, "VERTEX_REGION")
+	case "openai-direct":
+		if out.APIKey == "" {
+			out.APIKey = cfg.APIKeys["openai"]
+		}
+		if out.BaseURL == "" && cfg.OpenAIConfig != nil {
+			out.BaseURL = cfg.OpenAIConfig.BaseURL
+		}
+		applyEnv(&out.APIKey, "OPENAI_API_KEY")
+		applyEnv(&out.BaseURL, "OPENAI_BASE_URL")
+	case "openai-azure":
+		if cfg.AzureOpenAIConfig != nil {
+			if out.APIKey == "" {
+				out.APIKey = cfg.AzureOpenAIConfig.APIKey
+			}
+			if out.Endpoint == "" {
+				out.Endpoint = cfg.AzureOpenAIConfig.Endpoint
+			}
+			if out.APIVersion == "" {
+				out.APIVersion = cfg.AzureOpenAIConfig.APIVersion
+			}
+		}
+		applyEnv(&out.APIKey, "AZURE_OPENAI_API_KEY")
+		applyEnv(&out.Endpoint, "AZURE_OPENAI_ENDPOINT")
+		applyEnv(&out.APIVersion, "AZURE_OPENAI_API_VERSION")
+	case "gemini-direct":
+		if out.APIKey == "" {
+			out.APIKey = cfg.APIKeys["gemini"]
+		}
+		if out.BaseURL == "" && cfg.GeminiConfig != nil {
+			out.BaseURL = cfg.GeminiConfig.BaseURL
+		}
+		applyEnv(&out.APIKey, "GEMINI_API_KEY")
+	case "gemini-vertex":
+		if cfg.VertexConfig != nil {
+			if out.ProjectID == "" {
+				out.ProjectID = cfg.VertexConfig.ProjectID
+			}
+			if out.Region == "" {
+				out.Region = cfg.VertexConfig.Region
+			}
+		}
+		applyEnv(&out.ProjectID, "VERTEX_PROJECT_ID")
+		applyEnv(&out.Region, "VERTEX_REGION")
+	case "grok-direct":
+		if out.APIKey == "" {
+			out.APIKey = cfg.APIKeys["grok"]
+		}
+		if out.BaseURL == "" && cfg.GrokConfig != nil {
+			out.BaseURL = cfg.GrokConfig.BaseURL
+		}
+		applyEnv(&out.APIKey, "XAI_API_KEY")
+		applyEnv(&out.BaseURL, "XAI_BASE_URL")
+	case "openrouter":
+		if out.APIKey == "" {
+			out.APIKey = cfg.APIKeys["openrouter"]
+		}
+		if out.BaseURL == "" && cfg.OpenRouterConfig != nil {
+			out.BaseURL = cfg.OpenRouterConfig.BaseURL
+		}
+		applyEnv(&out.APIKey, "OPENROUTER_API_KEY")
+		applyEnv(&out.BaseURL, "OPENROUTER_BASE_URL")
+	case "ollama-local":
+		if out.BaseURL == "" && cfg.OllamaConfig != nil {
+			out.BaseURL = cfg.OllamaConfig.BaseURL
+		}
+		applyEnv(&out.BaseURL, "OLLAMA_BASE_URL")
+	}
+	return out
+}
+
+func cloneLangdagStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
 // buildRouter creates a Router from routing and fallback configuration.
 func buildRouter(ctx context.Context, cfg Config, globalRetry internalprovider.RetryConfig) (internalprovider.Provider, error) {
 	providerCache := map[string]internalprovider.Provider{}
@@ -744,6 +1228,40 @@ func DefaultModelCatalog() (*ModelCatalog, error) {
 // the embedded default if the file does not exist or is invalid JSON.
 func LoadModelCatalog(cachePath string) (*ModelCatalog, error) {
 	return models.LoadCatalog(cachePath)
+}
+
+// LoadModelCatalogWithOptions loads a usable model catalog immediately,
+// preferring a valid cache and falling back to embedded catalog data with
+// diagnostics.
+func LoadModelCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
+	return models.LoadCatalogWithOptions(opts)
+}
+
+// LoadRuntimeModelCatalog loads the model catalog used by prompt/runtime
+// routing from the embedded catalog generated from the published model-catalog
+// branch.
+func LoadRuntimeModelCatalog() (*CatalogLoadResult, error) {
+	return models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
+}
+
+// LoadRuntimeModelCatalogWithOptions loads the prompt/runtime catalog with
+// explicit load options. If opts.CachePath is empty, the embedded catalog is
+// used and no user cache path is read implicitly.
+func LoadRuntimeModelCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
+	return models.LoadRuntimeCatalog(opts)
+}
+
+// LoadRemoteModelCatalog fetches the published remote model catalog and
+// validates it without reading or writing any local cache file.
+func LoadRemoteModelCatalog(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	return models.LoadRemoteCatalog(ctx, opts)
+}
+
+// RefreshModelCatalogCache fetches the published remote catalog artifact. If
+// opts.CachePath is non-empty, the fetched catalog replaces that cache.
+// Invalid, stale, or partial remote data does not replace an existing cache.
+func RefreshModelCatalogCache(ctx context.Context, opts CatalogRefreshOptions) (*CatalogRefreshResult, error) {
+	return models.RefreshCatalogCache(ctx, opts)
 }
 
 // FetchModelCatalog fetches the latest model catalog from official provider

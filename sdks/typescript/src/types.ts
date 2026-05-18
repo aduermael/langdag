@@ -29,17 +29,88 @@ export interface NodeData {
   sequence: number;
   node_type: NodeType;
   content: string;
+  provider?: string;
   model?: string;
   tokens_in?: number;
   tokens_out?: number;
   tokens_cache_read?: number;
   tokens_cache_creation?: number;
   tokens_reasoning?: number;
+  usage?: NormalizedUsage;
   latency_ms?: number;
+  stop_reason?: string;
   status?: string;
   title?: string;
   system_prompt?: string;
   created_at: string;
+  metadata?: AssistantNodeMetadata;
+  cost?: CostResult;
+}
+
+export interface NormalizedUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_write_input_tokens?: number;
+  reasoning_tokens?: number;
+  tool_use_prompt_tokens?: number;
+  audio_input_tokens?: number;
+  audio_output_tokens?: number;
+  image_input_tokens?: number;
+  image_output_tokens?: number;
+  accepted_prediction_tokens?: number;
+  rejected_prediction_tokens?: number;
+  service_tier?: string;
+  dimensions?: Record<string, number>;
+}
+
+export interface ModelResolutionMetadata {
+  canonical_model_id: string;
+  offering_id: string;
+  deployment_id: string;
+  provider_id: string;
+  api_protocol_id: string;
+  native_model_id: string;
+}
+
+export interface PricingSnapshot {
+  status: 'known' | 'partial' | 'unknown' | 'free' | string;
+  currency?: string;
+  effective_at?: string;
+  source?: string;
+  rates_per_1m?: Record<string, number>;
+  missing_dimensions?: string[];
+}
+
+export interface ProviderCost {
+  total: number;
+  currency: string;
+  source: string;
+  raw?: unknown;
+}
+
+export interface CostDimension {
+  name: string;
+  quantity: number;
+  rate_per_1m: number;
+  cost: number;
+}
+
+export interface CostResult {
+  status: 'known' | 'partial' | 'unknown' | 'free' | string;
+  total?: number;
+  currency?: string;
+  source?: string;
+  missing_dimensions?: string[];
+  dimensions?: CostDimension[];
+}
+
+export interface AssistantNodeMetadata {
+  model_resolution?: ModelResolutionMetadata;
+  normalized_usage?: NormalizedUsage;
+  pricing_snapshot?: PricingSnapshot;
+  provider_cost?: ProviderCost;
 }
 
 // ============================================================================
@@ -68,6 +139,19 @@ export interface PromptOptions {
   tools?: ToolDefinition[];
 }
 
+export interface PromptResponse {
+  node_id: string;
+  content: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  tokens_cache_read?: number;
+  tokens_cache_creation?: number;
+  tokens_reasoning?: number;
+  usage?: NormalizedUsage;
+  metadata?: AssistantNodeMetadata;
+  cost?: CostResult;
+}
+
 // ============================================================================
 // SSE Event Types
 // ============================================================================
@@ -93,6 +177,7 @@ export interface SSEDeltaEvent {
 export interface SSEDoneEvent {
   type: 'done';
   node_id: string;
+  response?: PromptResponse;
 }
 
 /**

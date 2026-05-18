@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"text/tabwriter"
 	"time"
 
@@ -14,9 +13,10 @@ import (
 )
 
 var (
-	modelsProvider string
-	modelsUpdate   bool
-	modelsGenerate bool
+	modelsProvider   string
+	modelsUpdate     bool
+	modelsGenerate   bool
+	modelsCatalogURL string
 )
 
 // modelsCmd lists available models with pricing and capabilities.
@@ -26,22 +26,21 @@ var modelsCmd = &cobra.Command{
 	Long: `Display model names, pricing (per 1M tokens), context windows, and max output
 for all supported providers. Data is sourced from official provider documentation.
 
-Use --update to fetch the latest data into the local runtime cache.
+Use --update to fetch the latest published catalog for this command.
 Use --generate --json to rebuild the deployment-aware catalog artifact for
 publishing automation.`,
 	Run: runModels,
 }
 
 func init() {
-	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by provider (anthropic, openai, gemini, grok)")
-	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest model data from remote source")
+	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by model owner or deployment provider (anthropic, openai, google, xai, openrouter, ollama)")
+	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest published model catalog for this command")
 	modelsCmd.Flags().BoolVar(&modelsGenerate, "generate", false, "regenerate deployment-aware model catalog artifact")
+	modelsCmd.Flags().StringVar(&modelsCatalogURL, "catalog-url", "", "published catalog URL for --update")
 	rootCmd.AddCommand(modelsCmd)
 }
 
 func runModels(cmd *cobra.Command, args []string) {
-	cachePath := modelsCachePath()
-
 	var catalog *models.Catalog
 	var err error
 
@@ -67,27 +66,34 @@ func runModels(cmd *cobra.Command, args []string) {
 	}
 
 	if modelsUpdate {
-		fmt.Fprintln(os.Stderr, "Fetching latest model data...")
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		catalog, err = models.FetchLatest(ctx)
-		if err != nil {
-			exitError("failed to fetch model data: %v", err)
+		fmt.Fprintln(os.Stderr, "Fetching published model catalog...")
+		opts := models.CatalogRefreshOptionsFromEnv("")
+		if modelsCatalogURL != "" {
+			opts.Endpoint = modelsCatalogURL
 		}
-
-		if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
-			exitError("failed to create cache directory: %v", err)
+		ctx := context.Background()
+		result, refreshErr := models.RefreshCatalogCache(ctx, opts)
+		if refreshErr != nil {
+			exitError("failed to fetch published model catalog: %v", refreshErr)
 		}
-		if err := models.SaveCatalog(catalog, cachePath); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to save cache: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "Saved to %s\n", cachePath)
+		for _, diagnostic := range result.Diagnostics {
+			fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
 		}
+		if result.Catalog == nil {
+			exitError("published model catalog was not refreshed")
+		}
+		catalog = result.Catalog
 	} else {
-		catalog, err = models.LoadCatalog(cachePath)
+		result, loadErr := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
+		err = loadErr
 		if err != nil {
 			exitError("failed to load model catalog: %v", err)
+		}
+		catalog = result.Catalog
+		if verbose {
+			for _, diagnostic := range result.Diagnostics {
+				fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
+			}
 		}
 	}
 
@@ -96,56 +102,53 @@ func runModels(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	providers := []string{"anthropic", "openai", "gemini", "grok"}
-	if modelsProvider != "" {
-		providers = []string{modelsProvider}
+	compiled, err := models.CompileCatalogV1(catalog)
+	if err != nil {
+		exitError("failed to compile model catalog: %v", err)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "MODEL\tINPUT $/1M\tOUTPUT $/1M\tCONTEXT\tMAX OUTPUT\n")
+	fmt.Fprintf(w, "CANONICAL MODEL\tOWNER\tDEPLOYMENT\tAPI\tNATIVE MODEL\tINPUT $/1M\tOUTPUT $/1M\tCONTEXT\tMAX OUTPUT\n")
 
-	for _, p := range providers {
-		modelList := catalog.ForProvider(p)
-		if len(modelList) == 0 {
+	for _, offering := range catalog.Offerings {
+		model := compiled.ModelsByID[offering.CanonicalModelID]
+		deployment := compiled.DeploymentsByID[offering.DeploymentID]
+		if model == nil || deployment == nil {
 			continue
 		}
-		for _, m := range modelList {
-			fmt.Fprintf(w, "%s\t$%.4g\t$%.4g\t%s\t%s\n",
-				m.ID,
-				m.InputPricePer1M,
-				m.OutputPricePer1M,
-				formatTokens(m.ContextWindow),
-				formatTokens(m.MaxOutput),
-			)
+		if modelsProvider != "" && !catalogFilterMatches(compiled, model, deployment, offering.DeploymentID, modelsProvider) {
+			continue
 		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			offering.CanonicalModelID,
+			model.ProviderID,
+			offering.DeploymentID,
+			deployment.APIProtocolID,
+			offering.NativeModelID,
+			formatCatalogPrice(offering.Pricing, "input_tokens"),
+			formatCatalogPrice(offering.Pricing, "output_tokens"),
+			formatTokens(model.ContextWindow),
+			formatTokens(model.MaxOutput),
+		)
 	}
 	w.Flush()
 
-	fmt.Fprintf(os.Stderr, "\nSource: %s | Updated: %s\n", catalog.Source, catalog.UpdatedAt.Format("2006-01-02"))
+	fmt.Fprintf(os.Stderr, "\nGenerated: %s | Stale after: %s\n", catalog.GeneratedAt.Format("2006-01-02"), catalog.StaleAfter.Format("2006-01-02"))
+	for _, diagnostic := range compiled.Diagnostics {
+		fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
+	}
 }
 
 func printModelsJSON(catalog *models.Catalog) {
 	out := catalog
 	if modelsProvider != "" {
-		out = &models.Catalog{
-			UpdatedAt: catalog.UpdatedAt,
-			Source:    catalog.Source,
-			Providers: map[string][]models.ModelPricing{
-				modelsProvider: catalog.ForProvider(modelsProvider),
-			},
+		if compiled, err := models.CompileCatalogV1(catalog); err == nil {
+			out = filterCatalogForJSON(catalog, compiled, modelsProvider)
 		}
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(out)
-}
-
-func modelsCachePath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(homeDir, ".config", "langdag", "model_catalog.json")
 }
 
 func formatTokens(n int) string {
@@ -165,4 +168,156 @@ func formatTokens(n int) string {
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+func formatCatalogPrice(pricing models.PricingV1, dimension string) string {
+	switch pricing.Status {
+	case models.PricingKnown, models.PricingPartial, models.PricingFree:
+		if rate, ok := pricing.RatesPer1M[dimension]; ok {
+			return fmt.Sprintf("$%.4g", rate)
+		}
+		if pricing.Status == models.PricingPartial {
+			return "partial"
+		}
+		return pricingStatusLabel(pricing.Status)
+	default:
+		return pricingStatusLabel(pricing.Status)
+	}
+}
+
+func pricingStatusLabel(status models.PricingStatus) string {
+	if status == "" {
+		return "unknown"
+	}
+	return string(status)
+}
+
+func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCatalogV1, filter string) *models.Catalog {
+	out := &models.Catalog{
+		SchemaVersion:     catalog.SchemaVersion,
+		GeneratedAt:       catalog.GeneratedAt,
+		StaleAfter:        catalog.StaleAfter,
+		Providers:         map[string]*models.ProviderV1{},
+		APIProtocols:      map[string]*models.APIProtocolV1{},
+		Deployments:       map[string]*models.DeploymentV1{},
+		Models:            map[string]*models.ModelV1{},
+		Offerings:         []models.ModelOfferingV1{},
+		OfferingTemplates: []models.ModelOfferingTemplateV1{},
+		Aliases:           map[string]string{},
+		Provenance:        catalog.Provenance,
+	}
+	includeDeployment := func(deployment *models.DeploymentV1) {
+		if deployment == nil {
+			return
+		}
+		out.Deployments[deployment.ID] = deployment
+		if provider := compiled.ProvidersByID[deployment.ProviderID]; provider != nil {
+			out.Providers[provider.ID] = provider
+		}
+		if protocol := compiled.ProtocolsByID[deployment.APIProtocolID]; protocol != nil {
+			out.APIProtocols[protocol.ID] = protocol
+		}
+	}
+	includeModel := func(model *models.ModelV1) {
+		if model == nil {
+			return
+		}
+		out.Models[model.ID] = model
+		if provider := compiled.ProvidersByID[model.ProviderID]; provider != nil {
+			out.Providers[provider.ID] = provider
+		}
+	}
+	for _, offering := range catalog.Offerings {
+		model := compiled.ModelsByID[offering.CanonicalModelID]
+		deployment := compiled.DeploymentsByID[offering.DeploymentID]
+		if !catalogFilterMatches(compiled, model, deployment, offering.DeploymentID, filter) {
+			continue
+		}
+		out.Offerings = append(out.Offerings, offering)
+		includeModel(model)
+		includeDeployment(deployment)
+	}
+	for _, template := range catalog.OfferingTemplates {
+		model := compiled.ModelsByID[template.CanonicalModelID]
+		deployment := compiled.DeploymentsByID[template.DeploymentID]
+		if !catalogFilterMatches(compiled, model, deployment, template.DeploymentID, filter) {
+			continue
+		}
+		out.OfferingTemplates = append(out.OfferingTemplates, template)
+		includeModel(model)
+		includeDeployment(deployment)
+	}
+	for alias, target := range catalog.Aliases {
+		if out.Models[target] != nil {
+			out.Aliases[alias] = target
+		}
+	}
+	if len(out.Offerings) == 0 && len(out.OfferingTemplates) > 0 {
+		for _, offering := range catalog.Offerings {
+			if out.Models[offering.CanonicalModelID] == nil {
+				continue
+			}
+			model := compiled.ModelsByID[offering.CanonicalModelID]
+			deployment := compiled.DeploymentsByID[offering.DeploymentID]
+			if model == nil || deployment == nil {
+				continue
+			}
+			out.Offerings = append(out.Offerings, offering)
+			includeDeployment(deployment)
+		}
+	}
+	if len(out.Offerings) == 0 {
+		return catalog
+	}
+	return out
+}
+
+func catalogFilterMatches(compiled *models.CompiledCatalogV1, model *models.ModelV1, deployment *models.DeploymentV1, deploymentID, filter string) bool {
+	if model == nil || deployment == nil {
+		return false
+	}
+	if model.ProviderID == filter || deployment.ProviderID == filter || deploymentID == filter {
+		return true
+	}
+	if providerHasAlias(compiled.ProvidersByID[model.ProviderID], filter) {
+		return true
+	}
+	if providerHasAlias(compiled.ProvidersByID[deployment.ProviderID], filter) {
+		return true
+	}
+	for _, legacyDeploymentID := range legacyFilterDeployments(filter) {
+		if deploymentID == legacyDeploymentID {
+			return true
+		}
+	}
+	return false
+}
+
+func providerHasAlias(provider *models.ProviderV1, alias string) bool {
+	if provider == nil {
+		return false
+	}
+	for _, candidate := range provider.Aliases {
+		if candidate == alias {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyFilterDeployments(filter string) []string {
+	switch filter {
+	case "anthropic":
+		return []string{"anthropic-direct"}
+	case "openai":
+		return []string{"openai-direct"}
+	case "gemini", "gemma":
+		return []string{"gemini-direct"}
+	case "grok":
+		return []string{"grok-direct"}
+	case "ollama":
+		return []string{"ollama-local"}
+	default:
+		return []string{filter}
+	}
 }

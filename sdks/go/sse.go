@@ -10,21 +10,23 @@ import (
 
 // SSEEvent represents a Server-Sent Event.
 type SSEEvent struct {
-	Type    string
-	Content string // For delta events
-	NodeID  string // For done events
-	Error   string // For error events
+	Type     string
+	Content  string // For delta events
+	NodeID   string // For done events
+	Error    string // For error events
+	Response *PromptResponse
 }
 
 // Stream wraps an SSE response and provides a channel-based API.
 type Stream struct {
-	events  chan SSEEvent
-	body    io.ReadCloser
-	client  *Client
-	nodeID  string
-	err     error
-	content strings.Builder
-	done    sync.WaitGroup
+	events   chan SSEEvent
+	body     io.ReadCloser
+	client   *Client
+	nodeID   string
+	doneResp *PromptResponse
+	err      error
+	content  strings.Builder
+	done     sync.WaitGroup
 }
 
 // newStream creates a new Stream from an HTTP response body.
@@ -52,6 +54,9 @@ func (s *Stream) Node() (*Node, error) {
 	}
 	if s.nodeID == "" {
 		return nil, &StreamError{Message: "stream completed without node_id"}
+	}
+	if s.doneResp != nil {
+		return nodeFromPromptResponse(s.doneResp, s.client, s.content.String()), nil
 	}
 	return &Node{
 		ID:     s.nodeID,
@@ -94,6 +99,7 @@ func (s *Stream) read() {
 				}
 				if event.Type == "done" {
 					s.nodeID = event.NodeID
+					s.doneResp = event.Response
 				}
 				if event.Type == "error" {
 					s.err = &StreamError{Message: event.Error}
@@ -124,6 +130,7 @@ func (s *Stream) read() {
 		}
 		if event.Type == "done" {
 			s.nodeID = event.NodeID
+			s.doneResp = event.Response
 		}
 		if event.Type == "error" {
 			s.err = &StreamError{Message: event.Error}
@@ -151,11 +158,10 @@ func (s *Stream) parseEvent(eventType, data string) SSEEvent {
 			event.Content = d.Content
 		}
 	case "done":
-		var d struct {
-			NodeID string `json:"node_id"`
-		}
+		var d PromptResponse
 		if err := json.Unmarshal([]byte(data), &d); err == nil {
 			event.NodeID = d.NodeID
+			event.Response = &d
 		}
 	case "error":
 		event.Error = data

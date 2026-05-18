@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"langdag.com/langdag/internal/models"
 	"langdag.com/langdag/internal/provider"
 	"langdag.com/langdag/internal/storage"
 	"langdag.com/langdag/types"
@@ -19,6 +21,11 @@ type Manager struct {
 	storage  storage.Storage
 	provider provider.Provider
 }
+
+var (
+	defaultCatalogOnce sync.Once
+	defaultCatalog     *models.Catalog
+)
 
 // NewManager creates a new conversation manager.
 func NewManager(store storage.Storage, prov provider.Provider) *Manager {
@@ -227,27 +234,41 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 		defer close(events)
 
 		var (
-			groupID              string
-			accumulatedText      string
-			cumulativeOutputToks int
-			currentParent        = parentNode
-			lastSavedNodeID      string
-			currentStream        = providerEvents
+			groupID                string
+			accumulatedText        string
+			cumulativeOutputToks   int
+			currentParent          = parentNode
+			lastSavedNodeID        string
+			currentStream          = providerEvents
+			cumulativeUsage        types.Usage
+			cumulativeProviderCost *types.ProviderCost
 		)
 
 		for {
 			var fullText string
 			var response *types.CompletionResponse
+			var responseOutputToks int
 			startTime := time.Now()
 
 			for event := range currentStream {
-				events <- event
 				switch event.Type {
 				case types.StreamEventDelta:
 					fullText += event.Content
 				case types.StreamEventDone:
 					response = event.Response
+					m.enrichCompletionResponse(response, model)
+					if response != nil {
+						responseOutputToks = response.Usage.OutputTokens
+						cumulativeUsage = types.AddUsage(cumulativeUsage, response.Usage)
+						response.Usage = cumulativeUsage
+						normalized := types.NormalizedUsageFromUsage(cumulativeUsage)
+						response.NormalizedUsage = &normalized
+						cumulativeProviderCost = addProviderCost(cumulativeProviderCost, response.ProviderCost)
+						response.ProviderCost = cumulativeProviderCost
+					}
+					event.Response = response
 				}
+				events <- event
 			}
 
 			// Empty stream — nothing to save.
@@ -274,7 +295,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 
 			accumulatedText += fullText
 			if response != nil {
-				cumulativeOutputToks += response.Usage.OutputTokens
+				cumulativeOutputToks += responseOutputToks
 			}
 
 			// Decide whether to continue: max_tokens, text-only, within budget.
@@ -319,6 +340,7 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 				assistantNode.TokensCacheRead = response.Usage.CacheReadInputTokens
 				assistantNode.TokensCacheCreation = response.Usage.CacheCreationInputTokens
 				assistantNode.TokensReasoning = response.Usage.ReasoningTokens
+				assistantNode.Metadata = assistantMetadataJSON(response)
 			}
 			if err := m.storage.CreateNode(ctx, assistantNode); err != nil {
 				events <- types.StreamEvent{
@@ -387,6 +409,77 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 	}()
 
 	return events, nil
+}
+
+func (m *Manager) enrichCompletionResponse(response *types.CompletionResponse, requestedModel string) {
+	if response == nil {
+		return
+	}
+	if response.Model == "" {
+		response.Model = requestedModel
+	}
+	if response.Provider == "" && m.provider != nil {
+		response.Provider = m.provider.Name()
+	}
+	response.EnsureNormalizedUsage()
+
+	if response.ModelResolution != nil && response.PricingSnapshot != nil {
+		return
+	}
+	catalog := getDefaultCatalog()
+	if catalog == nil {
+		return
+	}
+	resolution, snapshot, _ := catalog.MetadataForLegacyProviderModel(response.Provider, requestedModel, response.Model)
+	if response.ModelResolution == nil {
+		response.ModelResolution = resolution
+	}
+	if response.PricingSnapshot == nil {
+		response.PricingSnapshot = snapshot
+	}
+}
+
+func getDefaultCatalog() *models.Catalog {
+	defaultCatalogOnce.Do(func() {
+		catalog, err := models.DefaultCatalog()
+		if err == nil {
+			defaultCatalog = catalog
+		}
+	})
+	return defaultCatalog
+}
+
+func assistantMetadataJSON(response *types.CompletionResponse) json.RawMessage {
+	if response == nil {
+		return nil
+	}
+	metadata := response.AssistantMetadata()
+	if metadata.ModelResolution == nil && metadata.NormalizedUsage == nil && metadata.PricingSnapshot == nil && metadata.ProviderCost == nil {
+		return nil
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func addProviderCost(total, next *types.ProviderCost) *types.ProviderCost {
+	if next == nil {
+		return total
+	}
+	if total == nil {
+		copy := *next
+		return &copy
+	}
+	if total.Currency != next.Currency || total.Source != next.Source {
+		return nil
+	}
+	return &types.ProviderCost{
+		Total:    total.Total + next.Total,
+		Currency: total.Currency,
+		Source:   total.Source,
+	}
 }
 
 // buildMessages converts ancestor nodes into LLM messages.

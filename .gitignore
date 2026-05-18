@@ -39,6 +39,10 @@ Thumbs.db
 dist/
 bin/
 
+# Generated only on the model-catalog publishing branch.
+/docs/model-catalog/v1/catalog.json
+/.config/langdag/model_catalog.json
+
 # Node
 node_modules/
 .claude/

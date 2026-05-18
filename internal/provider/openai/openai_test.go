@@ -86,21 +86,27 @@ func TestConvertMessages_ToolResult(t *testing.T) {
 }
 
 func TestMapUsage(t *testing.T) {
+	cost := 0.0042
 	u := &usage{
 		PromptTokens:     100,
 		CompletionTokens: 50,
+		Cost:             &cost,
 		PromptTokensDetails: &tokenDetails{
 			CachedTokens: 30,
+			AudioTokens:  7,
 		},
 		CompletionTokensDetails: &tokenDetails{
-			ReasoningTokens: 10,
+			ReasoningTokens:          10,
+			AudioTokens:              3,
+			AcceptedPredictionTokens: 2,
+			RejectedPredictionTokens: 1,
 		},
 	}
 
-	result := mapUsage(u)
+	result := mapUsage(u, "")
 
-	if result.InputTokens != 100 {
-		t.Errorf("expected InputTokens=100, got %d", result.InputTokens)
+	if result.InputTokens != 70 {
+		t.Errorf("expected InputTokens=70, got %d", result.InputTokens)
 	}
 	if result.OutputTokens != 50 {
 		t.Errorf("expected OutputTokens=50, got %d", result.OutputTokens)
@@ -111,6 +117,16 @@ func TestMapUsage(t *testing.T) {
 	if result.ReasoningTokens != 10 {
 		t.Errorf("expected ReasoningTokens=10, got %d", result.ReasoningTokens)
 	}
+	if result.AudioInputTokens != 7 || result.AudioOutputTokens != 3 {
+		t.Errorf("audio tokens = %d/%d, want 7/3", result.AudioInputTokens, result.AudioOutputTokens)
+	}
+	if result.AcceptedPredictionTokens != 2 || result.RejectedPredictionTokens != 1 {
+		t.Errorf("prediction tokens = %d/%d, want 2/1", result.AcceptedPredictionTokens, result.RejectedPredictionTokens)
+	}
+	providerCost := providerCostFromUsage(u)
+	if providerCost == nil || providerCost.Total != cost || providerCost.Source != types.CostSourceProviderResponse {
+		t.Fatalf("providerCostFromUsage = %+v, want exact provider cost", providerCost)
+	}
 }
 
 func TestMapUsage_NoDetails(t *testing.T) {
@@ -119,7 +135,7 @@ func TestMapUsage_NoDetails(t *testing.T) {
 		CompletionTokens: 50,
 	}
 
-	result := mapUsage(u)
+	result := mapUsage(u, "")
 
 	if result.CacheReadInputTokens != 0 {
 		t.Errorf("expected CacheReadInputTokens=0, got %d", result.CacheReadInputTokens)
@@ -289,8 +305,8 @@ data: [DONE]
 	if doneResp == nil {
 		t.Fatal("expected done response")
 	}
-	if doneResp.Usage.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100", doneResp.Usage.InputTokens)
+	if doneResp.Usage.InputTokens != 20 {
+		t.Errorf("InputTokens = %d, want 20", doneResp.Usage.InputTokens)
 	}
 	if doneResp.Usage.CacheReadInputTokens != 80 {
 		t.Errorf("CacheReadInputTokens = %d, want 80", doneResp.Usage.CacheReadInputTokens)

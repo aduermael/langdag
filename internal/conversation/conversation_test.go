@@ -99,6 +99,44 @@ func TestStreamResponse_EmptyProviderStream(t *testing.T) {
 	_ = drainEvents(t, events, 5*time.Second)
 }
 
+func TestStreamResponse_StoresAssistantAccountingMetadata(t *testing.T) {
+	mgr, store, cleanup := newTestManagerWithStore(t, mock.Config{Mode: "fixed", FixedResponse: "hello"})
+	defer cleanup()
+
+	events, err := mgr.Prompt(context.Background(), "hi", "claude-sonnet-4-6", "", nil, nil, 0, 0)
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	var nodeID string
+	for _, event := range drainEvents(t, events, 5*time.Second) {
+		if event.Type == types.StreamEventDone {
+			if event.Response == nil || event.Response.NormalizedUsage == nil {
+				t.Fatalf("done response missing normalized usage: %+v", event.Response)
+			}
+		}
+		if event.Type == types.StreamEventNodeSaved {
+			nodeID = event.NodeID
+		}
+	}
+	if nodeID == "" {
+		t.Fatal("missing saved node")
+	}
+	node, err := store.GetNode(context.Background(), nodeID)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	metadata, err := types.ParseAssistantNodeMetadata(node.Metadata)
+	if err != nil {
+		t.Fatalf("ParseAssistantNodeMetadata: %v", err)
+	}
+	if metadata == nil || metadata.NormalizedUsage == nil {
+		t.Fatalf("stored metadata missing normalized usage: %s", string(node.Metadata))
+	}
+	if metadata.PricingSnapshot == nil {
+		t.Fatalf("stored metadata pricing snapshot = %+v", metadata.PricingSnapshot)
+	}
+}
+
 // --- buildMessages unit tests (role merging, node skipping) ---
 
 func TestBuildMessages_MergesConsecutiveUserRoles(t *testing.T) {
@@ -387,8 +425,8 @@ func TestOrphanedToolUse_DBIndexed_OrphanedAtEnd(t *testing.T) {
 	userNode := &types.Node{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "What's the weather?", CreatedAt: time.Now()}
 	assistantNode := &types.Node{
 		ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1,
-		NodeType: types.NodeTypeAssistant,
-		Content:  `[{"type":"text","text":"Checking..."},{"type":"tool_use","id":"toolu_abc","name":"weather","input":{}}]`,
+		NodeType:  types.NodeTypeAssistant,
+		Content:   `[{"type":"text","text":"Checking..."},{"type":"tool_use","id":"toolu_abc","name":"weather","input":{}}]`,
 		CreatedAt: time.Now(),
 	}
 	if err := store.CreateNode(ctx, userNode); err != nil {
@@ -434,14 +472,14 @@ func TestOrphanedToolUse_DBIndexed_WithToolResult(t *testing.T) {
 	userNode := &types.Node{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "hi", CreatedAt: time.Now()}
 	assistantNode := &types.Node{
 		ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1,
-		NodeType: types.NodeTypeAssistant,
-		Content:  `[{"type":"tool_use","id":"t1","name":"search","input":{}}]`,
+		NodeType:  types.NodeTypeAssistant,
+		Content:   `[{"type":"tool_use","id":"t1","name":"search","input":{}}]`,
 		CreatedAt: time.Now(),
 	}
 	toolResultNode := &types.Node{
 		ID: "tr1", ParentID: "a1", RootID: "u1", Sequence: 2,
-		NodeType: types.NodeTypeToolResult,
-		Content:  `[{"type":"tool_result","tool_use_id":"t1","content":"found"}]`,
+		NodeType:  types.NodeTypeToolResult,
+		Content:   `[{"type":"tool_result","tool_use_id":"t1","content":"found"}]`,
 		CreatedAt: time.Now(),
 	}
 	for _, n := range []*types.Node{userNode, assistantNode, toolResultNode} {
@@ -474,14 +512,14 @@ func TestOrphanedToolUse_DBIndexed_PartialResults(t *testing.T) {
 	userNode := &types.Node{ID: "u1", RootID: "u1", Sequence: 0, NodeType: types.NodeTypeUser, Content: "compare", CreatedAt: time.Now()}
 	assistantNode := &types.Node{
 		ID: "a1", ParentID: "u1", RootID: "u1", Sequence: 1,
-		NodeType: types.NodeTypeAssistant,
-		Content:  `[{"type":"tool_use","id":"t1","name":"a","input":{}},{"type":"tool_use","id":"t2","name":"b","input":{}}]`,
+		NodeType:  types.NodeTypeAssistant,
+		Content:   `[{"type":"tool_use","id":"t1","name":"a","input":{}},{"type":"tool_use","id":"t2","name":"b","input":{}}]`,
 		CreatedAt: time.Now(),
 	}
 	toolResultNode := &types.Node{
 		ID: "tr1", ParentID: "a1", RootID: "u1", Sequence: 2,
-		NodeType: types.NodeTypeToolResult,
-		Content:  `[{"type":"tool_result","tool_use_id":"t1","content":"done"}]`,
+		NodeType:  types.NodeTypeToolResult,
+		Content:   `[{"type":"tool_result","tool_use_id":"t1","content":"done"}]`,
 		CreatedAt: time.Now(),
 	}
 	for _, n := range []*types.Node{userNode, assistantNode, toolResultNode} {
@@ -1366,6 +1404,21 @@ func TestOutputGroupContinuation_ThreeMaxTokensThenEndTurn(t *testing.T) {
 	for i, node := range ancestors[1:] {
 		if node.Content != expectedContents[i] {
 			t.Errorf("node %d content = %q, want %q", i, node.Content, expectedContents[i])
+		}
+	}
+
+	expectedInputs := []int{100, 200, 300, 400}
+	expectedOutputs := []int{100, 200, 300, 350}
+	for i, node := range ancestors[1:] {
+		if node.TokensIn != expectedInputs[i] || node.TokensOut != expectedOutputs[i] {
+			t.Errorf("node %d usage = %d in/%d out, want %d in/%d out", i, node.TokensIn, node.TokensOut, expectedInputs[i], expectedOutputs[i])
+		}
+		metadata, _, err := types.AssistantMetadataFromNode(node)
+		if err != nil {
+			t.Fatalf("node %d metadata: %v", i, err)
+		}
+		if metadata == nil || metadata.NormalizedUsage == nil || metadata.NormalizedUsage.OutputTokens != expectedOutputs[i] {
+			t.Fatalf("node %d normalized usage = %+v, want output %d", i, metadata, expectedOutputs[i])
 		}
 	}
 

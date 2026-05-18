@@ -205,10 +205,10 @@ type thinkingConfig struct {
 }
 
 type generationConfig struct {
-	MaxOutputTokens int              `json:"max_output_tokens,omitempty"`
-	Temperature     *float64         `json:"temperature,omitempty"`
-	StopSequences   []string         `json:"stop_sequences,omitempty"`
-	ThinkingConfig  *thinkingConfig  `json:"thinkingConfig,omitempty"`
+	MaxOutputTokens int             `json:"max_output_tokens,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"`
+	StopSequences   []string        `json:"stop_sequences,omitempty"`
+	ThinkingConfig  *thinkingConfig `json:"thinkingConfig,omitempty"`
 }
 
 type toolConfig struct {
@@ -228,10 +228,20 @@ type candidate struct {
 }
 
 type usageMetadata struct {
-	PromptTokenCount        int `json:"promptTokenCount"`
-	CandidatesTokenCount    int `json:"candidatesTokenCount"`
-	CachedContentTokenCount int `json:"cachedContentTokenCount,omitempty"`
-	ThoughtsTokenCount      int `json:"thoughtsTokenCount,omitempty"`
+	PromptTokenCount           int                  `json:"promptTokenCount"`
+	CandidatesTokenCount       int                  `json:"candidatesTokenCount"`
+	CachedContentTokenCount    int                  `json:"cachedContentTokenCount,omitempty"`
+	ThoughtsTokenCount         int                  `json:"thoughtsTokenCount,omitempty"`
+	ToolUsePromptTokenCount    int                  `json:"toolUsePromptTokenCount,omitempty"`
+	PromptTokensDetails        []modalityTokenCount `json:"promptTokensDetails,omitempty"`
+	CandidatesTokensDetails    []modalityTokenCount `json:"candidatesTokensDetails,omitempty"`
+	CacheTokensDetails         []modalityTokenCount `json:"cacheTokensDetails,omitempty"`
+	ToolUsePromptTokensDetails []modalityTokenCount `json:"toolUsePromptTokensDetails,omitempty"`
+}
+
+type modalityTokenCount struct {
+	Modality   string `json:"modality"`
+	TokenCount int    `json:"tokenCount"`
 }
 
 // --- Request building ---
@@ -465,18 +475,72 @@ func convertResponse(resp *geminiResponse) *types.CompletionResponse {
 
 	if resp.UsageMetadata != nil {
 		cr.Usage = mapUsage(resp.UsageMetadata)
+		cr.NormalizedUsage = normalizedUsagePtr(cr.Usage)
 	}
 
 	return cr
 }
 
 func mapUsage(u *usageMetadata) types.Usage {
-	return types.Usage{
+	usage := types.Usage{
 		InputTokens:          u.PromptTokenCount,
 		OutputTokens:         u.CandidatesTokenCount,
 		CacheReadInputTokens: u.CachedContentTokenCount,
 		ReasoningTokens:      u.ThoughtsTokenCount,
+		ToolUsePromptTokens:  u.ToolUsePromptTokenCount,
 	}
+	addGeminiModalities(&usage, u.PromptTokensDetails, true)
+	addGeminiModalities(&usage, u.CandidatesTokensDetails, false)
+	addGeminiModalities(&usage, u.CacheTokensDetails, true)
+	addGeminiDimensions(&usage, "tool_use_prompt", u.ToolUsePromptTokensDetails)
+	return usage
+}
+
+func addGeminiModalities(usage *types.Usage, details []modalityTokenCount, input bool) {
+	for _, detail := range details {
+		modality := strings.ToLower(detail.Modality)
+		switch modality {
+		case "audio":
+			if input {
+				usage.AudioInputTokens += detail.TokenCount
+			} else {
+				usage.AudioOutputTokens += detail.TokenCount
+			}
+		case "image":
+			if input {
+				usage.ImageInputTokens += detail.TokenCount
+			} else {
+				usage.ImageOutputTokens += detail.TokenCount
+			}
+		default:
+			addUsageDimension(usage, "gemini_"+modality+"_tokens", int64(detail.TokenCount))
+		}
+	}
+}
+
+func addGeminiDimensions(usage *types.Usage, prefix string, details []modalityTokenCount) {
+	for _, detail := range details {
+		name := strings.ToLower(detail.Modality)
+		if name == "" {
+			name = "unknown"
+		}
+		addUsageDimension(usage, prefix+"_"+name+"_tokens", int64(detail.TokenCount))
+	}
+}
+
+func addUsageDimension(usage *types.Usage, name string, value int64) {
+	if name == "" || value <= 0 {
+		return
+	}
+	if usage.Dimensions == nil {
+		usage.Dimensions = map[string]int64{}
+	}
+	usage.Dimensions[name] += value
+}
+
+func normalizedUsagePtr(usage types.Usage) *types.NormalizedUsage {
+	normalized := types.NormalizedUsageFromUsage(usage)
+	return &normalized
 }
 
 // --- SSE streaming ---
@@ -567,6 +631,7 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	}
 	if lastUsage != nil {
 		resp.Usage = *lastUsage
+		resp.NormalizedUsage = normalizedUsagePtr(*lastUsage)
 	}
 	if fullText.Len() > 0 {
 		resp.Content = append(resp.Content, types.ContentBlock{

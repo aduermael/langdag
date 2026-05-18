@@ -20,13 +20,16 @@ type PromptRequest struct {
 
 // PromptResponse represents a prompt response.
 type PromptResponse struct {
-	NodeID              string `json:"node_id"`
-	Content             string `json:"content"`
-	TokensIn            int    `json:"tokens_in,omitempty"`
-	TokensOut           int    `json:"tokens_out,omitempty"`
-	TokensCacheRead     int    `json:"tokens_cache_read,omitempty"`
-	TokensCacheCreation int    `json:"tokens_cache_creation,omitempty"`
-	TokensReasoning     int    `json:"tokens_reasoning,omitempty"`
+	NodeID              string                       `json:"node_id"`
+	Content             string                       `json:"content"`
+	TokensIn            int                          `json:"tokens_in,omitempty"`
+	TokensOut           int                          `json:"tokens_out,omitempty"`
+	TokensCacheRead     int                          `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int                          `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int                          `json:"tokens_reasoning,omitempty"`
+	Usage               *types.NormalizedUsage       `json:"usage,omitempty"`
+	Metadata            *types.AssistantNodeMetadata `json:"metadata,omitempty"`
+	Cost                *types.CostResult            `json:"cost,omitempty"`
 }
 
 // handlePrompt starts a new conversation tree.
@@ -62,10 +65,8 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, PromptResponse{
-		NodeID:  nodeID,
-		Content: content,
-	})
+	node, _ := s.convMgr.ResolveNode(r.Context(), nodeID)
+	writeJSON(w, http.StatusOK, promptResponseFromNode(nodeID, content, node))
 }
 
 // handleNodePrompt continues a conversation from an existing node.
@@ -111,10 +112,8 @@ func (s *Server) handleNodePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, PromptResponse{
-		NodeID:  respNodeID,
-		Content: content,
-	})
+	respNode, _ := s.convMgr.ResolveNode(r.Context(), respNodeID)
+	writeJSON(w, http.StatusOK, promptResponseFromNode(respNodeID, content, respNode))
 }
 
 // collectEvents drains an events channel and returns the collected content and node ID.
@@ -165,15 +164,18 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 	fmt.Fprintf(w, "event: start\ndata: {}\n\n")
 	flusher.Flush()
 
+	var content strings.Builder
 	for event := range events {
 		switch event.Type {
 		case types.StreamEventDelta:
+			content.WriteString(event.Content)
 			data, _ := json.Marshal(map[string]string{"content": event.Content})
 			fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
 			flusher.Flush()
 
 		case types.StreamEventNodeSaved:
-			data, _ := json.Marshal(map[string]string{"node_id": event.NodeID})
+			node, _ := s.convMgr.ResolveNode(ctx, event.NodeID)
+			data, _ := json.Marshal(promptResponseFromNode(event.NodeID, content.String(), node))
 			fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 			flusher.Flush()
 
@@ -196,4 +198,27 @@ func writeSSEError(w http.ResponseWriter, flusher http.Flusher, message string) 
 	}
 	fmt.Fprintf(w, "\n")
 	flusher.Flush()
+}
+
+func promptResponseFromNode(nodeID, content string, node *types.Node) PromptResponse {
+	resp := PromptResponse{NodeID: nodeID, Content: content}
+	if node == nil {
+		return resp
+	}
+	if resp.Content == "" {
+		resp.Content = node.Content
+	}
+	resp.TokensIn = node.TokensIn
+	resp.TokensOut = node.TokensOut
+	resp.TokensCacheRead = node.TokensCacheRead
+	resp.TokensCacheCreation = node.TokensCacheCreation
+	resp.TokensReasoning = node.TokensReasoning
+	resp.Metadata = nodeMetadata(node)
+	if resp.Metadata != nil {
+		resp.Cost = costFromMetadata(resp.Metadata)
+		if resp.Metadata.NormalizedUsage != nil {
+			resp.Usage = resp.Metadata.NormalizedUsage
+		}
+	}
+	return resp
 }

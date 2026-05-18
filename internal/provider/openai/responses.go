@@ -82,11 +82,12 @@ type responsesServerTool struct {
 // --- Responses API response types ---
 
 type responsesResponse struct {
-	ID     string            `json:"id"`
-	Model  string            `json:"model"`
-	Output []responsesOutput `json:"output"`
-	Usage  *responsesUsage   `json:"usage,omitempty"`
-	Status string            `json:"status"`
+	ID          string            `json:"id"`
+	Model       string            `json:"model"`
+	Output      []responsesOutput `json:"output"`
+	Usage       *responsesUsage   `json:"usage,omitempty"`
+	Status      string            `json:"status"`
+	ServiceTier string            `json:"service_tier,omitempty"`
 }
 
 type responsesOutput struct {
@@ -110,18 +111,25 @@ type responsesContentBlock struct {
 }
 
 type responsesUsage struct {
-	InputTokens         int                            `json:"input_tokens"`
-	OutputTokens        int                            `json:"output_tokens"`
-	InputTokensDetails  *responsesInputTokensDetails   `json:"input_tokens_details,omitempty"`
-	OutputTokensDetails *responsesOutputTokensDetails  `json:"output_tokens_details,omitempty"`
+	InputTokens         int                           `json:"input_tokens"`
+	OutputTokens        int                           `json:"output_tokens"`
+	InputTokensDetails  *responsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
+	OutputTokensDetails *responsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+	Cost                *float64                      `json:"cost,omitempty"`
 }
 
 type responsesInputTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitempty"`
+	AudioTokens  int `json:"audio_tokens,omitempty"`
+	ImageTokens  int `json:"image_tokens,omitempty"`
 }
 
 type responsesOutputTokensDetails struct {
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	ImageTokens              int `json:"image_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // --- Responses API streaming event ---
@@ -365,23 +373,49 @@ func convertResponsesResult(resp *responsesResponse) *types.CompletionResponse {
 
 	if resp.Usage != nil {
 		cr.Usage = mapResponsesUsage(resp.Usage)
+		cr.Usage.ServiceTier = resp.ServiceTier
+		cr.NormalizedUsage = normalizedUsagePtr(cr.Usage)
+		cr.ProviderCost = providerCostFromResponsesUsage(resp.Usage)
 	}
 
 	return cr
 }
 
 func mapResponsesUsage(u *responsesUsage) types.Usage {
+	cachedTokens := 0
+	if u.InputTokensDetails != nil {
+		cachedTokens = u.InputTokensDetails.CachedTokens
+	}
 	result := types.Usage{
-		InputTokens:  u.InputTokens,
+		InputTokens:  max(0, u.InputTokens-cachedTokens),
 		OutputTokens: u.OutputTokens,
 	}
 	if u.InputTokensDetails != nil {
-		result.CacheReadInputTokens = u.InputTokensDetails.CachedTokens
+		result.CacheReadInputTokens = cachedTokens
+		result.AudioInputTokens = u.InputTokensDetails.AudioTokens
+		result.ImageInputTokens = u.InputTokensDetails.ImageTokens
 	}
 	if u.OutputTokensDetails != nil {
 		result.ReasoningTokens = u.OutputTokensDetails.ReasoningTokens
+		result.AudioOutputTokens = u.OutputTokensDetails.AudioTokens
+		result.ImageOutputTokens = u.OutputTokensDetails.ImageTokens
+		result.AcceptedPredictionTokens = u.OutputTokensDetails.AcceptedPredictionTokens
+		result.RejectedPredictionTokens = u.OutputTokensDetails.RejectedPredictionTokens
 	}
 	return result
+}
+
+func providerCostFromResponsesUsage(u *responsesUsage) *types.ProviderCost {
+	if u == nil || u.Cost == nil {
+		return nil
+	}
+	raw, _ := json.Marshal(u)
+	return &types.ProviderCost{
+		Total:    *u.Cost,
+		Currency: "USD",
+		Source:   types.CostSourceProviderResponse,
+		Raw:      raw,
+	}
 }
 
 // --- SSE streaming ---

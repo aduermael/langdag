@@ -187,8 +187,8 @@ func TestMapResponsesUsage(t *testing.T) {
 
 	result := mapResponsesUsage(u)
 
-	if result.InputTokens != 100 {
-		t.Errorf("expected InputTokens=100, got %d", result.InputTokens)
+	if result.InputTokens != 70 {
+		t.Errorf("expected InputTokens=70, got %d", result.InputTokens)
 	}
 	if result.OutputTokens != 50 {
 		t.Errorf("expected OutputTokens=50, got %d", result.OutputTokens)
@@ -248,8 +248,8 @@ func TestConvertResponsesResult_CacheTokens(t *testing.T) {
 	}
 
 	cr := convertResponsesResult(resp)
-	if cr.Usage.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100", cr.Usage.InputTokens)
+	if cr.Usage.InputTokens != 20 {
+		t.Errorf("InputTokens = %d, want 20", cr.Usage.InputTokens)
 	}
 	if cr.Usage.CacheReadInputTokens != 80 {
 		t.Errorf("CacheReadInputTokens = %d, want 80", cr.Usage.CacheReadInputTokens)
@@ -410,8 +410,8 @@ func TestParseResponsesSSEStream_CacheTokens(t *testing.T) {
 	if doneResp == nil {
 		t.Fatal("expected done response")
 	}
-	if doneResp.Usage.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100", doneResp.Usage.InputTokens)
+	if doneResp.Usage.InputTokens != 20 {
+		t.Errorf("InputTokens = %d, want 20", doneResp.Usage.InputTokens)
 	}
 	if doneResp.Usage.CacheReadInputTokens != 80 {
 		t.Errorf("CacheReadInputTokens = %d, want 80", doneResp.Usage.CacheReadInputTokens)

@@ -91,17 +91,12 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 		Tools:        o.tools,
 	}
 
-	var resp promptResponse
+	var resp PromptResponse
 	if err := c.doRequest(ctx, http.MethodPost, "/prompt", req, &resp); err != nil {
 		return nil, err
 	}
 
-	return &Node{
-		ID:      resp.NodeID,
-		Content: resp.Content,
-		Type:    NodeTypeAssistant,
-		client:  c,
-	}, nil
+	return nodeFromPromptResponse(&resp, c, ""), nil
 }
 
 // PromptStream starts a new conversation tree with streaming.
@@ -130,17 +125,12 @@ func (c *Client) promptFrom(ctx context.Context, nodeID, message string, o *prom
 		Tools:   o.tools,
 	}
 
-	var resp promptResponse
+	var resp PromptResponse
 	if err := c.doRequest(ctx, http.MethodPost, fmt.Sprintf("/nodes/%s/prompt", nodeID), req, &resp); err != nil {
 		return nil, err
 	}
 
-	return &Node{
-		ID:      resp.NodeID,
-		Content: resp.Content,
-		Type:    NodeTypeAssistant,
-		client:  c,
-	}, nil
+	return nodeFromPromptResponse(&resp, c, ""), nil
 }
 
 // promptStreamFrom continues a conversation from an existing node with streaming.

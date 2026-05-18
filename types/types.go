@@ -22,7 +22,7 @@ type ContentBlock struct {
 	// For image/document blocks
 	MediaType string `json:"media_type,omitempty"` // e.g. "image/png", "application/pdf"
 	Data      string `json:"data,omitempty"`       // base64-encoded content
-	URL       string `json:"url,omitempty"`         // URL source
+	URL       string `json:"url,omitempty"`        // URL source
 
 	// For tool_use blocks
 	ID    string          `json:"id,omitempty"`
@@ -68,7 +68,6 @@ const (
 	NodeTypeSystem     NodeType = "system"
 	NodeTypeToolCall   NodeType = "tool_call"
 	NodeTypeToolResult NodeType = "tool_result"
-
 )
 
 // Node represents a node in the conversation/workflow tree.
@@ -83,17 +82,17 @@ type Node struct {
 	Content  string   `json:"content"`
 
 	// LLM execution metadata (on assistant nodes)
-	Provider             string `json:"provider,omitempty"`
-	Model                string `json:"model,omitempty"`
-	TokensIn             int    `json:"tokens_in,omitempty"`
-	TokensOut            int    `json:"tokens_out,omitempty"`
-	TokensCacheRead      int    `json:"tokens_cache_read,omitempty"`
-	TokensCacheCreation  int    `json:"tokens_cache_creation,omitempty"`
-	TokensReasoning      int    `json:"tokens_reasoning,omitempty"`
-	LatencyMs            int    `json:"latency_ms,omitempty"`
-	StopReason           string `json:"stop_reason,omitempty"`
-	OutputGroupID        string `json:"output_group_id,omitempty"`
-	Status               string `json:"status,omitempty"`
+	Provider            string `json:"provider,omitempty"`
+	Model               string `json:"model,omitempty"`
+	TokensIn            int    `json:"tokens_in,omitempty"`
+	TokensOut           int    `json:"tokens_out,omitempty"`
+	TokensCacheRead     int    `json:"tokens_cache_read,omitempty"`
+	TokensCacheCreation int    `json:"tokens_cache_creation,omitempty"`
+	TokensReasoning     int    `json:"tokens_reasoning,omitempty"`
+	LatencyMs           int    `json:"latency_ms,omitempty"`
+	StopReason          string `json:"stop_reason,omitempty"`
+	OutputGroupID       string `json:"output_group_id,omitempty"`
+	Status              string `json:"status,omitempty"`
 
 	// Root node metadata (empty on non-root nodes)
 	Title        string `json:"title,omitempty"`
@@ -157,15 +156,392 @@ type CompletionResponse struct {
 	Content    []ContentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
 	Usage      Usage          `json:"usage"`
+
+	// Deployment-aware accounting metadata. Providers populate usage/cost
+	// dimensions they receive directly; routing/catalog layers fill resolution
+	// and pricing snapshots when known.
+	ModelResolution *ModelResolutionMetadata `json:"model_resolution,omitempty"`
+	NormalizedUsage *NormalizedUsage         `json:"normalized_usage,omitempty"`
+	PricingSnapshot *PricingSnapshot         `json:"pricing_snapshot,omitempty"`
+	ProviderCost    *ProviderCost            `json:"provider_cost,omitempty"`
 }
 
 // Usage represents token usage information.
 type Usage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	InputTokens              int              `json:"input_tokens"`
+	OutputTokens             int              `json:"output_tokens"`
+	CacheReadInputTokens     int              `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int              `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int              `json:"cache_write_input_tokens,omitempty"`
+	ReasoningTokens          int              `json:"reasoning_tokens,omitempty"`
+	ToolUsePromptTokens      int              `json:"tool_use_prompt_tokens,omitempty"`
+	AudioInputTokens         int              `json:"audio_input_tokens,omitempty"`
+	AudioOutputTokens        int              `json:"audio_output_tokens,omitempty"`
+	ImageInputTokens         int              `json:"image_input_tokens,omitempty"`
+	ImageOutputTokens        int              `json:"image_output_tokens,omitempty"`
+	AcceptedPredictionTokens int              `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int              `json:"rejected_prediction_tokens,omitempty"`
+	ServiceTier              string           `json:"service_tier,omitempty"`
+	Dimensions               map[string]int64 `json:"dimensions,omitempty"`
+}
+
+// NormalizedUsage preserves billable usage dimensions across providers. Common
+// dimensions are first-class fields for callers that need stable access; any
+// provider-specific counters that do not yet have first-class fields belong in
+// Dimensions using catalog pricing dimension names.
+type NormalizedUsage struct {
+	InputTokens              int              `json:"input_tokens,omitempty"`
+	OutputTokens             int              `json:"output_tokens,omitempty"`
+	CacheReadInputTokens     int              `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens int              `json:"cache_creation_input_tokens,omitempty"`
+	CacheWriteInputTokens    int              `json:"cache_write_input_tokens,omitempty"`
+	ReasoningTokens          int              `json:"reasoning_tokens,omitempty"`
+	ToolUsePromptTokens      int              `json:"tool_use_prompt_tokens,omitempty"`
+	AudioInputTokens         int              `json:"audio_input_tokens,omitempty"`
+	AudioOutputTokens        int              `json:"audio_output_tokens,omitempty"`
+	ImageInputTokens         int              `json:"image_input_tokens,omitempty"`
+	ImageOutputTokens        int              `json:"image_output_tokens,omitempty"`
+	AcceptedPredictionTokens int              `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int              `json:"rejected_prediction_tokens,omitempty"`
+	ServiceTier              string           `json:"service_tier,omitempty"`
+	Dimensions               map[string]int64 `json:"dimensions,omitempty"`
+}
+
+// NormalizedUsageFromUsage adapts the legacy token-only Usage struct into the
+// deployment-aware accounting shape.
+func NormalizedUsageFromUsage(usage Usage) NormalizedUsage {
+	return NormalizedUsage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheWriteInputTokens:    usage.CacheWriteInputTokens,
+		ReasoningTokens:          usage.ReasoningTokens,
+		ToolUsePromptTokens:      usage.ToolUsePromptTokens,
+		AudioInputTokens:         usage.AudioInputTokens,
+		AudioOutputTokens:        usage.AudioOutputTokens,
+		ImageInputTokens:         usage.ImageInputTokens,
+		ImageOutputTokens:        usage.ImageOutputTokens,
+		AcceptedPredictionTokens: usage.AcceptedPredictionTokens,
+		RejectedPredictionTokens: usage.RejectedPredictionTokens,
+		ServiceTier:              usage.ServiceTier,
+		Dimensions:               cloneInt64Map(usage.Dimensions),
+	}
+}
+
+func UsageFromNormalizedUsage(usage NormalizedUsage) Usage {
+	return Usage{
+		InputTokens:              usage.InputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     usage.CacheReadInputTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		CacheWriteInputTokens:    usage.CacheWriteInputTokens,
+		ReasoningTokens:          usage.ReasoningTokens,
+		ToolUsePromptTokens:      usage.ToolUsePromptTokens,
+		AudioInputTokens:         usage.AudioInputTokens,
+		AudioOutputTokens:        usage.AudioOutputTokens,
+		ImageInputTokens:         usage.ImageInputTokens,
+		ImageOutputTokens:        usage.ImageOutputTokens,
+		AcceptedPredictionTokens: usage.AcceptedPredictionTokens,
+		RejectedPredictionTokens: usage.RejectedPredictionTokens,
+		ServiceTier:              usage.ServiceTier,
+		Dimensions:               cloneInt64Map(usage.Dimensions),
+	}
+}
+
+func AddUsage(a, b Usage) Usage {
+	out := Usage{
+		InputTokens:              a.InputTokens + b.InputTokens,
+		OutputTokens:             a.OutputTokens + b.OutputTokens,
+		CacheReadInputTokens:     a.CacheReadInputTokens + b.CacheReadInputTokens,
+		CacheCreationInputTokens: a.CacheCreationInputTokens + b.CacheCreationInputTokens,
+		CacheWriteInputTokens:    a.CacheWriteInputTokens + b.CacheWriteInputTokens,
+		ReasoningTokens:          a.ReasoningTokens + b.ReasoningTokens,
+		ToolUsePromptTokens:      a.ToolUsePromptTokens + b.ToolUsePromptTokens,
+		AudioInputTokens:         a.AudioInputTokens + b.AudioInputTokens,
+		AudioOutputTokens:        a.AudioOutputTokens + b.AudioOutputTokens,
+		ImageInputTokens:         a.ImageInputTokens + b.ImageInputTokens,
+		ImageOutputTokens:        a.ImageOutputTokens + b.ImageOutputTokens,
+		AcceptedPredictionTokens: a.AcceptedPredictionTokens + b.AcceptedPredictionTokens,
+		RejectedPredictionTokens: a.RejectedPredictionTokens + b.RejectedPredictionTokens,
+		ServiceTier:              b.ServiceTier,
+		Dimensions:               cloneInt64Map(a.Dimensions),
+	}
+	if out.ServiceTier == "" {
+		out.ServiceTier = a.ServiceTier
+	}
+	for name, value := range b.Dimensions {
+		if out.Dimensions == nil {
+			out.Dimensions = map[string]int64{}
+		}
+		out.Dimensions[name] += value
+	}
+	return out
+}
+
+func UsageFromNode(node *Node) Usage {
+	if node == nil {
+		return Usage{}
+	}
+	return Usage{
+		InputTokens:              node.TokensIn,
+		OutputTokens:             node.TokensOut,
+		CacheReadInputTokens:     node.TokensCacheRead,
+		CacheCreationInputTokens: node.TokensCacheCreation,
+		ReasoningTokens:          node.TokensReasoning,
+	}
+}
+
+func NormalizedUsageFromNode(node *Node) NormalizedUsage {
+	return NormalizedUsageFromUsage(UsageFromNode(node))
+}
+
+func (u NormalizedUsage) BillableDimensions() map[string]int64 {
+	dimensions := map[string]int64{}
+	add := func(name string, value int) {
+		if value > 0 {
+			dimensions[name] += int64(value)
+		}
+	}
+	add("input_tokens", u.InputTokens)
+	add("output_tokens", u.OutputTokens)
+	add("cache_read_input_tokens", u.CacheReadInputTokens)
+	add("cache_creation_input_tokens", u.CacheCreationInputTokens)
+	add("cache_write_input_tokens", u.CacheWriteInputTokens)
+	add("reasoning_tokens", u.ReasoningTokens)
+	add("tool_use_prompt_tokens", u.ToolUsePromptTokens)
+	add("audio_input_tokens", u.AudioInputTokens)
+	add("audio_output_tokens", u.AudioOutputTokens)
+	add("image_input_tokens", u.ImageInputTokens)
+	add("image_output_tokens", u.ImageOutputTokens)
+	add("accepted_prediction_tokens", u.AcceptedPredictionTokens)
+	add("rejected_prediction_tokens", u.RejectedPredictionTokens)
+	for name, value := range u.Dimensions {
+		if name != "" && value > 0 {
+			dimensions[name] += value
+		}
+	}
+	return dimensions
+}
+
+type CostStatus string
+
+const (
+	CostStatusKnown   CostStatus = "known"
+	CostStatusPartial CostStatus = "partial"
+	CostStatusUnknown CostStatus = "unknown"
+	CostStatusFree    CostStatus = "free"
+)
+
+type CostSource string
+
+const (
+	CostSourceCatalog          CostSource = "catalog"
+	CostSourceProviderResponse CostSource = "provider_response"
+	CostSourceHistorical       CostSource = "historical"
+)
+
+// PricingSnapshot is copied onto assistant-node metadata so historical cost
+// display does not change when catalog pricing is refreshed later.
+type PricingSnapshot struct {
+	Status            CostStatus         `json:"status"`
+	Currency          string             `json:"currency,omitempty"`
+	EffectiveAt       time.Time          `json:"effective_at,omitempty"`
+	Source            CostSource         `json:"source,omitempty"`
+	RatesPer1M        map[string]float64 `json:"rates_per_1m,omitempty"`
+	MissingDimensions []string           `json:"missing_dimensions,omitempty"`
+}
+
+type CostDimension struct {
+	Name      string  `json:"name"`
+	Quantity  int64   `json:"quantity"`
+	RatePer1M float64 `json:"rate_per_1m"`
+	Cost      float64 `json:"cost"`
+}
+
+// CostResult is the structured replacement for float-only cost calculation.
+// Unknown pricing is represented explicitly rather than as zero dollars.
+type CostResult struct {
+	Status            CostStatus      `json:"status"`
+	Total             float64         `json:"total,omitempty"`
+	Currency          string          `json:"currency,omitempty"`
+	Source            CostSource      `json:"source,omitempty"`
+	MissingDimensions []string        `json:"missing_dimensions,omitempty"`
+	Dimensions        []CostDimension `json:"dimensions,omitempty"`
+}
+
+type ProviderCost struct {
+	Total    float64         `json:"total"`
+	Currency string          `json:"currency"`
+	Source   CostSource      `json:"source"`
+	Raw      json.RawMessage `json:"raw,omitempty"`
+}
+
+func CostResultFromProviderCost(cost ProviderCost) CostResult {
+	return CostResult{
+		Status:   CostStatusKnown,
+		Total:    cost.Total,
+		Currency: cost.Currency,
+		Source:   cost.Source,
+	}
+}
+
+func ComputeCost(providerCost *ProviderCost, snapshot *PricingSnapshot, usage NormalizedUsage) CostResult {
+	if providerCost != nil {
+		return CostResultFromProviderCost(*providerCost)
+	}
+	if snapshot == nil {
+		return CostResult{Status: CostStatusUnknown}
+	}
+	return ComputeCostFromPricingSnapshot(*snapshot, usage)
+}
+
+func ComputeCostFromPricingSnapshot(snapshot PricingSnapshot, usage NormalizedUsage) CostResult {
+	if !snapshot.EffectiveAt.IsZero() && snapshot.EffectiveAt.After(time.Now()) {
+		return CostResult{
+			Status:            CostStatusUnknown,
+			Currency:          snapshot.Currency,
+			Source:            snapshot.Source,
+			MissingDimensions: []string{"pricing_effective_at"},
+		}
+	}
+	if snapshot.Status == CostStatusFree {
+		return CostResult{Status: CostStatusFree, Currency: snapshot.Currency, Source: snapshot.Source}
+	}
+	if snapshot.Status == CostStatusUnknown || len(snapshot.RatesPer1M) == 0 {
+		return CostResult{
+			Status:            CostStatusUnknown,
+			Currency:          snapshot.Currency,
+			Source:            snapshot.Source,
+			MissingDimensions: append([]string(nil), snapshot.MissingDimensions...),
+		}
+	}
+
+	result := CostResult{
+		Status:   CostStatusKnown,
+		Currency: snapshot.Currency,
+		Source:   snapshot.Source,
+	}
+	missing := map[string]bool{}
+	for _, dimension := range snapshot.MissingDimensions {
+		if dimension != "" {
+			missing[dimension] = true
+		}
+	}
+	for dimension, quantity := range usage.BillableDimensions() {
+		rate, ok := snapshot.RatesPer1M[dimension]
+		if !ok {
+			missing[dimension] = true
+			continue
+		}
+		cost := float64(quantity) * rate / 1_000_000
+		result.Total += cost
+		result.Dimensions = append(result.Dimensions, CostDimension{
+			Name:      dimension,
+			Quantity:  quantity,
+			RatePer1M: rate,
+			Cost:      cost,
+		})
+	}
+	if len(missing) > 0 || snapshot.Status == CostStatusPartial {
+		result.Status = CostStatusPartial
+		result.MissingDimensions = sortedCostDimensionNames(missing)
+	}
+	return result
+}
+
+func sortedCostDimensionNames(values map[string]bool) []string {
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	for i := 1; i < len(names); i++ {
+		for j := i; j > 0 && names[j] < names[j-1]; j-- {
+			names[j], names[j-1] = names[j-1], names[j]
+		}
+	}
+	return names
+}
+
+type ModelResolutionMetadata struct {
+	CanonicalModelID string `json:"canonical_model_id"`
+	OfferingID       string `json:"offering_id"`
+	DeploymentID     string `json:"deployment_id"`
+	ProviderID       string `json:"provider_id"`
+	APIProtocolID    string `json:"api_protocol_id"`
+	NativeModelID    string `json:"native_model_id"`
+}
+
+// AssistantNodeMetadata is the typed shape stored in Node.Metadata for new
+// assistant nodes. Existing provider/model/token columns remain readable for
+// old nodes while this metadata carries the deployment-aware identity.
+type AssistantNodeMetadata struct {
+	ModelResolution *ModelResolutionMetadata `json:"model_resolution,omitempty"`
+	NormalizedUsage *NormalizedUsage         `json:"normalized_usage,omitempty"`
+	PricingSnapshot *PricingSnapshot         `json:"pricing_snapshot,omitempty"`
+	ProviderCost    *ProviderCost            `json:"provider_cost,omitempty"`
+}
+
+func (r *CompletionResponse) EnsureNormalizedUsage() {
+	if r == nil || r.NormalizedUsage != nil {
+		return
+	}
+	usage := NormalizedUsageFromUsage(r.Usage)
+	r.NormalizedUsage = &usage
+}
+
+func (r *CompletionResponse) AssistantMetadata() AssistantNodeMetadata {
+	if r == nil {
+		return AssistantNodeMetadata{}
+	}
+	r.EnsureNormalizedUsage()
+	return AssistantNodeMetadata{
+		ModelResolution: r.ModelResolution,
+		NormalizedUsage: r.NormalizedUsage,
+		PricingSnapshot: r.PricingSnapshot,
+		ProviderCost:    r.ProviderCost,
+	}
+}
+
+func ParseAssistantNodeMetadata(raw json.RawMessage) (*AssistantNodeMetadata, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var meta AssistantNodeMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func AssistantMetadataFromNode(node *Node) (*AssistantNodeMetadata, bool, error) {
+	if node == nil {
+		return nil, false, nil
+	}
+	meta, err := ParseAssistantNodeMetadata(node.Metadata)
+	if err != nil {
+		return nil, false, err
+	}
+	if meta == nil {
+		usage := NormalizedUsageFromNode(node)
+		return &AssistantNodeMetadata{NormalizedUsage: &usage}, false, nil
+	}
+	if meta.NormalizedUsage == nil {
+		usage := NormalizedUsageFromNode(node)
+		meta.NormalizedUsage = &usage
+	}
+	return meta, true, nil
+}
+
+func cloneInt64Map(in map[string]int64) map[string]int64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // StreamEventType represents the type of a streaming event.

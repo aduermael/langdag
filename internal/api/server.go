@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"langdag.com/langdag/internal/config"
 	"langdag.com/langdag/internal/conversation"
+	"langdag.com/langdag/internal/models"
 	"langdag.com/langdag/internal/provider"
 	"langdag.com/langdag/internal/provider/anthropic"
 	geminiprovider "langdag.com/langdag/internal/provider/gemini"
@@ -220,7 +222,7 @@ var providerRegistry = map[string]providerFactory{
 		return anthropic.NewVertex(ctx, vc.Region, vc.ProjectID)
 	},
 	"anthropic-bedrock": func(ctx context.Context, c *config.Config) (provider.Provider, error) {
-		return anthropic.NewBedrock(ctx)
+		return anthropic.NewBedrock(ctx, c.Providers.AnthropicBedrock.Region)
 	},
 	"openai": func(_ context.Context, c *config.Config) (provider.Provider, error) {
 		if c.Providers.OpenAI.APIKey == "" {
@@ -300,6 +302,10 @@ func newGeminiProvider(_ context.Context, c *config.Config) (provider.Provider, 
 func createProvider(ctx context.Context, appConfig *config.Config) (provider.Provider, error) {
 	globalRetry := parseRetryConfig(appConfig.Retry, provider.DefaultRetryConfig())
 
+	if len(appConfig.Deployments) > 0 || appConfig.Routing != nil {
+		return createDeploymentAwareProvider(ctx, appConfig, globalRetry)
+	}
+
 	// If routing is configured, build a Router
 	if len(appConfig.Providers.Routing) > 0 {
 		return createRouter(ctx, appConfig, globalRetry)
@@ -319,6 +325,242 @@ func createProvider(ctx context.Context, appConfig *config.Config) (provider.Pro
 
 	log.Printf("Using provider: %s", name)
 	return provider.WithRetry(provider.WithServerToolFilter(prov), globalRetry), nil
+}
+
+func createDeploymentAwareProvider(ctx context.Context, appConfig *config.Config, globalRetry provider.RetryConfig) (provider.Provider, error) {
+	catalogResult, err := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
+	if err != nil {
+		return nil, err
+	}
+	compiled, err := models.CompileCatalogV1(catalogResult.Catalog)
+	if err != nil {
+		return nil, err
+	}
+	deploymentIDs := apiDeploymentIDsForConfig(appConfig)
+	adapters := map[string]provider.DeploymentAdapter{}
+	var adapterErrors []error
+	for _, deploymentID := range deploymentIDs {
+		adapter, err := createDeploymentAdapter(ctx, deploymentID, appConfig, globalRetry)
+		if err != nil {
+			adapterErrors = append(adapterErrors, fmt.Errorf("%s: %w", deploymentID, err))
+			log.Printf("Skipping unavailable deployment: %s: %v", deploymentID, err)
+			continue
+		}
+		adapters[deploymentID] = adapter
+	}
+	if len(adapters) == 0 {
+		if len(adapterErrors) > 0 {
+			return nil, fmt.Errorf("no configured deployments are available: %w", errors.Join(adapterErrors...))
+		}
+		return nil, fmt.Errorf("no configured deployments are available")
+	}
+	return provider.NewDeploymentRouter(provider.DeploymentRouterOptions{
+		Catalog:     compiled,
+		Deployments: adapters,
+		Routing:     apiRoutingPolicy(appConfig.Routing),
+	})
+}
+
+func apiDeploymentIDsForConfig(appConfig *config.Config) []string {
+	seen := map[string]bool{}
+	var ids []string
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	for deploymentID := range appConfig.Deployments {
+		add(deploymentID)
+	}
+	if appConfig.Routing != nil {
+		collect := func(stages []config.RoutingStage) {
+			for _, stage := range stages {
+				for _, choice := range stage.Deployments {
+					add(choice.DeploymentID)
+				}
+			}
+		}
+		collect(appConfig.Routing.Default)
+		for _, stages := range appConfig.Routing.Providers {
+			collect(stages)
+		}
+		for _, stages := range appConfig.Routing.Models {
+			collect(stages)
+		}
+	}
+	return ids
+}
+
+func apiRoutingPolicy(routing *config.RoutingPolicy) provider.RoutingPolicy {
+	if routing == nil {
+		return provider.RoutingPolicy{}
+	}
+	return provider.RoutingPolicy{
+		Default:   apiRoutingStages(routing.Default),
+		Providers: apiRoutingStageMap(routing.Providers),
+		Models:    apiRoutingStageMap(routing.Models),
+	}
+}
+
+func apiRoutingStageMap(in map[string][]config.RoutingStage) map[string][]provider.RoutingStage {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]provider.RoutingStage, len(in))
+	for key, stages := range in {
+		out[key] = apiRoutingStages(stages)
+	}
+	return out
+}
+
+func apiRoutingStages(in []config.RoutingStage) []provider.RoutingStage {
+	if in == nil {
+		return nil
+	}
+	out := make([]provider.RoutingStage, len(in))
+	for i, stage := range in {
+		out[i].Retries = stage.Retries
+		for _, choice := range stage.Deployments {
+			out[i].Deployments = append(out[i].Deployments, provider.DeploymentChoice{
+				DeploymentID: choice.DeploymentID,
+				Weight:       choice.Weight,
+			})
+		}
+	}
+	return out
+}
+
+func createDeploymentAdapter(ctx context.Context, deploymentID string, appConfig *config.Config, globalRetry provider.RetryConfig) (provider.DeploymentAdapter, error) {
+	cfg := apiDeploymentConfigForID(deploymentID, appConfig)
+	var prov provider.Provider
+	var err error
+	switch deploymentID {
+	case "anthropic-direct":
+		if cfg.APIKey == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("ANTHROPIC_API_KEY not set")
+		}
+		prov = anthropic.New(cfg.APIKey)
+	case "anthropic-bedrock":
+		prov, err = anthropic.NewBedrock(ctx, cfg.Region)
+	case "anthropic-vertex":
+		if cfg.ProjectID == "" || cfg.Region == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("VERTEX_PROJECT_ID and VERTEX_REGION must be set for anthropic-vertex")
+		}
+		prov, err = anthropic.NewVertex(ctx, cfg.Region, cfg.ProjectID)
+	case "openai-direct":
+		if cfg.APIKey == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("OPENAI_API_KEY not set")
+		}
+		prov = openaiprovider.New(cfg.APIKey, cfg.BaseURL)
+	case "openai-azure":
+		if cfg.APIKey == "" || cfg.Endpoint == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set for openai-azure")
+		}
+		prov = openaiprovider.NewAzure(cfg.APIKey, cfg.Endpoint, cfg.APIVersion)
+	case "gemini-direct":
+		if cfg.APIKey == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("GEMINI_API_KEY not set")
+		}
+		prov = geminiprovider.New(cfg.APIKey)
+	case "gemini-vertex":
+		if cfg.ProjectID == "" || cfg.Region == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("VERTEX_PROJECT_ID and VERTEX_REGION must be set for gemini-vertex")
+		}
+		prov, err = geminiprovider.NewVertex(ctx, cfg.ProjectID, cfg.Region)
+	case "grok-direct":
+		if cfg.APIKey == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("XAI_API_KEY not set")
+		}
+		prov = openaiprovider.NewGrok(cfg.APIKey, cfg.BaseURL)
+	case "openrouter":
+		if cfg.APIKey == "" {
+			return provider.DeploymentAdapter{}, fmt.Errorf("OPENROUTER_API_KEY not set")
+		}
+		prov = openaiprovider.NewOpenRouter(cfg.APIKey, cfg.BaseURL)
+	case "ollama-local":
+		prov = openaiprovider.NewOllama(cfg.BaseURL)
+	default:
+		return provider.DeploymentAdapter{}, fmt.Errorf("unknown deployment: %s", deploymentID)
+	}
+	if err != nil {
+		return provider.DeploymentAdapter{}, err
+	}
+	prov = provider.WithRetry(prov, globalRetry)
+	return provider.DeploymentAdapter{
+		DeploymentID:  deploymentID,
+		Provider:      prov,
+		ModelMappings: cfg.ModelMappings,
+	}, nil
+}
+
+func apiDeploymentConfigForID(deploymentID string, appConfig *config.Config) config.DeploymentConfig {
+	cfg := appConfig.Deployments[deploymentID]
+	switch deploymentID {
+	case "anthropic-direct":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.Anthropic.APIKey
+		}
+	case "anthropic-bedrock":
+		if cfg.Region == "" {
+			cfg.Region = appConfig.Providers.AnthropicBedrock.Region
+		}
+	case "anthropic-vertex":
+		if cfg.ProjectID == "" {
+			cfg.ProjectID = appConfig.Providers.AnthropicVertex.ProjectID
+		}
+		if cfg.Region == "" {
+			cfg.Region = appConfig.Providers.AnthropicVertex.Region
+		}
+	case "openai-direct":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.OpenAI.APIKey
+		}
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = appConfig.Providers.OpenAI.BaseURL
+		}
+	case "openai-azure":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.OpenAIAzure.APIKey
+		}
+		if cfg.Endpoint == "" {
+			cfg.Endpoint = appConfig.Providers.OpenAIAzure.Endpoint
+		}
+		if cfg.APIVersion == "" {
+			cfg.APIVersion = appConfig.Providers.OpenAIAzure.APIVersion
+		}
+	case "gemini-direct":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.Gemini.APIKey
+		}
+	case "gemini-vertex":
+		if cfg.ProjectID == "" {
+			cfg.ProjectID = appConfig.Providers.GeminiVertex.ProjectID
+		}
+		if cfg.Region == "" {
+			cfg.Region = appConfig.Providers.GeminiVertex.Region
+		}
+	case "grok-direct":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.Grok.APIKey
+		}
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = appConfig.Providers.Grok.BaseURL
+		}
+	case "openrouter":
+		if cfg.APIKey == "" {
+			cfg.APIKey = appConfig.Providers.OpenRouter.APIKey
+		}
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = appConfig.Providers.OpenRouter.BaseURL
+		}
+	case "ollama-local":
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = appConfig.Providers.Ollama.BaseURL
+		}
+	}
+	return cfg
 }
 
 // createRouter builds a Router from the routing and fallback config.

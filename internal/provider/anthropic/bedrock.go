@@ -6,6 +6,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/bedrock"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"langdag.com/langdag/types"
 )
 
@@ -16,9 +17,13 @@ type BedrockProvider struct {
 
 // NewBedrock creates a new Anthropic Bedrock provider.
 // It uses AWS default credentials (env vars, shared config, IAM role, etc.).
-func NewBedrock(ctx context.Context) (*BedrockProvider, error) {
+func NewBedrock(ctx context.Context, region ...string) (*BedrockProvider, error) {
+	var opts []func(*awsconfig.LoadOptions) error
+	if len(region) > 0 && region[0] != "" {
+		opts = append(opts, awsconfig.WithRegion(region[0]))
+	}
 	client := anthropic.NewClient(
-		bedrock.WithLoadDefaultConfig(ctx),
+		bedrock.WithLoadDefaultConfig(ctx, opts...),
 	)
 	return &BedrockProvider{client: client}, nil
 }

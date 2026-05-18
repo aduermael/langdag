@@ -176,7 +176,7 @@ func TestPrompt(t *testing.T) {
 		if req.Message != "Hello" {
 			t.Errorf("expected message Hello, got %s", req.Message)
 		}
-		json.NewEncoder(w).Encode(promptResponse{
+		json.NewEncoder(w).Encode(PromptResponse{
 			NodeID:  "node-456",
 			Content: "Hi there!",
 		})
@@ -206,7 +206,7 @@ func TestPromptWithOptions(t *testing.T) {
 		if req.SystemPrompt != "Be helpful" {
 			t.Errorf("expected system_prompt 'Be helpful', got %s", req.SystemPrompt)
 		}
-		json.NewEncoder(w).Encode(promptResponse{NodeID: "n-1", Content: "ok"})
+		json.NewEncoder(w).Encode(PromptResponse{NodeID: "n-1", Content: "ok"})
 	}))
 	defer server.Close()
 
@@ -222,7 +222,7 @@ func TestNodePrompt(t *testing.T) {
 		if r.URL.Path != "/nodes/node-1/prompt" {
 			t.Errorf("expected /nodes/node-1/prompt, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(promptResponse{NodeID: "node-2", Content: "continued"})
+		json.NewEncoder(w).Encode(PromptResponse{NodeID: "node-2", Content: "continued"})
 	}))
 	defer server.Close()
 
@@ -234,6 +234,116 @@ func TestNodePrompt(t *testing.T) {
 	}
 	if result.ID != "node-2" {
 		t.Errorf("expected node-2, got %s", result.ID)
+	}
+}
+
+func TestPromptMapsResponseFieldsToNode(t *testing.T) {
+	resp := fullPromptResponse()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/prompt" {
+			t.Errorf("expected POST /prompt, got %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	node, err := c.Prompt(context.Background(), "Hello")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertPromptResponseMappedToNode(t, node, resp)
+}
+
+func TestNodePromptMapsResponseFieldsToNode(t *testing.T) {
+	resp := fullPromptResponse()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/nodes/node-1/prompt" {
+			t.Errorf("expected POST /nodes/node-1/prompt, got %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	node := &Node{ID: "node-1", client: c}
+	result, err := node.Prompt(context.Background(), "more")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertPromptResponseMappedToNode(t, result, resp)
+}
+
+func fullPromptResponse() PromptResponse {
+	return PromptResponse{
+		NodeID:              "node-rich",
+		Content:             "mapped content",
+		TokensIn:            10,
+		TokensOut:           20,
+		TokensCacheRead:     3,
+		TokensCacheCreation: 4,
+		TokensReasoning:     5,
+		Usage: &NormalizedUsage{
+			InputTokens:          10,
+			OutputTokens:         20,
+			CacheReadInputTokens: 3,
+			ReasoningTokens:      5,
+		},
+		Metadata: &AssistantNodeMetadata{
+			NormalizedUsage: &NormalizedUsage{
+				InputTokens:              10,
+				OutputTokens:             20,
+				CacheCreationInputTokens: 4,
+			},
+		},
+		Cost: &CostResult{
+			Status:   "known",
+			Total:    0.00042,
+			Currency: "USD",
+			Source:   "catalog",
+		},
+	}
+}
+
+func assertPromptResponseMappedToNode(t *testing.T, node *Node, resp PromptResponse) {
+	t.Helper()
+
+	if node.ID != resp.NodeID {
+		t.Errorf("ID = %q, want %q", node.ID, resp.NodeID)
+	}
+	if node.Type != NodeTypeAssistant {
+		t.Errorf("Type = %q, want %q", node.Type, NodeTypeAssistant)
+	}
+	if node.Content != resp.Content {
+		t.Errorf("Content = %q, want %q", node.Content, resp.Content)
+	}
+	if node.TokensIn != resp.TokensIn {
+		t.Errorf("TokensIn = %d, want %d", node.TokensIn, resp.TokensIn)
+	}
+	if node.TokensOut != resp.TokensOut {
+		t.Errorf("TokensOut = %d, want %d", node.TokensOut, resp.TokensOut)
+	}
+	if node.TokensCacheRead != resp.TokensCacheRead {
+		t.Errorf("TokensCacheRead = %d, want %d", node.TokensCacheRead, resp.TokensCacheRead)
+	}
+	if node.TokensCacheCreation != resp.TokensCacheCreation {
+		t.Errorf("TokensCacheCreation = %d, want %d", node.TokensCacheCreation, resp.TokensCacheCreation)
+	}
+	if node.TokensReasoning != resp.TokensReasoning {
+		t.Errorf("TokensReasoning = %d, want %d", node.TokensReasoning, resp.TokensReasoning)
+	}
+	if node.Usage == nil || node.Usage.OutputTokens != resp.Usage.OutputTokens {
+		t.Errorf("Usage = %+v, want output tokens %d", node.Usage, resp.Usage.OutputTokens)
+	}
+	if node.Metadata == nil || node.Metadata.NormalizedUsage == nil ||
+		node.Metadata.NormalizedUsage.CacheCreationInputTokens != resp.Metadata.NormalizedUsage.CacheCreationInputTokens {
+		t.Errorf("Metadata = %+v, want normalized usage %+v", node.Metadata, resp.Metadata.NormalizedUsage)
+	}
+	if node.Cost == nil || node.Cost.Total != resp.Cost.Total {
+		t.Errorf("Cost = %+v, want total %f", node.Cost, resp.Cost.Total)
+	}
+	if node.client == nil {
+		t.Error("client was not set on mapped node")
 	}
 }
 

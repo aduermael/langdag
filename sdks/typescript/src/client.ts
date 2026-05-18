@@ -7,6 +7,7 @@ import type {
   LangDAGClientOptions,
   NodeData,
   NodeType,
+  PromptResponse,
   PromptOptions,
   SSEEvent,
   DeleteResponse,
@@ -30,17 +31,22 @@ export class Node {
   readonly sequence: number;
   readonly type: NodeType;
   readonly content: string;
+  readonly provider?: string;
   readonly model?: string;
   readonly tokensIn?: number;
   readonly tokensOut?: number;
   readonly cacheReadTokensIn?: number;
   readonly cacheCreationTokensIn?: number;
   readonly reasoningTokens?: number;
+  readonly usage?: NodeData['usage'];
   readonly latencyMs?: number;
+  readonly stopReason?: string;
   readonly status?: string;
   readonly title?: string;
   readonly systemPrompt?: string;
   readonly createdAt: string;
+  readonly metadata?: NodeData['metadata'];
+  readonly cost?: NodeData['cost'];
 
   /** @internal */
   private readonly client: LangDAGClient;
@@ -53,17 +59,22 @@ export class Node {
     this.sequence = data.sequence;
     this.type = data.node_type;
     this.content = data.content;
+    this.provider = data.provider;
     this.model = data.model;
     this.tokensIn = data.tokens_in;
     this.tokensOut = data.tokens_out;
     this.cacheReadTokensIn = data.tokens_cache_read;
     this.cacheCreationTokensIn = data.tokens_cache_creation;
     this.reasoningTokens = data.tokens_reasoning;
+    this.usage = data.usage;
     this.latencyMs = data.latency_ms;
+    this.stopReason = data.stop_reason;
     this.status = data.status;
     this.title = data.title;
     this.systemPrompt = data.system_prompt;
     this.createdAt = data.created_at;
+    this.metadata = data.metadata;
+    this.cost = data.cost;
     this.client = client;
   }
 
@@ -96,6 +107,7 @@ export class Stream {
   private readonly rawStream: ReadableStream<Uint8Array>;
   private readonly client: LangDAGClient;
   private nodeId: string = '';
+  private doneResponse?: PromptResponse;
   private collectedContent: string = '';
   private consumed: boolean = false;
 
@@ -128,6 +140,7 @@ export class Stream {
         this.collectedContent += event.content;
       } else if (event.type === 'done') {
         this.nodeId = event.node_id;
+        this.doneResponse = event.response;
       }
       yield event;
     }
@@ -150,17 +163,26 @@ export class Stream {
       throw new SSEParseError('Stream did not produce a done event with node_id');
     }
 
-    return new Node(
-      {
-        id: this.nodeId,
-        content: this.collectedContent,
-        node_type: 'assistant',
-        sequence: 0,
-        created_at: '',
-      },
-      this.client,
-    );
+    return new Node(nodeDataFromPromptResponse(this.doneResponse, this.nodeId, this.collectedContent), this.client);
   }
+}
+
+function nodeDataFromPromptResponse(resp: PromptResponse | undefined, nodeId: string, content: string): NodeData {
+  return {
+    id: resp?.node_id ?? nodeId,
+    content: resp?.content || content,
+    node_type: 'assistant',
+    sequence: 0,
+    created_at: '',
+    tokens_in: resp?.tokens_in,
+    tokens_out: resp?.tokens_out,
+    tokens_cache_read: resp?.tokens_cache_read,
+    tokens_cache_creation: resp?.tokens_cache_creation,
+    tokens_reasoning: resp?.tokens_reasoning,
+    usage: resp?.usage,
+    metadata: resp?.metadata,
+    cost: resp?.cost,
+  };
 }
 
 /**
@@ -311,7 +333,7 @@ export class LangDAGClient {
    * @returns The assistant's response node
    */
   async prompt(message: string, options?: PromptOptions): Promise<Node> {
-    const resp = await this.request<{ node_id: string; content: string }>('POST', '/prompt', {
+    const resp = await this.request<PromptResponse>('POST', '/prompt', {
       message,
       model: options?.model,
       system_prompt: options?.systemPrompt,
@@ -319,16 +341,7 @@ export class LangDAGClient {
       stream: false,
     });
 
-    return new Node(
-      {
-        id: resp.node_id,
-        content: resp.content,
-        node_type: 'assistant',
-        sequence: 0,
-        created_at: '',
-      },
-      this,
-    );
+    return new Node(nodeDataFromPromptResponse(resp, resp.node_id, resp.content), this);
   }
 
   /**
@@ -355,7 +368,7 @@ export class LangDAGClient {
    * @internal
    */
   async promptFrom(nodeId: string, message: string, options?: PromptOptions): Promise<Node> {
-    const resp = await this.request<{ node_id: string; content: string }>(
+    const resp = await this.request<PromptResponse>(
       'POST',
       `/nodes/${encodeURIComponent(nodeId)}/prompt`,
       {
@@ -366,16 +379,7 @@ export class LangDAGClient {
       },
     );
 
-    return new Node(
-      {
-        id: resp.node_id,
-        content: resp.content,
-        node_type: 'assistant',
-        sequence: 0,
-        created_at: '',
-      },
-      this,
-    );
+    return new Node(nodeDataFromPromptResponse(resp, resp.node_id, resp.content), this);
   }
 
   /**
