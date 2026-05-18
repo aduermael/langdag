@@ -19,9 +19,30 @@ var providerServerTools = map[string][]string{
 	"grok":      {"web_search"},
 }
 
-// FetchLatest fetches the latest model catalog from official provider documentation pages.
+// FetchLatest fetches the latest legacy model catalog from official provider
+// documentation pages.
 // All provider fetches must succeed; partial failures return an error.
 func FetchLatest(ctx context.Context) (*Catalog, error) {
+	return fetchLatestLegacy(ctx)
+}
+
+// FetchLatestV1 fetches the latest provider catalog and compiles it into the
+// deployment-aware v1 shape used by the published catalog artifact.
+func FetchLatestV1(ctx context.Context) (*CatalogV1, error) {
+	legacy, err := fetchLatestLegacy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalog := CatalogV1FromLegacyCatalog(legacy)
+	addDerivedDeploymentOfferingsV1(catalog, legacy.UpdatedAt)
+	NormalizeCatalogV1(catalog)
+	if err := ValidateCatalogV1(catalog); err != nil {
+		return nil, err
+	}
+	return catalog, nil
+}
+
+func fetchLatestLegacy(ctx context.Context) (*Catalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -68,7 +89,7 @@ func FetchLatest(ctx context.Context) (*Catalog, error) {
 		return nil, fmt.Errorf("models: provider fetch failed: %s", strings.Join(errs, "; "))
 	}
 
-	catalog := &Catalog{
+	legacy := &Catalog{
 		UpdatedAt: time.Now().UTC(),
 		Source:    "providers",
 		Providers: make(map[string][]ModelPricing),
@@ -91,10 +112,114 @@ func FetchLatest(ctx context.Context) (*Catalog, error) {
 		slices.SortFunc(filtered, func(a, b ModelPricing) int {
 			return strings.Compare(a.ID, b.ID)
 		})
-		catalog.Providers[r.provider] = filtered
+		legacy.Providers[r.provider] = filtered
 	}
 
-	return catalog, nil
+	return legacy, nil
+}
+
+func addDerivedDeploymentOfferingsV1(catalog *CatalogV1, observedAt time.Time) {
+	if catalog == nil {
+		return
+	}
+	provenance := &ProvenanceV1{Source: "generated-from-provider-catalog", ObservedAt: observedAt}
+	var derived []ModelOfferingV1
+	for _, offering := range catalog.Offerings {
+		switch offering.DeploymentID {
+		case "anthropic-direct":
+			if nativeID := anthropicBedrockNativeModelIDV1(offering.NativeModelID); nativeID != "" {
+				derived = append(derived, derivedOfferingV1(offering, "anthropic-bedrock", nativeID, provenance))
+			}
+			if nativeID := anthropicVertexNativeModelIDV1(offering.NativeModelID); nativeID != "" {
+				derived = append(derived, derivedOfferingV1(offering, "anthropic-vertex", nativeID, provenance))
+			}
+		case "gemini-direct":
+			derived = append(derived, derivedOfferingV1(offering, "gemini-vertex", offering.NativeModelID, provenance))
+		}
+	}
+	for _, offering := range derived {
+		if !catalogV1HasOffering(catalog.Offerings, offering.ID) {
+			catalog.Offerings = append(catalog.Offerings, offering)
+		}
+	}
+	for modelID, model := range catalog.Models {
+		if model.ProviderID != "openai" {
+			continue
+		}
+		template := offeringTemplateV1("openai-azure", modelID, PricingV1{
+			Status:            PricingUnknown,
+			Currency:          "USD",
+			EffectiveAt:       observedAt,
+			MissingDimensions: []string{"input_tokens", "output_tokens"},
+			Source:            "user-configured-azure-deployment",
+		}, provenance)
+		if !catalogV1HasOfferingTemplate(catalog.OfferingTemplates, template.ID) {
+			catalog.OfferingTemplates = append(catalog.OfferingTemplates, template)
+		}
+	}
+}
+
+func derivedOfferingV1(source ModelOfferingV1, deploymentID, nativeModelID string, provenance *ProvenanceV1) ModelOfferingV1 {
+	return ModelOfferingV1{
+		ID:               deploymentID + ":" + nativeModelID,
+		CanonicalModelID: source.CanonicalModelID,
+		DeploymentID:     deploymentID,
+		NativeModelID:    nativeModelID,
+		Capabilities: CapabilitySetV1{
+			ServerTools: map[string]CapabilityState{"web_search": CapabilityUnknown},
+		},
+		Pricing: PricingV1{
+			Status:            PricingUnknown,
+			Currency:          "USD",
+			EffectiveAt:       provenance.ObservedAt,
+			MissingDimensions: []string{"input_tokens", "output_tokens"},
+			Source:            "generated-deployment-placeholder",
+			Notes:             []string{"Deployment-specific pricing is not inferred from direct provider pricing."},
+		},
+		Provenance: provenance,
+	}
+}
+
+func anthropicBedrockNativeModelIDV1(nativeID string) string {
+	if nativeID == "" {
+		return ""
+	}
+	if strings.HasPrefix(nativeID, "anthropic.") {
+		return nativeID
+	}
+	if strings.HasSuffix(nativeID, "-v1:0") {
+		return "anthropic." + nativeID
+	}
+	return "anthropic." + nativeID + "-v1:0"
+}
+
+func anthropicVertexNativeModelIDV1(nativeID string) string {
+	if nativeID == "" {
+		return ""
+	}
+	parts := strings.Split(nativeID, "-")
+	if len(parts) < 2 {
+		return nativeID
+	}
+	last := parts[len(parts)-1]
+	if len(last) == 8 {
+		for _, r := range last {
+			if r < '0' || r > '9' {
+				return nativeID
+			}
+		}
+		return strings.Join(parts[:len(parts)-1], "-") + "@" + last
+	}
+	return nativeID
+}
+
+func catalogV1HasOfferingTemplate(templates []ModelOfferingTemplateV1, id string) bool {
+	for _, template := range templates {
+		if template.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // roundPrice rounds a price to 4 decimal places to avoid floating point artifacts.
