@@ -19,11 +19,11 @@ var providerServerTools = map[string][]string{
 	"grok":      {"web_search"},
 }
 
-// FetchLatest fetches the latest legacy model catalog from official provider
-// documentation pages.
+// FetchLatest fetches the latest model catalog from official provider
+// documentation pages and compiles it into the deployment-aware v1 shape.
 // All provider fetches must succeed; partial failures return an error.
 func FetchLatest(ctx context.Context) (*Catalog, error) {
-	return fetchLatestLegacy(ctx)
+	return FetchLatestV1(ctx)
 }
 
 // FetchLatestV1 fetches the latest provider catalog and compiles it into the
@@ -42,7 +42,7 @@ func FetchLatestV1(ctx context.Context) (*CatalogV1, error) {
 	return catalog, nil
 }
 
-func fetchLatestLegacy(ctx context.Context) (*Catalog, error) {
+func fetchLatestLegacy(ctx context.Context) (*LegacyCatalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func fetchLatestLegacy(ctx context.Context) (*Catalog, error) {
 		return nil, fmt.Errorf("models: provider fetch failed: %s", strings.Join(errs, "; "))
 	}
 
-	legacy := &Catalog{
+	legacy := &LegacyCatalog{
 		UpdatedAt: time.Now().UTC(),
 		Source:    "providers",
 		Providers: make(map[string][]ModelPricing),

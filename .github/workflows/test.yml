@@ -36,6 +36,13 @@ jobs:
         working-directory: sdks/typescript
         run: npm install
 
+      - name: Run Go unit tests
+        run: go test -count=1 ./...
+
+      - name: Build TypeScript SDK
+        working-directory: sdks/typescript
+        run: npm run build
+
       - name: Start server and run E2E tests
         run: |
           LANGDAG_PROVIDER=mock LANGDAG_STORAGE_PATH=/tmp/langdag-ci.db \
@@ -54,7 +61,7 @@ jobs:
           FAILED=0
 
           echo "--- Go SDK E2E ---"
-          (cd sdks/go && go test -v -run TestE2E ./...) || FAILED=1
+          (cd sdks/go && GOWORK=off go test -v -run TestE2E ./...) || FAILED=1
 
           echo "--- Python SDK E2E ---"
           (cd sdks/python && pytest tests/test_e2e.py -v) || FAILED=1

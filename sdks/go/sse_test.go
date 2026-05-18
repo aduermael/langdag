@@ -62,6 +62,57 @@ data: {"node_id":"node-456"}
 	}
 }
 
+func TestStream_NodeMapsDoneResponseFields(t *testing.T) {
+	input := `event: delta
+data: {"content":"fallback content"}
+
+event: done
+data: {"node_id":"node-rich","content":"done content","tokens_in":10,"tokens_out":20,"tokens_cache_read":3,"tokens_cache_creation":4,"tokens_reasoning":5,"usage":{"input_tokens":10,"output_tokens":20},"metadata":{"normalized_usage":{"cache_creation_input_tokens":4}},"cost":{"status":"known","total":0.00042,"currency":"USD","source":"catalog"}}
+
+`
+	body := io.NopCloser(strings.NewReader(input))
+	stream := newStream(body, nil)
+
+	var doneEvent *SSEEvent
+	for event := range stream.Events() {
+		if event.Type == "done" {
+			event := event
+			doneEvent = &event
+		}
+	}
+	if doneEvent == nil {
+		t.Fatal("expected done event")
+	}
+	if doneEvent.Response == nil {
+		t.Fatal("done event response is nil")
+	}
+	if doneEvent.Response.Content != "done content" {
+		t.Errorf("done response content = %q, want %q", doneEvent.Response.Content, "done content")
+	}
+
+	node, err := stream.Node()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Content != "done content" {
+		t.Errorf("Content = %q, want done response content", node.Content)
+	}
+	if node.TokensIn != 10 || node.TokensOut != 20 || node.TokensCacheRead != 3 ||
+		node.TokensCacheCreation != 4 || node.TokensReasoning != 5 {
+		t.Errorf("token fields were not mapped: %+v", node)
+	}
+	if node.Usage == nil || node.Usage.OutputTokens != 20 {
+		t.Errorf("Usage = %+v, want output tokens 20", node.Usage)
+	}
+	if node.Metadata == nil || node.Metadata.NormalizedUsage == nil ||
+		node.Metadata.NormalizedUsage.CacheCreationInputTokens != 4 {
+		t.Errorf("Metadata = %+v, want cache creation tokens 4", node.Metadata)
+	}
+	if node.Cost == nil || node.Cost.Total != 0.00042 {
+		t.Errorf("Cost = %+v, want total 0.00042", node.Cost)
+	}
+}
+
 func TestStream_ErrorEvent(t *testing.T) {
 	input := `event: error
 data: something went wrong

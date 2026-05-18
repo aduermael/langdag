@@ -7,13 +7,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"langdag.com/langdag/internal/config"
 	"langdag.com/langdag/internal/conversation"
+	"langdag.com/langdag/internal/models"
+	"langdag.com/langdag/internal/provider"
 	mockprovider "langdag.com/langdag/internal/provider/mock"
 	"langdag.com/langdag/internal/storage/sqlite"
+	"langdag.com/langdag/types"
 )
 
 // testServer creates a Server with a temp SQLite DB and mock provider for testing.
@@ -79,6 +84,113 @@ func TestAPIRoutingPolicyPreservesExplicitEmptyDefault(t *testing.T) {
 	stages, ok := policy.Providers["openai"]
 	if !ok || stages == nil || len(stages) != 0 {
 		t.Fatalf("empty provider route was not preserved: %+v", policy.Providers)
+	}
+}
+
+func TestCreateDeploymentAwareProviderUsesRuntimeCatalogCache(t *testing.T) {
+	const canonicalID = "openai/gpt-runtime-cache-api"
+	const nativeID = "gpt-runtime-cache-api-native"
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	catalog := models.ReferenceCatalogV1()
+	generatedAt := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	catalog.GeneratedAt = generatedAt
+	catalog.StaleAfter = generatedAt.Add(30 * 24 * time.Hour)
+	catalog.Models[canonicalID] = &models.ModelV1{
+		ID:            canonicalID,
+		ProviderID:    "openai",
+		Name:          "GPT Runtime Cache API",
+		ContextWindow: 128000,
+	}
+	catalog.Offerings = append(catalog.Offerings, models.ModelOfferingV1{
+		ID:               "openai-direct:" + nativeID,
+		CanonicalModelID: canonicalID,
+		DeploymentID:     "openai-direct",
+		NativeModelID:    nativeID,
+		Pricing: models.PricingV1{
+			Status:      models.PricingKnown,
+			Currency:    "USD",
+			EffectiveAt: generatedAt,
+			RatesPer1M:  map[string]float64{"input_tokens": 2, "output_tokens": 8},
+		},
+	})
+	if err := models.SaveCatalog(catalog, models.DefaultCatalogCachePath()); err != nil {
+		t.Fatalf("SaveCatalog: %v", err)
+	}
+
+	var requestedModel string
+	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		var req struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		requestedModel = req.Model
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"chatcmpl-cache-api","model":%q,"choices":[{"message":{"role":"assistant","content":"cache api"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`, nativeID)
+	}))
+	defer openAI.Close()
+
+	prov, err := createProvider(context.Background(), &config.Config{
+		Storage: config.StorageConfig{Path: filepath.Join(t.TempDir(), "api.db")},
+		Providers: config.ProvidersConfig{
+			OpenAI: config.ProviderConfig{APIKey: "sk-test", BaseURL: openAI.URL},
+		},
+		Deployments: map[string]config.DeploymentConfig{"openai-direct": {}},
+	})
+	if err != nil {
+		t.Fatalf("createProvider: %v", err)
+	}
+
+	resp, err := prov.Complete(context.Background(), &types.CompletionRequest{
+		Model:    canonicalID,
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if requestedModel != nativeID {
+		t.Fatalf("request model = %q, want runtime cache native id %q", requestedModel, nativeID)
+	}
+	if resp.ModelResolution == nil || resp.ModelResolution.NativeModelID != nativeID {
+		t.Fatalf("model resolution = %+v, want native id %q", resp.ModelResolution, nativeID)
+	}
+}
+
+func TestCreateDeploymentAwareProviderReportsAdapterErrors(t *testing.T) {
+	appConfig := &config.Config{
+		Deployments: map[string]config.DeploymentConfig{
+			"openai-direct": {},
+		},
+	}
+
+	_, err := createDeploymentAwareProvider(context.Background(), appConfig, provider.DefaultRetryConfig())
+	if err == nil {
+		t.Fatal("createDeploymentAwareProvider succeeded without credentials")
+	}
+	for _, want := range []string{"no configured deployments are available", "openai-direct", "OPENAI_API_KEY not set"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %q", err, want)
+		}
+	}
+}
+
+func TestPromptResponseFromNodeFallsBackToSavedContent(t *testing.T) {
+	node := &types.Node{
+		ID:      "node-saved",
+		Content: "saved node content",
+	}
+
+	resp := promptResponseFromNode(node.ID, "", node)
+
+	if resp.Content != node.Content {
+		t.Fatalf("Content = %q, want saved node content %q", resp.Content, node.Content)
 	}
 }
 

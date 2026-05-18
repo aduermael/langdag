@@ -51,7 +51,7 @@ FAILED=0
 
 echo ""
 echo "=== Running Go SDK E2E tests ==="
-if (cd sdks/go && go test -v -run TestE2E ./...); then
+if (cd sdks/go && GOWORK=off go test -v -run TestE2E ./...); then
     echo "Go SDK E2E: PASSED"
 else
     echo "Go SDK E2E: FAILED"

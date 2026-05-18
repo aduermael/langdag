@@ -38,6 +38,7 @@ export class Node {
   readonly cacheReadTokensIn?: number;
   readonly cacheCreationTokensIn?: number;
   readonly reasoningTokens?: number;
+  readonly usage?: NodeData['usage'];
   readonly latencyMs?: number;
   readonly stopReason?: string;
   readonly status?: string;
@@ -65,6 +66,7 @@ export class Node {
     this.cacheReadTokensIn = data.tokens_cache_read;
     this.cacheCreationTokensIn = data.tokens_cache_creation;
     this.reasoningTokens = data.tokens_reasoning;
+    this.usage = data.usage;
     this.latencyMs = data.latency_ms;
     this.stopReason = data.stop_reason;
     this.status = data.status;
@@ -177,6 +179,7 @@ function nodeDataFromPromptResponse(resp: PromptResponse | undefined, nodeId: st
     tokens_cache_read: resp?.tokens_cache_read,
     tokens_cache_creation: resp?.tokens_cache_creation,
     tokens_reasoning: resp?.tokens_reasoning,
+    usage: resp?.usage,
     metadata: resp?.metadata,
     cost: resp?.cost,
   };

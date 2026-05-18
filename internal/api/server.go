@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -327,25 +328,30 @@ func createProvider(ctx context.Context, appConfig *config.Config) (provider.Pro
 }
 
 func createDeploymentAwareProvider(ctx context.Context, appConfig *config.Config, globalRetry provider.RetryConfig) (provider.Provider, error) {
-	catalog, err := models.DefaultCatalog()
+	catalogResult, err := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
 	if err != nil {
 		return nil, err
 	}
-	compiled, err := models.CompileCatalogV1(catalog)
+	compiled, err := models.CompileCatalogV1(catalogResult.Catalog)
 	if err != nil {
 		return nil, err
 	}
 	deploymentIDs := apiDeploymentIDsForConfig(appConfig)
 	adapters := map[string]provider.DeploymentAdapter{}
+	var adapterErrors []error
 	for _, deploymentID := range deploymentIDs {
 		adapter, err := createDeploymentAdapter(ctx, deploymentID, appConfig, globalRetry)
 		if err != nil {
+			adapterErrors = append(adapterErrors, fmt.Errorf("%s: %w", deploymentID, err))
 			log.Printf("Skipping unavailable deployment: %s: %v", deploymentID, err)
 			continue
 		}
 		adapters[deploymentID] = adapter
 	}
 	if len(adapters) == 0 {
+		if len(adapterErrors) > 0 {
+			return nil, fmt.Errorf("no configured deployments are available: %w", errors.Join(adapterErrors...))
+		}
 		return nil, fmt.Errorf("no configured deployments are available")
 	}
 	return provider.NewDeploymentRouter(provider.DeploymentRouterOptions{

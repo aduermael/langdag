@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"text/tabwriter"
 	"time"
 
@@ -158,11 +157,7 @@ func printModelsJSON(catalog *models.Catalog) {
 }
 
 func modelsCachePath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(homeDir, ".config", "langdag", "model_catalog.json")
+	return models.DefaultCatalogCachePath()
 }
 
 func formatTokens(n int) string {

@@ -36,6 +36,7 @@ export interface NodeData {
   tokens_cache_read?: number;
   tokens_cache_creation?: number;
   tokens_reasoning?: number;
+  usage?: NormalizedUsage;
   latency_ms?: number;
   stop_reason?: string;
   status?: string;

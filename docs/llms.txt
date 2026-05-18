@@ -52,7 +52,7 @@ Deployment-aware built-in catalog with canonical model IDs, routeable offerings,
 deployment-specific native model IDs, pricing, context windows, capabilities,
 aliases, and freshness metadata.
 - `langdag models [--provider p] [--update] [--json]`
-- `DefaultModelCatalog()`, `LoadModelCatalog(path)`, `FetchModelCatalog(ctx, path)`
+- `DefaultModelCatalog()`, `LoadRuntimeModelCatalog()`, `LoadModelCatalog(path)`, `FetchModelCatalog(ctx, path)`
 
 ## REST API
 

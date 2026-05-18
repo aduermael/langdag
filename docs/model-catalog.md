@@ -56,10 +56,11 @@ arbitrary endpoints, auth flows, request templates, or new protocol behavior.
 
 ## Runtime Loading
 
-Runtime loading is cache or embedded first. Callers can use the local cache
-immediately, keep stale cache data with diagnostics, and refresh the cache from
-the published artifact. Remote refresh is enabled by default and can be disabled
-with `LANGDAG_MODEL_CATALOG_REFRESH=false`.
+Prompt/runtime loading prefers the default user cache populated by `langdag
+models --update`, then falls back to the embedded catalog. Callers can use the
+local cache immediately, keep stale cache data with diagnostics, and refresh the
+cache from the published artifact. Refresh calls are enabled by default and can
+be disabled with `LANGDAG_MODEL_CATALOG_REFRESH=false`.
 `LANGDAG_MODEL_CATALOG_URL` overrides the static endpoint and
 `LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the refresh timeout. Remote data is
 strictly schema-validated before atomically replacing the cache; invalid, stale,

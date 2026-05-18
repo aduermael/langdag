@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -66,6 +67,84 @@ func (s *phase8OpenAICompatServer) Models() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.models...)
+}
+
+func TestNewLoadsRuntimeCatalogCacheForRouting(t *testing.T) {
+	const canonicalID = "openai/gpt-runtime-cache-public"
+	const nativeID = "gpt-runtime-cache-public-native"
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	catalog := ReferenceCatalogV1()
+	generatedAt := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	catalog.GeneratedAt = generatedAt
+	catalog.StaleAfter = generatedAt.Add(30 * 24 * time.Hour)
+	catalog.Models[canonicalID] = &ModelV1{
+		ID:            canonicalID,
+		ProviderID:    "openai",
+		Name:          "GPT Runtime Cache Public",
+		ContextWindow: 128000,
+	}
+	catalog.Offerings = append(catalog.Offerings, ModelOfferingV1{
+		ID:               "openai-direct:" + nativeID,
+		CanonicalModelID: canonicalID,
+		DeploymentID:     "openai-direct",
+		NativeModelID:    nativeID,
+		Pricing: PricingV1{
+			Status:      PricingKnown,
+			Currency:    "USD",
+			EffectiveAt: generatedAt,
+			RatesPer1M:  map[string]float64{"input_tokens": 2, "output_tokens": 8},
+		},
+	})
+	writeCatalogCache(t, DefaultModelCatalogCachePath(), catalog)
+
+	body := `data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[{"index":0,"delta":{"content":"cache route"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}
+
+data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`
+	server := newPhase8OpenAICompatServer(t, http.StatusOK, body)
+	server.contentType = "text/event-stream"
+
+	client, err := New(Config{
+		StoragePath: filepath.Join(t.TempDir(), "runtime-cache.db"),
+		Provider:    "openai",
+		APIKeys:     map[string]string{"openai": "sk-test"},
+		OpenAIConfig: &OpenAIConfig{
+			BaseURL: server.URL(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer client.Close()
+
+	result, err := client.Prompt(context.Background(), "use the runtime cache", WithModel(canonicalID))
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+
+	var final StreamChunk
+	for chunk := range result.Stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		if chunk.Done {
+			final = chunk
+		}
+	}
+	if got := server.Models(); len(got) != 1 || got[0] != nativeID {
+		t.Fatalf("request models = %+v, want native id %q from runtime cache", got, nativeID)
+	}
+	if final.ModelResolution == nil || final.ModelResolution.NativeModelID != nativeID {
+		t.Fatalf("model resolution = %+v, want native id %q", final.ModelResolution, nativeID)
+	}
 }
 
 func TestDeploymentAwarePublicClientRoutingAndMetadataIntegration(t *testing.T) {
@@ -215,5 +294,25 @@ data: [DONE]
 		metadata.ProviderCost == nil ||
 		metadata.ProviderCost.Total != 0.045 {
 		t.Fatalf("stored metadata = %+v", metadata)
+	}
+}
+
+func writeCatalogCache(t *testing.T, path string, catalog *ModelCatalog) {
+	t.Helper()
+	if path == "" {
+		t.Fatal("catalog cache path is empty")
+	}
+	if err := ValidateCatalogV1(catalog); err != nil {
+		t.Fatalf("catalog is invalid: %v", err)
+	}
+	data, err := json.Marshal(catalog)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("create catalog cache dir: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("write catalog cache: %v", err)
 	}
 }

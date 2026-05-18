@@ -168,12 +168,13 @@ client := langdag.NewWithDeps(tempStorage, mockProvider)
 ## Model Catalog Refresh
 
 LangDAG ships an embedded catalog and can refresh a cache from
-`https://langdag.com/model-catalog/v1/catalog.json`. Runtime loading is cache or
-embedded first, so applications can start immediately, then refresh in the
-background. Remote refresh is enabled by default and can be controlled with
-`LANGDAG_MODEL_CATALOG_REFRESH`, `LANGDAG_MODEL_CATALOG_URL`, and
-`LANGDAG_MODEL_CATALOG_TIMEOUT`. Invalid, stale, or partially generated remote
-catalogs are rejected before cache replacement.
+`https://langdag.com/model-catalog/v1/catalog.json`. Prompt/runtime routing
+prefers the default user cache populated by `langdag models --update`, then
+falls back to the embedded catalog. Refresh calls are enabled by default and can
+be controlled with `LANGDAG_MODEL_CATALOG_REFRESH`,
+`LANGDAG_MODEL_CATALOG_URL`, and `LANGDAG_MODEL_CATALOG_TIMEOUT`. Invalid,
+stale, or partially generated remote catalogs are rejected before cache
+replacement.
 
 ---
 

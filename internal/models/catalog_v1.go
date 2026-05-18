@@ -46,11 +46,6 @@ const (
 	ResponseCostLocalFree         ResponseCostSource = "local_free"
 )
 
-// LegacyCatalog is the pre-v1 provider-keyed catalog shape. On this branch it
-// aliases the existing runtime catalog so v1 publishing can be introduced
-// without changing runtime routing before the deployment-aware PR lands.
-type LegacyCatalog = Catalog
-
 // CatalogV1 is the normalized deployment-aware model catalog contract. It is
 // intentionally data-only: it can select among known deployments and API
 // protocols, but it cannot define arbitrary request templates or auth behavior.

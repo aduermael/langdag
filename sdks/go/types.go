@@ -39,6 +39,7 @@ type Node struct {
 	Title               string                 `json:"title,omitempty"`
 	SystemPrompt        string                 `json:"system_prompt,omitempty"`
 	CreatedAt           time.Time              `json:"created_at"`
+	Usage               *NormalizedUsage       `json:"usage,omitempty"`
 	Metadata            *AssistantNodeMetadata `json:"metadata,omitempty"`
 	Cost                *CostResult            `json:"cost,omitempty"`
 
@@ -114,8 +115,8 @@ type promptRequest struct {
 	Tools        []ToolDefinition `json:"tools,omitempty"`
 }
 
-// promptResponse is the JSON body returned from /prompt and /nodes/{id}/prompt.
-type promptResponse struct {
+// PromptResponse is the JSON body returned from /prompt and /nodes/{id}/prompt.
+type PromptResponse struct {
 	NodeID              string                 `json:"node_id"`
 	Content             string                 `json:"content"`
 	TokensIn            int                    `json:"tokens_in,omitempty"`
@@ -126,6 +127,31 @@ type promptResponse struct {
 	Usage               *NormalizedUsage       `json:"usage,omitempty"`
 	Metadata            *AssistantNodeMetadata `json:"metadata,omitempty"`
 	Cost                *CostResult            `json:"cost,omitempty"`
+}
+
+func nodeFromPromptResponse(resp *PromptResponse, client *Client, fallbackContent string) *Node {
+	node := &Node{
+		Type:    NodeTypeAssistant,
+		Content: fallbackContent,
+		client:  client,
+	}
+	if resp == nil {
+		return node
+	}
+
+	node.ID = resp.NodeID
+	if resp.Content != "" {
+		node.Content = resp.Content
+	}
+	node.TokensIn = resp.TokensIn
+	node.TokensOut = resp.TokensOut
+	node.TokensCacheRead = resp.TokensCacheRead
+	node.TokensCacheCreation = resp.TokensCacheCreation
+	node.TokensReasoning = resp.TokensReasoning
+	node.Usage = resp.Usage
+	node.Metadata = resp.Metadata
+	node.Cost = resp.Cost
+	return node
 }
 
 type NormalizedUsage struct {

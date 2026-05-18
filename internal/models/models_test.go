@@ -173,6 +173,34 @@ func TestLoadCatalog_PrefersCache(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeCatalogUsesDefaultCachePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".config", "langdag", "model_catalog.json")
+
+	custom := ReferenceCatalogV1()
+	custom.GeneratedAt = custom.GeneratedAt.Add(24 * time.Hour)
+	custom.StaleAfter = custom.GeneratedAt.Add(30 * 24 * time.Hour)
+	custom.Provenance = &ProvenanceV1{Source: "runtime-cache", ObservedAt: custom.GeneratedAt}
+	if err := SaveCatalog(custom, path); err != nil {
+		t.Fatalf("SaveCatalog() error: %v", err)
+	}
+
+	result, err := LoadRuntimeCatalog(CatalogLoadOptions{})
+	if err != nil {
+		t.Fatalf("LoadRuntimeCatalog() error: %v", err)
+	}
+	if result.Source != CatalogSourceCache {
+		t.Fatalf("Source = %q, want cache", result.Source)
+	}
+	if result.CachePath != path {
+		t.Fatalf("CachePath = %q, want %q", result.CachePath, path)
+	}
+	if result.Catalog.Provenance == nil || result.Catalog.Provenance.Source != "runtime-cache" {
+		t.Fatalf("Provenance = %+v, want runtime-cache", result.Catalog.Provenance)
+	}
+}
+
 func TestLoadCatalog_InvalidCacheFallsBack(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")

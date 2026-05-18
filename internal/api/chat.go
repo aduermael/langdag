@@ -164,16 +164,18 @@ func (s *Server) streamPromptResponse(w http.ResponseWriter, r *http.Request, pa
 	fmt.Fprintf(w, "event: start\ndata: {}\n\n")
 	flusher.Flush()
 
+	var content strings.Builder
 	for event := range events {
 		switch event.Type {
 		case types.StreamEventDelta:
+			content.WriteString(event.Content)
 			data, _ := json.Marshal(map[string]string{"content": event.Content})
 			fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
 			flusher.Flush()
 
 		case types.StreamEventNodeSaved:
 			node, _ := s.convMgr.ResolveNode(ctx, event.NodeID)
-			data, _ := json.Marshal(promptResponseFromNode(event.NodeID, "", node))
+			data, _ := json.Marshal(promptResponseFromNode(event.NodeID, content.String(), node))
 			fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 			flusher.Flush()
 
@@ -202,6 +204,9 @@ func promptResponseFromNode(nodeID, content string, node *types.Node) PromptResp
 	resp := PromptResponse{NodeID: nodeID, Content: content}
 	if node == nil {
 		return resp
+	}
+	if resp.Content == "" {
+		resp.Content = node.Content
 	}
 	resp.TokensIn = node.TokensIn
 	resp.TokensOut = node.TokensOut
