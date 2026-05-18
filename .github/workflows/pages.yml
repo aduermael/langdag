@@ -29,6 +29,21 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Use latest committed model catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin model-catalog >/dev/null 2>&1; then
+            git fetch --depth=1 origin model-catalog
+            if git checkout FETCH_HEAD -- docs/model-catalog/v1/catalog.json; then
+              echo "Using catalog from origin/model-catalog"
+            else
+              echo "origin/model-catalog has no catalog artifact; using catalog committed on this ref"
+            fi
+          else
+            echo "model-catalog branch does not exist; using catalog committed on this ref"
+          fi
+
       - name: Inject version
         run: |
           VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")

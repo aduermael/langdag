@@ -16,6 +16,7 @@ import (
 var (
 	modelsProvider string
 	modelsUpdate   bool
+	modelsGenerate bool
 )
 
 // modelsCmd lists available models with pricing and capabilities.
@@ -25,13 +26,16 @@ var modelsCmd = &cobra.Command{
 	Long: `Display model names, pricing (per 1M tokens), context windows, and max output
 for all supported providers. Data is sourced from official provider documentation.
 
-Use --update to fetch the latest data from the remote source.`,
+Use --update to fetch the latest data into the local runtime cache.
+Use --generate --json to rebuild the deployment-aware catalog artifact for
+publishing automation.`,
 	Run: runModels,
 }
 
 func init() {
 	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by provider (anthropic, openai, gemini, grok)")
 	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest model data from remote source")
+	modelsCmd.Flags().BoolVar(&modelsGenerate, "generate", false, "regenerate deployment-aware model catalog artifact")
 	rootCmd.AddCommand(modelsCmd)
 }
 
@@ -40,6 +44,27 @@ func runModels(cmd *cobra.Command, args []string) {
 
 	var catalog *models.Catalog
 	var err error
+
+	if modelsGenerate && modelsUpdate {
+		exitError("--generate and --update cannot be used together")
+	}
+
+	if modelsGenerate {
+		if !outputJSON {
+			exitError("--generate currently requires --json")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		catalog, err := models.FetchLatestV1(ctx)
+		if err != nil {
+			exitError("failed to fetch model data: %v", err)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(catalog)
+		return
+	}
 
 	if modelsUpdate {
 		fmt.Fprintln(os.Stderr, "Fetching latest model data...")

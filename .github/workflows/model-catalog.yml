@@ -1,0 +1,151 @@
+name: Refresh Model Catalog
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: model-catalog
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Generate candidate catalog
+        run: |
+          mkdir -p /tmp/langdag-catalog
+          go run ./cmd/langdag models --generate --json > /tmp/langdag-catalog/candidate.json
+
+      - name: Validate candidate catalog
+        run: |
+          mkdir -p docs/model-catalog/v1
+          cp /tmp/langdag-catalog/candidate.json docs/model-catalog/v1/catalog.json
+          go test ./internal/models
+
+      - name: Load current published catalog
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/langdag-catalog
+          if git ls-remote --exit-code --heads origin model-catalog >/dev/null 2>&1; then
+            git fetch --depth=1 origin model-catalog
+            if git show FETCH_HEAD:docs/model-catalog/v1/catalog.json > /tmp/langdag-catalog/current.json; then
+              echo "Loaded catalog from origin/model-catalog"
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "origin/model-catalog has no catalog artifact; bootstrapping"
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "origin/model-catalog does not exist; bootstrapping"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check semantic catalog diff
+        id: diff
+        shell: bash
+        run: |
+          if [[ "${{ steps.current.outputs.exists }}" != "true" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "No published catalog exists yet"
+            exit 0
+          fi
+          set +e
+          go run ./tools/catalogcmp -left /tmp/langdag-catalog/current.json -right /tmp/langdag-catalog/candidate.json
+          status=$?
+          set -e
+          if [[ "$status" == "0" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Catalog has no semantic changes"
+          elif [[ "$status" == "1" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Catalog has semantic changes"
+          else
+            exit "$status"
+          fi
+
+      - name: Commit catalog branch update
+        if: steps.diff.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          tmp_index="$(mktemp)"
+          rm -f "$tmp_index"
+          trap 'rm -f "$tmp_index"' EXIT
+
+          blob="$(git hash-object -w /tmp/langdag-catalog/candidate.json)"
+          GIT_INDEX_FILE="$tmp_index" git update-index --add --cacheinfo "100644,$blob,docs/model-catalog/v1/catalog.json"
+          tree="$(GIT_INDEX_FILE="$tmp_index" git write-tree)"
+
+          parents=()
+          if git ls-remote --exit-code --heads origin model-catalog >/dev/null 2>&1; then
+            git fetch --depth=1 origin model-catalog
+            parents=(-p FETCH_HEAD)
+          fi
+
+          commit="$(printf 'Update published model catalog\n' | git commit-tree "$tree" "${parents[@]}")"
+          git push origin "${commit}:refs/heads/model-catalog"
+
+      - name: Resolve released version
+        if: steps.diff.outputs.changed == 'true'
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          VERSION="$(git tag --list 'v*' --sort=-version:refname | sed -n '1p')"
+          if [[ -z "$VERSION" ]]; then
+            VERSION="latest"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved website version: $VERSION"
+
+      - name: Inject version
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sed -i "s|__VERSION__|$VERSION|g" docs/index.html
+
+      - name: Setup Pages
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        if: steps.diff.outputs.changed == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
