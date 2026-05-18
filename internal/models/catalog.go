@@ -107,22 +107,10 @@ func DefaultCatalog() (*Catalog, error) {
 	return catalog, nil
 }
 
-// DefaultCatalogCachePath returns the standard per-user catalog cache path.
-func DefaultCatalogCachePath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(homeDir, ".config", "langdag", "model_catalog.json")
-}
-
-// LoadRuntimeCatalog loads the catalog used by prompt/runtime routing. When no
-// cache path is provided, it uses the same default cache path populated by
-// `langdag models --update`.
+// LoadRuntimeCatalog loads the catalog used by prompt/runtime routing. By
+// default, runtime uses the embedded catalog generated from the published
+// model-catalog branch. A cache path is only used when explicitly provided.
 func LoadRuntimeCatalog(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
-	if opts.CachePath == "" {
-		opts.CachePath = DefaultCatalogCachePath()
-	}
 	return LoadCatalogWithOptions(opts)
 }
 
@@ -136,9 +124,10 @@ func LoadCatalog(cachePath string) (*Catalog, error) {
 	return result.Catalog, nil
 }
 
-// LoadCatalogWithOptions loads a usable catalog immediately. It prefers a
-// valid cache file and falls back to the embedded catalog with diagnostics when
-// the cache is missing or invalid. Stale cached data remains usable.
+// LoadCatalogWithOptions loads a usable catalog immediately. It uses an
+// explicit valid cache path when provided and falls back to the embedded catalog
+// with diagnostics when the cache is missing or invalid. Stale cached data
+// remains usable when the caller explicitly opts into that cache path.
 func LoadCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, error) {
 	now := catalogNow(opts.Now)
 	var diagnostics []CatalogDiagnosticV1

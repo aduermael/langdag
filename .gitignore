@@ -39,6 +39,11 @@ Thumbs.db
 dist/
 bin/
 
+# Generated from origin/model-catalog for local Go builds.
+/internal/models/catalog.json
+/docs/model-catalog/v1/catalog.json
+/.config/langdag/model_catalog.json
+
 # Node
 node_modules/
 .claude/

@@ -46,6 +46,10 @@ if ! require_file "sdks/typescript/node_modules/.bin/vitest" "run: cd sdks/types
 	exit 1
 fi
 
+if ! ./scripts/check-model-catalog.sh; then
+	exit 1
+fi
+
 start_task "go-test-root" go test ./...
 start_task "go-test-sdk" bash -c 'cd sdks/go && go test -v ./...'
 start_task "python-sdk" bash -c 'cd sdks/python && .venv/bin/pytest tests/test_client.py tests/test_async_client.py -v'

@@ -23,6 +23,7 @@ git clone https://github.com/aduermael/langdag.git
 cd langdag
 
 # Build
+./scripts/sync-model-catalog.sh
 go build -o langdag ./cmd/langdag
 
 # Install SDK test dependencies

@@ -1,8 +1,15 @@
 .PHONY: build run mockllm mockllm-run clean \
+	model-catalog check-model-catalog \
 	test test-unit test-e2e test-go test-python test-typescript
 
 # Main LangDAG server
-build:
+model-catalog:
+	./scripts/sync-model-catalog.sh
+
+check-model-catalog:
+	./scripts/check-model-catalog.sh
+
+build: check-model-catalog
 	go build -o bin/langdag ./cmd/langdag
 
 run: build
@@ -23,7 +30,7 @@ test-unit: test-go test-python test-typescript
 test-e2e:
 	./scripts/test-e2e.sh
 
-test-go:
+test-go: check-model-catalog
 	cd sdks/go && go test -v ./...
 
 test-python:

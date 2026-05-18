@@ -26,7 +26,7 @@ var modelsCmd = &cobra.Command{
 	Long: `Display model names, pricing (per 1M tokens), context windows, and max output
 for all supported providers. Data is sourced from official provider documentation.
 
-Use --update to fetch the latest published catalog into the local runtime cache.
+Use --update to fetch the latest published catalog for this command.
 Use --generate --json to rebuild the deployment-aware catalog artifact for
 publishing automation.`,
 	Run: runModels,
@@ -34,15 +34,13 @@ publishing automation.`,
 
 func init() {
 	modelsCmd.Flags().StringVarP(&modelsProvider, "provider", "p", "", "filter by model owner or deployment provider (anthropic, openai, google, xai, openrouter, ollama)")
-	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest published model catalog")
+	modelsCmd.Flags().BoolVar(&modelsUpdate, "update", false, "fetch latest published model catalog for this command")
 	modelsCmd.Flags().BoolVar(&modelsGenerate, "generate", false, "regenerate deployment-aware model catalog artifact")
 	modelsCmd.Flags().StringVar(&modelsCatalogURL, "catalog-url", "", "published catalog URL for --update")
 	rootCmd.AddCommand(modelsCmd)
 }
 
 func runModels(cmd *cobra.Command, args []string) {
-	cachePath := modelsCachePath()
-
 	var catalog *models.Catalog
 	var err error
 
@@ -69,7 +67,7 @@ func runModels(cmd *cobra.Command, args []string) {
 
 	if modelsUpdate {
 		fmt.Fprintln(os.Stderr, "Fetching published model catalog...")
-		opts := models.CatalogRefreshOptionsFromEnv(cachePath)
+		opts := models.CatalogRefreshOptionsFromEnv("")
 		if modelsCatalogURL != "" {
 			opts.Endpoint = modelsCatalogURL
 		}
@@ -77,9 +75,6 @@ func runModels(cmd *cobra.Command, args []string) {
 		result, refreshErr := models.RefreshCatalogCache(ctx, opts)
 		if refreshErr != nil {
 			exitError("failed to fetch published model catalog: %v", refreshErr)
-		}
-		if result.ReplacedCache {
-			fmt.Fprintf(os.Stderr, "Saved to %s\n", cachePath)
 		}
 		for _, diagnostic := range result.Diagnostics {
 			fmt.Fprintf(os.Stderr, "Diagnostic: %s: %s\n", diagnostic.Code, diagnostic.Message)
@@ -89,7 +84,7 @@ func runModels(cmd *cobra.Command, args []string) {
 		}
 		catalog = result.Catalog
 	} else {
-		result, loadErr := models.LoadCatalogWithOptions(models.CatalogLoadOptions{CachePath: cachePath})
+		result, loadErr := models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
 		err = loadErr
 		if err != nil {
 			exitError("failed to load model catalog: %v", err)
@@ -154,10 +149,6 @@ func printModelsJSON(catalog *models.Catalog) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(out)
-}
-
-func modelsCachePath() string {
-	return models.DefaultCatalogCachePath()
 }
 
 func formatTokens(n int) string {

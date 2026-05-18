@@ -50,6 +50,9 @@ jobs:
         with:
           go-version: "1.23"
 
+      - name: Sync embedded model catalog
+        run: ./scripts/sync-model-catalog.sh
+
       - name: Generate candidate catalog
         run: |
           mkdir -p /tmp/langdag-catalog

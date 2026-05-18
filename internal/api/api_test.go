@@ -10,11 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"langdag.com/langdag/internal/config"
 	"langdag.com/langdag/internal/conversation"
-	"langdag.com/langdag/internal/models"
 	"langdag.com/langdag/internal/provider"
 	mockprovider "langdag.com/langdag/internal/provider/mock"
 	"langdag.com/langdag/internal/storage/sqlite"
@@ -87,38 +85,9 @@ func TestAPIRoutingPolicyPreservesExplicitEmptyDefault(t *testing.T) {
 	}
 }
 
-func TestCreateDeploymentAwareProviderUsesRuntimeCatalogCache(t *testing.T) {
-	const canonicalID = "openai/gpt-runtime-cache-api"
-	const nativeID = "gpt-runtime-cache-api-native"
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	catalog := models.ReferenceCatalogV1()
-	generatedAt := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
-	catalog.GeneratedAt = generatedAt
-	catalog.StaleAfter = generatedAt.Add(30 * 24 * time.Hour)
-	catalog.Models[canonicalID] = &models.ModelV1{
-		ID:            canonicalID,
-		ProviderID:    "openai",
-		Name:          "GPT Runtime Cache API",
-		ContextWindow: 128000,
-	}
-	catalog.Offerings = append(catalog.Offerings, models.ModelOfferingV1{
-		ID:               "openai-direct:" + nativeID,
-		CanonicalModelID: canonicalID,
-		DeploymentID:     "openai-direct",
-		NativeModelID:    nativeID,
-		Pricing: models.PricingV1{
-			Status:      models.PricingKnown,
-			Currency:    "USD",
-			EffectiveAt: generatedAt,
-			RatesPer1M:  map[string]float64{"input_tokens": 2, "output_tokens": 8},
-		},
-	})
-	if err := models.SaveCatalog(catalog, models.DefaultCatalogCachePath()); err != nil {
-		t.Fatalf("SaveCatalog: %v", err)
-	}
+func TestCreateDeploymentAwareProviderUsesEmbeddedRuntimeCatalog(t *testing.T) {
+	const canonicalID = "openai/gpt-4.1-2025-04-14"
+	const nativeID = "gpt-4.1-2025-04-14"
 
 	var requestedModel string
 	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +125,7 @@ func TestCreateDeploymentAwareProviderUsesRuntimeCatalogCache(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 	if requestedModel != nativeID {
-		t.Fatalf("request model = %q, want runtime cache native id %q", requestedModel, nativeID)
+		t.Fatalf("request model = %q, want embedded catalog native id %q", requestedModel, nativeID)
 	}
 	if resp.ModelResolution == nil || resp.ModelResolution.NativeModelID != nativeID {
 		t.Fatalf("model resolution = %+v, want native id %q", resp.ModelResolution, nativeID)

@@ -56,15 +56,17 @@ arbitrary endpoints, auth flows, request templates, or new protocol behavior.
 
 ## Runtime Loading
 
-Prompt/runtime loading prefers the default user cache populated by `langdag
-models --update`, then falls back to the embedded catalog. Callers can use the
-local cache immediately, keep stale cache data with diagnostics, and refresh the
-cache from the published artifact. Refresh calls are enabled by default and can
-be disabled with `LANGDAG_MODEL_CATALOG_REFRESH=false`.
+Prompt/runtime loading uses the embedded catalog generated from
+`origin/model-catalog`. Main does not commit that generated JSON; local builds
+should run `./scripts/sync-model-catalog.sh` first, which writes the ignored
+`internal/models/catalog.json` file used by Go embedding.
+
+LangDAG does not implicitly read `~/.config/langdag/model_catalog.json`, so a
+stale user cache cannot override the published catalog snapshot. `langdag models
+--update` can fetch the published artifact for the current command.
 `LANGDAG_MODEL_CATALOG_URL` overrides the static endpoint and
-`LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the refresh timeout. Remote data is
-strictly schema-validated before atomically replacing the cache; invalid, stale,
-or partially generated remote data leaves the existing cache untouched.
+`LANGDAG_MODEL_CATALOG_TIMEOUT` overrides the fetch timeout. Remote data is
+strictly schema-validated before use.
 
 ## Current Adapter Mapping
 

@@ -99,7 +99,6 @@ var ParseRemoteCatalogV1 = models.ParseRemoteCatalogV1
 var SplitOfferingIDV1 = models.SplitOfferingIDV1
 var DeploymentBindingsV1 = models.DeploymentBindingsV1
 var CatalogRefreshOptionsFromEnv = models.CatalogRefreshOptionsFromEnv
-var DefaultModelCatalogCachePath = models.DefaultCatalogCachePath
 
 // Config holds all configuration for the langdag client.
 type Config struct {
@@ -146,8 +145,8 @@ type Config struct {
 	OllamaConfig *OllamaConfig
 
 	// ModelCatalog is the deployment-aware catalog used for canonical model
-	// resolution. Defaults to the runtime cache, falling back to the embedded
-	// catalog, when nil.
+	// resolution. Defaults to the embedded catalog generated from the published
+	// model-catalog branch when nil.
 	ModelCatalog *ModelCatalog
 
 	// Deployments configures routeable deployment credentials and deployment-
@@ -1200,8 +1199,8 @@ func LoadModelCatalogWithOptions(opts CatalogLoadOptions) (*CatalogLoadResult, e
 }
 
 // LoadRuntimeModelCatalog loads the model catalog used by prompt/runtime
-// routing, preferring the default user cache populated by `langdag models
-// --update` and falling back to the embedded catalog.
+// routing from the embedded catalog generated from the published model-catalog
+// branch.
 func LoadRuntimeModelCatalog() (*CatalogLoadResult, error) {
 	return models.LoadRuntimeCatalog(models.CatalogLoadOptions{})
 }

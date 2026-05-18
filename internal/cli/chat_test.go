@@ -8,11 +8,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"langdag.com/langdag"
 	"langdag.com/langdag/internal/config"
-	"langdag.com/langdag/internal/models"
 )
 
 func TestConvertRoutingStagesPreservesExplicitEmptyDefault(t *testing.T) {
@@ -33,41 +31,13 @@ func TestConvertRoutingStagesPreservesExplicitEmptyDefault(t *testing.T) {
 	}
 }
 
-func TestNewLibraryClientUsesRuntimeCatalogCache(t *testing.T) {
-	const canonicalID = "openai/gpt-runtime-cache-cli"
-	const nativeID = "gpt-runtime-cache-cli-native"
+func TestNewLibraryClientUsesEmbeddedRuntimeCatalog(t *testing.T) {
+	const canonicalID = "openai/gpt-4.1-2025-04-14"
+	const nativeID = "gpt-4.1-2025-04-14"
 
-	home := t.TempDir()
-	t.Setenv("HOME", home)
 	t.Setenv("LANGDAG_PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	t.Setenv("LANGDAG_STORAGE_PATH", filepath.Join(t.TempDir(), "cli.db"))
-
-	catalog := models.ReferenceCatalogV1()
-	generatedAt := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
-	catalog.GeneratedAt = generatedAt
-	catalog.StaleAfter = generatedAt.Add(30 * 24 * time.Hour)
-	catalog.Models[canonicalID] = &models.ModelV1{
-		ID:            canonicalID,
-		ProviderID:    "openai",
-		Name:          "GPT Runtime Cache CLI",
-		ContextWindow: 128000,
-	}
-	catalog.Offerings = append(catalog.Offerings, models.ModelOfferingV1{
-		ID:               "openai-direct:" + nativeID,
-		CanonicalModelID: canonicalID,
-		DeploymentID:     "openai-direct",
-		NativeModelID:    nativeID,
-		Pricing: models.PricingV1{
-			Status:      models.PricingKnown,
-			Currency:    "USD",
-			EffectiveAt: generatedAt,
-			RatesPer1M:  map[string]float64{"input_tokens": 2, "output_tokens": 8},
-		},
-	})
-	if err := models.SaveCatalog(catalog, models.DefaultCatalogCachePath()); err != nil {
-		t.Fatalf("SaveCatalog: %v", err)
-	}
 
 	var requestedModel string
 	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +69,7 @@ data: [DONE]
 	}
 	defer client.Close()
 
-	result, err := client.Prompt(context.Background(), "use cli runtime cache", langdag.WithModel(canonicalID))
+	result, err := client.Prompt(context.Background(), "use cli runtime catalog", langdag.WithModel(canonicalID))
 	if err != nil {
 		t.Fatalf("Prompt: %v", err)
 	}
@@ -109,6 +79,6 @@ data: [DONE]
 		}
 	}
 	if requestedModel != nativeID {
-		t.Fatalf("request model = %q, want runtime cache native id %q", requestedModel, nativeID)
+		t.Fatalf("request model = %q, want embedded catalog native id %q", requestedModel, nativeID)
 	}
 }
