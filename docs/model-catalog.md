@@ -38,7 +38,7 @@ The `Refresh Model Catalog` workflow runs every hour. It:
 
 The `model-catalog` branch is a publishing branch. It is not intended to be
 merged into `main`; repository rules should restrict writes to the scheduled
-workflow.
+workflow's GitHub App publisher.
 
 ## Contract
 

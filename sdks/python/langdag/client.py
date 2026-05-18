@@ -127,7 +127,7 @@ class LangDAGClient:
             client = self._get_client()
             response = client.request(method, path, json=json_body)
             return self._handle_response(response)
-        except httpx.ConnectError as e:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise ConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
 
     def _stream_request(
@@ -151,7 +151,7 @@ class LangDAGClient:
                     self._handle_response(response)
 
                 yield from _parse_sse_stream(response.iter_lines())
-        except httpx.ConnectError as e:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise ConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
 
     # --- Health ---

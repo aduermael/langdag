@@ -127,7 +127,7 @@ class AsyncLangDAGClient:
             client = await self._get_client()
             response = await client.request(method, path, json=json_body)
             return self._handle_response(response)
-        except httpx.ConnectError as e:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise ConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
 
     async def _stream_request(
@@ -152,7 +152,7 @@ class AsyncLangDAGClient:
 
                 async for event in _parse_sse_stream_async(response.aiter_lines()):
                     yield event
-        except httpx.ConnectError as e:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise ConnectionError(f"Failed to connect to {self.base_url}: {e}") from e
 
     # --- Health ---
