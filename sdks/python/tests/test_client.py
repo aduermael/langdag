@@ -136,6 +136,7 @@ class TestGetNode:
                 "created_at": "2024-01-01T00:00:00Z",
                 "title": "My conversation",
                 "system_prompt": "Be helpful",
+                "output_group_id": "22222222-2222-2222-2222-222222222222",
             }
         )
         client = LangDAGClient()
@@ -144,6 +145,7 @@ class TestGetNode:
         assert node.content == "Hello"
         assert node.title == "My conversation"
         assert node.system_prompt == "Be helpful"
+        assert node.output_group_id == "22222222-2222-2222-2222-222222222222"
 
 
 class TestGetTree:
@@ -183,6 +185,7 @@ class TestPrompt:
                 "content": "Hello back!",
                 "tokens_in": 5,
                 "tokens_out": 3,
+                "output_group_id": "11111111-1111-1111-1111-111111111111",
             }
         )
         client = LangDAGClient()
@@ -192,6 +195,7 @@ class TestPrompt:
         assert resp.content == "Hello back!"
         assert resp.tokens_in == 5
         assert resp.tokens_out == 3
+        assert resp.output_group_id == "11111111-1111-1111-1111-111111111111"
 
     def test_prompt_sends_correct_body(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
@@ -201,13 +205,19 @@ class TestPrompt:
             }
         )
         client = LangDAGClient()
-        client.prompt("Hello", model="test-model", system_prompt="Be nice")
+        client.prompt(
+            "Hello",
+            model="test-model",
+            system_prompt="Be nice",
+            tools=[{"name": "web_search"}],
+        )
         request = httpx_mock.get_request()
         body = json.loads(request.content)
         assert body["message"] == "Hello"
         assert body["model"] == "test-model"
         assert body["system_prompt"] == "Be nice"
         assert body["stream"] is False
+        assert body["tools"] == [{"name": "web_search"}]
 
 
 class TestPromptFrom:
@@ -218,6 +228,7 @@ class TestPromptFrom:
                 "content": "Continued!",
                 "tokens_in": 10,
                 "tokens_out": 5,
+                "output_group_id": "33333333-3333-3333-3333-333333333333",
             }
         )
         client = LangDAGClient()
@@ -225,6 +236,7 @@ class TestPromptFrom:
         assert isinstance(resp, PromptResponse)
         assert resp.node_id == "node-789"
         assert resp.content == "Continued!"
+        assert resp.output_group_id == "33333333-3333-3333-3333-333333333333"
 
     def test_prompt_from_sends_correct_body(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
@@ -234,12 +246,18 @@ class TestPromptFrom:
             }
         )
         client = LangDAGClient()
-        client.prompt_from("node-123", "Follow up", model="test-model")
+        client.prompt_from(
+            "node-123",
+            "Follow up",
+            model="test-model",
+            tools=[{"name": "web_search"}],
+        )
         request = httpx_mock.get_request()
         body = json.loads(request.content)
         assert body["message"] == "Follow up"
         assert body["model"] == "test-model"
         assert body["stream"] is False
+        assert body["tools"] == [{"name": "web_search"}]
         assert request.url.path == "/nodes/node-123/prompt"
 
 

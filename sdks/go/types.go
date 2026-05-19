@@ -35,6 +35,7 @@ type Node struct {
 	TokensReasoning     int                    `json:"tokens_reasoning,omitempty"`
 	LatencyMs           int                    `json:"latency_ms,omitempty"`
 	StopReason          string                 `json:"stop_reason,omitempty"`
+	OutputGroupID       string                 `json:"output_group_id,omitempty"`
 	Status              string                 `json:"status,omitempty"`
 	Title               string                 `json:"title,omitempty"`
 	SystemPrompt        string                 `json:"system_prompt,omitempty"`
@@ -72,8 +73,8 @@ type Tree struct {
 // ToolDefinition describes a tool that the model can use.
 type ToolDefinition struct {
 	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
 }
 
 // PromptOption configures a prompt request.
@@ -124,6 +125,7 @@ type PromptResponse struct {
 	TokensCacheRead     int                    `json:"tokens_cache_read,omitempty"`
 	TokensCacheCreation int                    `json:"tokens_cache_creation,omitempty"`
 	TokensReasoning     int                    `json:"tokens_reasoning,omitempty"`
+	OutputGroupID       string                 `json:"output_group_id,omitempty"`
 	Usage               *NormalizedUsage       `json:"usage,omitempty"`
 	Metadata            *AssistantNodeMetadata `json:"metadata,omitempty"`
 	Cost                *CostResult            `json:"cost,omitempty"`
@@ -148,6 +150,7 @@ func nodeFromPromptResponse(resp *PromptResponse, client *Client, fallbackConten
 	node.TokensCacheRead = resp.TokensCacheRead
 	node.TokensCacheCreation = resp.TokensCacheCreation
 	node.TokensReasoning = resp.TokensReasoning
+	node.OutputGroupID = resp.OutputGroupID
 	node.Usage = resp.Usage
 	node.Metadata = resp.Metadata
 	node.Cost = resp.Cost

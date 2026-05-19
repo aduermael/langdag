@@ -105,6 +105,7 @@ class TestAsyncGetNode:
                 "content": "Hello",
                 "created_at": "2024-01-01T00:00:00Z",
                 "title": "My conversation",
+                "output_group_id": "22222222-2222-2222-2222-222222222222",
             }
         )
         async with AsyncLangDAGClient() as client:
@@ -112,6 +113,7 @@ class TestAsyncGetNode:
             assert node.id == "node-1"
             assert node.content == "Hello"
             assert node.title == "My conversation"
+            assert node.output_group_id == "22222222-2222-2222-2222-222222222222"
 
 
 class TestAsyncGetTree:
@@ -149,6 +151,7 @@ class TestAsyncPrompt:
                 "content": "Hello back!",
                 "tokens_in": 5,
                 "tokens_out": 3,
+                "output_group_id": "11111111-1111-1111-1111-111111111111",
             }
         )
         async with AsyncLangDAGClient() as client:
@@ -156,6 +159,7 @@ class TestAsyncPrompt:
             assert isinstance(resp, PromptResponse)
             assert resp.node_id == "node-456"
             assert resp.content == "Hello back!"
+            assert resp.output_group_id == "11111111-1111-1111-1111-111111111111"
 
     async def test_prompt_sends_correct_body(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(
@@ -165,11 +169,16 @@ class TestAsyncPrompt:
             }
         )
         async with AsyncLangDAGClient() as client:
-            await client.prompt("Hello", model="test-model")
+            await client.prompt(
+                "Hello",
+                model="test-model",
+                tools=[{"name": "web_search"}],
+            )
         request = httpx_mock.get_request()
         body = json.loads(request.content)
         assert body["message"] == "Hello"
         assert body["model"] == "test-model"
+        assert body["tools"] == [{"name": "web_search"}]
 
 
 class TestAsyncPromptFrom:
@@ -178,12 +187,35 @@ class TestAsyncPromptFrom:
             json={
                 "node_id": "node-789",
                 "content": "Continued!",
+                "output_group_id": "33333333-3333-3333-3333-333333333333",
             }
         )
         async with AsyncLangDAGClient() as client:
             resp = await client.prompt_from("node-123", "Follow up")
             assert isinstance(resp, PromptResponse)
             assert resp.content == "Continued!"
+            assert resp.output_group_id == "33333333-3333-3333-3333-333333333333"
+
+    async def test_prompt_from_sends_tools(self, httpx_mock: HTTPXMock):
+        httpx_mock.add_response(
+            json={
+                "node_id": "node-1",
+                "content": "ok",
+            }
+        )
+        async with AsyncLangDAGClient() as client:
+            await client.prompt_from(
+                "node-123",
+                "Follow up",
+                model="test-model",
+                tools=[{"name": "web_search"}],
+            )
+        request = httpx_mock.get_request()
+        body = json.loads(request.content)
+        assert body["message"] == "Follow up"
+        assert body["model"] == "test-model"
+        assert body["tools"] == [{"name": "web_search"}]
+        assert request.url.path == "/nodes/node-123/prompt"
 
 
 class TestAsyncDeleteNode:

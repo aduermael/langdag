@@ -217,6 +217,74 @@ func TestPromptWithOptions(t *testing.T) {
 	}
 }
 
+func TestPromptWithToolsSendsServerTool(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			t.Errorf("decode request: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var tools []ToolDefinition
+		if err := json.Unmarshal(raw["tools"], &tools); err != nil {
+			t.Errorf("decode tools: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(tools) != 1 || tools[0].Name != "web_search" {
+			t.Errorf("tools = %+v, want web_search", tools)
+			http.Error(w, "unexpected tools", http.StatusBadRequest)
+			return
+		}
+		if tools[0].Description != "" || tools[0].InputSchema != nil {
+			t.Errorf("server tool should omit optional fields: %+v", tools[0])
+			http.Error(w, "unexpected tool fields", http.StatusBadRequest)
+			return
+		}
+		if strings.Contains(string(raw["tools"]), "input_schema") {
+			t.Errorf("server tool encoded input_schema unexpectedly: %s", raw["tools"])
+			http.Error(w, "unexpected input_schema", http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(PromptResponse{NodeID: "n-1", Content: "ok"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	_, err := c.Prompt(context.Background(), "Hi", WithTools([]ToolDefinition{{Name: "web_search"}}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNodePromptWithToolsSendsServerTool(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/nodes/node-1/prompt" {
+			t.Errorf("expected /nodes/node-1/prompt, got %s", r.URL.Path)
+		}
+		var req promptRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode request: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(req.Tools) != 1 || req.Tools[0].Name != "web_search" {
+			t.Errorf("tools = %+v, want web_search", req.Tools)
+			http.Error(w, "unexpected tools", http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(PromptResponse{NodeID: "node-2", Content: "continued"})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL)
+	node := &Node{ID: "node-1", client: c}
+	_, err := node.Prompt(context.Background(), "more", WithTools([]ToolDefinition{{Name: "web_search"}}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestNodePrompt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/nodes/node-1/prompt" {
@@ -278,6 +346,7 @@ func fullPromptResponse() PromptResponse {
 	return PromptResponse{
 		NodeID:              "node-rich",
 		Content:             "mapped content",
+		OutputGroupID:       "11111111-1111-1111-1111-111111111111",
 		TokensIn:            10,
 		TokensOut:           20,
 		TokensCacheRead:     3,
@@ -316,6 +385,9 @@ func assertPromptResponseMappedToNode(t *testing.T, node *Node, resp PromptRespo
 	}
 	if node.Content != resp.Content {
 		t.Errorf("Content = %q, want %q", node.Content, resp.Content)
+	}
+	if node.OutputGroupID != resp.OutputGroupID {
+		t.Errorf("OutputGroupID = %q, want %q", node.OutputGroupID, resp.OutputGroupID)
 	}
 	if node.TokensIn != resp.TokensIn {
 		t.Errorf("TokensIn = %d, want %d", node.TokensIn, resp.TokensIn)
@@ -380,7 +452,12 @@ func TestGetNode(t *testing.T) {
 		if r.URL.Path != "/nodes/abc123" {
 			t.Errorf("expected /nodes/abc123, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(Node{ID: "abc123", Type: NodeTypeAssistant, Content: "hello"})
+		json.NewEncoder(w).Encode(Node{
+			ID:            "abc123",
+			Type:          NodeTypeAssistant,
+			Content:       "hello",
+			OutputGroupID: "22222222-2222-2222-2222-222222222222",
+		})
 	}))
 	defer server.Close()
 
@@ -391,6 +468,9 @@ func TestGetNode(t *testing.T) {
 	}
 	if node.ID != "abc123" {
 		t.Errorf("expected abc123, got %s", node.ID)
+	}
+	if node.OutputGroupID != "22222222-2222-2222-2222-222222222222" {
+		t.Errorf("OutputGroupID = %q", node.OutputGroupID)
 	}
 	if node.client == nil {
 		t.Error("expected client to be set")

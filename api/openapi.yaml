@@ -411,6 +411,10 @@ components:
           type: integer
         stop_reason:
           type: string
+        output_group_id:
+          type: string
+          format: uuid
+          description: Identifier shared by assistant nodes produced by the same continuation chain
         status:
           type: string
         title:
@@ -433,7 +437,7 @@ components:
         - content
         - created_at
 
-    PromptRequest:
+    PromptRequestBase:
       type: object
       properties:
         message:
@@ -443,31 +447,47 @@ components:
           type: string
           default: claude-sonnet-4-20250514
           description: LLM model to use
-        system_prompt:
-          type: string
-          description: Optional system prompt (only for new conversations)
         stream:
           type: boolean
           default: false
           description: Enable SSE streaming
+        tools:
+          type: array
+          description: Tool definitions available to the model
+          items:
+            $ref: '#/components/schemas/ToolDefinition'
       required:
         - message
 
+    PromptRequest:
+      allOf:
+        - $ref: '#/components/schemas/PromptRequestBase'
+        - type: object
+          properties:
+            system_prompt:
+              type: string
+              description: Optional system prompt (only for new conversations)
+
     NodePromptRequest:
+      allOf:
+        - $ref: '#/components/schemas/PromptRequestBase'
+
+    ToolDefinition:
       type: object
       properties:
-        message:
+        name:
           type: string
-          description: Message to send
-        model:
+          description: Tool name
+        description:
           type: string
-          description: LLM model to use (optional override)
-        stream:
-          type: boolean
-          default: false
-          description: Enable SSE streaming
+          description: Tool description shown to the model
+        input_schema:
+          type: object
+          nullable: true
+          description: JSON Schema for client-side function tool input. Omit or set null for server-side tools.
+          additionalProperties: true
       required:
-        - message
+        - name
 
     PromptResponse:
       type: object
@@ -489,6 +509,10 @@ components:
           type: integer
         tokens_reasoning:
           type: integer
+        output_group_id:
+          type: string
+          format: uuid
+          description: Identifier shared by assistant nodes produced by the same continuation chain
         usage:
           $ref: '#/components/schemas/NormalizedUsage'
         metadata:
@@ -602,7 +626,7 @@ components:
         data: {"content": "..."}
 
         event: done
-        data: {"node_id": "...", "usage": {...}, "metadata": {...}, "cost": {...}}
+        data: {"node_id": "...", "output_group_id": "...", "usage": {...}, "metadata": {...}, "cost": {...}}
 
         event: error
         data: error message

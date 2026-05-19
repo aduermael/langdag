@@ -31,8 +31,8 @@ class ToolDefinition:
     """Definition of a tool that can be used by the LLM."""
 
     name: str
-    description: str
-    input_schema: dict[str, Any]
+    description: str | None = None
+    input_schema: dict[str, Any] | None = None
 
 
 @dataclass
@@ -221,6 +221,7 @@ class Node:
     reasoning_tokens: int | None = None
     latency_ms: int | None = None
     stop_reason: str | None = None
+    output_group_id: str | None = None
     status: str | None = None
     title: str | None = None
     system_prompt: str | None = None
@@ -247,6 +248,7 @@ class Node:
             reasoning_tokens=data.get("tokens_reasoning"),
             latency_ms=data.get("latency_ms"),
             stop_reason=data.get("stop_reason"),
+            output_group_id=data.get("output_group_id"),
             status=data.get("status"),
             title=data.get("title"),
             system_prompt=data.get("system_prompt"),
@@ -266,6 +268,7 @@ class PromptResponse:
     tokens_cache_read: int | None = None
     tokens_cache_creation: int | None = None
     tokens_reasoning: int | None = None
+    output_group_id: str | None = None
     usage: NormalizedUsage | None = None
     metadata: AssistantNodeMetadata | None = None
     cost: CostResult | None = None
@@ -281,6 +284,7 @@ class PromptResponse:
             tokens_cache_read=data.get("tokens_cache_read"),
             tokens_cache_creation=data.get("tokens_cache_creation"),
             tokens_reasoning=data.get("tokens_reasoning"),
+            output_group_id=data.get("output_group_id"),
             usage=NormalizedUsage.from_dict(data.get("usage")),
             metadata=AssistantNodeMetadata.from_dict(data.get("metadata")),
             cost=CostResult.from_dict(data.get("cost")),

@@ -147,6 +147,7 @@ describe('LangDAGClient', () => {
         content: 'Hello',
         title: 'My Chat',
         created_at: '2024-01-01',
+        output_group_id: '22222222-2222-2222-2222-222222222222',
       };
       const fetchFn = mockFetch({ json: () => Promise.resolve(node) });
       const client = new LangDAGClient({ fetch: fetchFn });
@@ -154,6 +155,7 @@ describe('LangDAGClient', () => {
       expect(result).toBeInstanceOf(Node);
       expect(result.id).toBe('n-1');
       expect(result.title).toBe('My Chat');
+      expect(result.outputGroupId).toBe('22222222-2222-2222-2222-222222222222');
       expect(typeof result.prompt).toBe('function');
       expect(typeof result.promptStream).toBe('function');
     });
@@ -179,6 +181,7 @@ describe('LangDAGClient', () => {
       const promptResp = {
         node_id: 'n-1',
         content: 'Hello back!',
+        output_group_id: '11111111-1111-1111-1111-111111111111',
         usage: {
           input_tokens: 12,
           output_tokens: 4,
@@ -191,6 +194,7 @@ describe('LangDAGClient', () => {
       expect(result).toBeInstanceOf(Node);
       expect(result.id).toBe('n-1');
       expect(result.content).toBe('Hello back!');
+      expect(result.outputGroupId).toBe(promptResp.output_group_id);
       expect(result.usage).toEqual(promptResp.usage);
     });
 
@@ -199,7 +203,11 @@ describe('LangDAGClient', () => {
         json: () => Promise.resolve({ node_id: 'n', content: 'ok' }),
       });
       const client = new LangDAGClient({ fetch: fetchFn });
-      await client.prompt('Hello', { model: 'test-model', systemPrompt: 'Be nice' });
+      await client.prompt('Hello', {
+        model: 'test-model',
+        systemPrompt: 'Be nice',
+        tools: [{ name: 'web_search' }],
+      });
       expect(fetchFn).toHaveBeenCalledWith(
         'http://localhost:8080/prompt',
         expect.objectContaining({
@@ -207,6 +215,14 @@ describe('LangDAGClient', () => {
           body: expect.stringContaining('"message":"Hello"'),
         })
       );
+      const fetchMock = fetchFn as unknown as ReturnType<typeof vi.fn>;
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).toMatchObject({
+        message: 'Hello',
+        model: 'test-model',
+        system_prompt: 'Be nice',
+        tools: [{ name: 'web_search' }],
+      });
     });
   });
 
@@ -248,7 +264,7 @@ describe('LangDAGClient', () => {
 
       const client = new LangDAGClient({ fetch: fetchFn });
       const node1 = await client.prompt('Hello');
-      await node1.prompt('Follow up');
+      await node1.prompt('Follow up', { tools: [{ name: 'web_search' }] });
 
       expect(fetchFn).toHaveBeenLastCalledWith(
         'http://localhost:8080/nodes/n-1/prompt',
@@ -256,6 +272,12 @@ describe('LangDAGClient', () => {
           method: 'POST',
         })
       );
+      const fetchMock = fetchFn as unknown as ReturnType<typeof vi.fn>;
+      const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(body).toMatchObject({
+        message: 'Follow up',
+        tools: [{ name: 'web_search' }],
+      });
     });
   });
 
@@ -322,7 +344,7 @@ describe('LangDAGClient', () => {
         'data: {"content":"world!"}',
         '',
         'event: done',
-        'data: {"node_id":"n-1","content":"Hello world!","usage":{"input_tokens":8,"output_tokens":2}}',
+        'data: {"node_id":"n-1","content":"Hello world!","output_group_id":"11111111-1111-1111-1111-111111111111","usage":{"input_tokens":8,"output_tokens":2}}',
         '',
       ].join('\n');
 
@@ -339,6 +361,7 @@ describe('LangDAGClient', () => {
       expect(node).toBeInstanceOf(Node);
       expect(node.id).toBe('n-1');
       expect(node.content).toBe('Hello world!');
+      expect(node.outputGroupId).toBe('11111111-1111-1111-1111-111111111111');
       expect(node.usage).toEqual({ input_tokens: 8, output_tokens: 2 });
     });
 
