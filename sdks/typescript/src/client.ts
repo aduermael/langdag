@@ -41,6 +41,7 @@ export class Node {
   readonly usage?: NodeData['usage'];
   readonly latencyMs?: number;
   readonly stopReason?: string;
+  readonly outputGroupId?: string;
   readonly status?: string;
   readonly title?: string;
   readonly systemPrompt?: string;
@@ -69,6 +70,7 @@ export class Node {
     this.usage = data.usage;
     this.latencyMs = data.latency_ms;
     this.stopReason = data.stop_reason;
+    this.outputGroupId = data.output_group_id;
     this.status = data.status;
     this.title = data.title;
     this.systemPrompt = data.system_prompt;
@@ -179,6 +181,7 @@ function nodeDataFromPromptResponse(resp: PromptResponse | undefined, nodeId: st
     tokens_cache_read: resp?.tokens_cache_read,
     tokens_cache_creation: resp?.tokens_cache_creation,
     tokens_reasoning: resp?.tokens_reasoning,
+    output_group_id: resp?.output_group_id,
     usage: resp?.usage,
     metadata: resp?.metadata,
     cost: resp?.cost,

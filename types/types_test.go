@@ -42,6 +42,11 @@ func TestIsClientTool(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "null InputSchema is server tool",
+			tool: ToolDefinition{Name: "web_search", InputSchema: json.RawMessage(`null`)},
+			want: false,
+		},
+		{
 			name: "web_search with schema overrides as client tool",
 			tool: ToolDefinition{
 				Name:        ServerToolWebSearch,

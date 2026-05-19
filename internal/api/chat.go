@@ -27,6 +27,7 @@ type PromptResponse struct {
 	TokensCacheRead     int                          `json:"tokens_cache_read,omitempty"`
 	TokensCacheCreation int                          `json:"tokens_cache_creation,omitempty"`
 	TokensReasoning     int                          `json:"tokens_reasoning,omitempty"`
+	OutputGroupID       string                       `json:"output_group_id,omitempty"`
 	Usage               *types.NormalizedUsage       `json:"usage,omitempty"`
 	Metadata            *types.AssistantNodeMetadata `json:"metadata,omitempty"`
 	Cost                *types.CostResult            `json:"cost,omitempty"`
@@ -213,6 +214,7 @@ func promptResponseFromNode(nodeID, content string, node *types.Node) PromptResp
 	resp.TokensCacheRead = node.TokensCacheRead
 	resp.TokensCacheCreation = node.TokensCacheCreation
 	resp.TokensReasoning = node.TokensReasoning
+	resp.OutputGroupID = node.OutputGroupID
 	resp.Metadata = nodeMetadata(node)
 	if resp.Metadata != nil {
 		resp.Cost = costFromMetadata(resp.Metadata)

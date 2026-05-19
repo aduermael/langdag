@@ -2,6 +2,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 )
@@ -111,8 +112,8 @@ type Tree struct {
 // ToolDefinition represents a tool that can be used in a completion request.
 type ToolDefinition struct {
 	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
 }
 
 // ServerToolWebSearch is the standardized name for web search across providers.
@@ -133,7 +134,8 @@ const ServerToolWebSearch = "web_search"
 // like "web_search", it will be sent as a function tool rather than the
 // provider's built-in web search.
 func (t ToolDefinition) IsClientTool() bool {
-	return len(t.InputSchema) > 0
+	schema := bytes.TrimSpace(t.InputSchema)
+	return len(schema) > 0 && !bytes.Equal(schema, []byte("null"))
 }
 
 // CompletionRequest represents a request to an LLM provider.

@@ -163,6 +163,39 @@ func TestPromptResponseFromNodeFallsBackToSavedContent(t *testing.T) {
 	}
 }
 
+func TestNodeResponsesExposeOutputGroupID(t *testing.T) {
+	node := &types.Node{
+		ID:            "node-grouped",
+		NodeType:      types.NodeTypeAssistant,
+		Content:       "chunk",
+		OutputGroupID: "11111111-1111-1111-1111-111111111111",
+	}
+
+	nodeResp := toNodeResponse(node)
+	if nodeResp.OutputGroupID != node.OutputGroupID {
+		t.Fatalf("NodeResponse OutputGroupID = %q, want %q", nodeResp.OutputGroupID, node.OutputGroupID)
+	}
+	nodeData, err := json.Marshal(nodeResp)
+	if err != nil {
+		t.Fatalf("marshal NodeResponse: %v", err)
+	}
+	if !strings.Contains(string(nodeData), `"output_group_id":"11111111-1111-1111-1111-111111111111"`) {
+		t.Fatalf("NodeResponse JSON omitted output_group_id: %s", nodeData)
+	}
+
+	promptResp := promptResponseFromNode(node.ID, node.Content, node)
+	if promptResp.OutputGroupID != node.OutputGroupID {
+		t.Fatalf("PromptResponse OutputGroupID = %q, want %q", promptResp.OutputGroupID, node.OutputGroupID)
+	}
+	promptData, err := json.Marshal(promptResp)
+	if err != nil {
+		t.Fatalf("marshal PromptResponse: %v", err)
+	}
+	if !strings.Contains(string(promptData), `"output_group_id":"11111111-1111-1111-1111-111111111111"`) {
+		t.Fatalf("PromptResponse JSON omitted output_group_id: %s", promptData)
+	}
+}
+
 func TestHealthEndpoint(t *testing.T) {
 	_, mux := testServer(t, "")
 
@@ -613,7 +646,7 @@ func TestPromptWithModel(t *testing.T) {
 }
 
 func TestPromptWithTools(t *testing.T) {
-	_, mux := testServer(t, "")
+	_, mux, prov := testServerWithMockProvider(t, "", mockprovider.Config{})
 
 	body := `{"message":"What's the weather?","tools":[{"name":"get_weather","description":"Get weather","input_schema":{"type":"object","properties":{"location":{"type":"string"}}}}]}`
 	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(body))
@@ -632,6 +665,41 @@ func TestPromptWithTools(t *testing.T) {
 	}
 	if resp.Content == "" {
 		t.Error("prompt with tools: content is empty")
+	}
+	if prov.LastRequest == nil || len(prov.LastRequest.Tools) != 1 || prov.LastRequest.Tools[0].Name != "get_weather" {
+		t.Fatalf("provider tools = %+v, want get_weather", prov.LastRequest)
+	}
+}
+
+func TestNodePromptWithServerTool(t *testing.T) {
+	_, mux, prov := testServerWithMockProvider(t, "", mockprovider.Config{})
+
+	body := `{"message":"Start"}`
+	req := httptest.NewRequest("POST", "/prompt", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial prompt: status = %d; body = %s", w.Code, w.Body.String())
+	}
+	var firstResp PromptResponse
+	if err := json.NewDecoder(w.Body).Decode(&firstResp); err != nil {
+		t.Fatalf("decode initial prompt: %v", err)
+	}
+
+	body = `{"message":"Search","tools":[{"name":"web_search"}]}`
+	req = httptest.NewRequest("POST", "/nodes/"+firstResp.NodeID+"/prompt", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("node prompt with tools: status = %d; body = %s", w.Code, w.Body.String())
+	}
+	if prov.LastRequest == nil || len(prov.LastRequest.Tools) != 1 || prov.LastRequest.Tools[0].Name != "web_search" {
+		t.Fatalf("provider tools = %+v, want web_search", prov.LastRequest)
+	}
+	if prov.LastRequest.Tools[0].IsClientTool() {
+		t.Fatalf("server tool decoded as client tool: %+v", prov.LastRequest.Tools[0])
 	}
 }
 
@@ -695,6 +763,12 @@ func TestBranching(t *testing.T) {
 // testServerWithMock creates a Server with a custom mock provider config.
 func testServerWithMock(t *testing.T, apiKey string, mockCfg mockprovider.Config) (*Server, *http.ServeMux) {
 	t.Helper()
+	s, mux, _ := testServerWithMockProvider(t, apiKey, mockCfg)
+	return s, mux
+}
+
+func testServerWithMockProvider(t *testing.T, apiKey string, mockCfg mockprovider.Config) (*Server, *http.ServeMux, *mockprovider.Provider) {
+	t.Helper()
 
 	tmpFile, err := os.CreateTemp("", "langdag-api-test-*.db")
 	if err != nil {
@@ -731,7 +805,7 @@ func testServerWithMock(t *testing.T, apiKey string, mockCfg mockprovider.Config
 	mux.HandleFunc("GET /nodes/{id}/tree", s.authMiddleware(s.handleGetTree))
 	mux.HandleFunc("DELETE /nodes/{id}", s.authMiddleware(s.handleDeleteNode))
 
-	return s, mux
+	return s, mux, prov
 }
 
 // sseEvent represents a parsed SSE event.

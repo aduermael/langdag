@@ -39,6 +39,7 @@ export interface NodeData {
   usage?: NormalizedUsage;
   latency_ms?: number;
   stop_reason?: string;
+  output_group_id?: string;
   status?: string;
   title?: string;
   system_prompt?: string;
@@ -122,8 +123,8 @@ export interface AssistantNodeMetadata {
  */
 export interface ToolDefinition {
   name: string;
-  description: string;
-  input_schema: Record<string, unknown>;
+  description?: string;
+  input_schema?: Record<string, unknown> | null;
 }
 
 // ============================================================================
@@ -147,6 +148,7 @@ export interface PromptResponse {
   tokens_cache_read?: number;
   tokens_cache_creation?: number;
   tokens_reasoning?: number;
+  output_group_id?: string;
   usage?: NormalizedUsage;
   metadata?: AssistantNodeMetadata;
   cost?: CostResult;

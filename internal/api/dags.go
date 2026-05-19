@@ -23,6 +23,7 @@ type NodeResponse struct {
 	TokensReasoning     int                          `json:"tokens_reasoning,omitempty"`
 	LatencyMs           int                          `json:"latency_ms,omitempty"`
 	StopReason          string                       `json:"stop_reason,omitempty"`
+	OutputGroupID       string                       `json:"output_group_id,omitempty"`
 	Status              string                       `json:"status,omitempty"`
 	Title               string                       `json:"title,omitempty"`
 	SystemPrompt        string                       `json:"system_prompt,omitempty"`
@@ -208,6 +209,7 @@ func toNodeResponse(n *types.Node) NodeResponse {
 		TokensReasoning:     n.TokensReasoning,
 		LatencyMs:           n.LatencyMs,
 		StopReason:          n.StopReason,
+		OutputGroupID:       n.OutputGroupID,
 		Status:              n.Status,
 		Title:               n.Title,
 		SystemPrompt:        n.SystemPrompt,
