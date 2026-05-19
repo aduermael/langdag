@@ -351,6 +351,47 @@ func TestCatalogV1ParsesLegacyProviderKeyedCache(t *testing.T) {
 	}
 }
 
+func TestCatalogV1FromLegacyCatalogPreservesGemmaFreeDirectOnly(t *testing.T) {
+	generatedAt := time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC)
+	legacy := &LegacyCatalog{
+		UpdatedAt: generatedAt,
+		Source:    "providers",
+		Providers: map[string][]ModelPricing{
+			"gemini": {
+				{
+					ID:            "gemma-3-1b-it",
+					Free:          true,
+					ContextWindow: 32768,
+					MaxOutput:     8192,
+				},
+			},
+		},
+	}
+
+	catalog := CatalogV1FromLegacyCatalog(legacy)
+	compiled, err := CompileCatalogV1(catalog)
+	if err != nil {
+		t.Fatalf("CompileCatalogV1: %v", err)
+	}
+
+	direct, ok := compiled.OfferingForDeployment("google/gemma-3-1b-it", "gemini-direct")
+	if !ok {
+		t.Fatal("gemma model did not produce a gemini-direct offering")
+	}
+	if direct.Pricing.Status != PricingFree {
+		t.Fatalf("gemma pricing status = %q, want %q", direct.Pricing.Status, PricingFree)
+	}
+	if direct.Pricing.RatesPer1M["input_tokens"] != 0 || direct.Pricing.RatesPer1M["output_tokens"] != 0 {
+		t.Fatalf("gemma pricing rates = %+v, want zero rates", direct.Pricing.RatesPer1M)
+	}
+	if direct.Capabilities.ServerTools["web_search"] == CapabilitySupported {
+		t.Fatalf("gemma web_search = supported, want unknown or absent")
+	}
+	if _, ok := compiled.OfferingForDeployment("google/gemma-3-1b-it", "gemini-vertex"); ok {
+		t.Fatal("gemma model produced a gemini-vertex offering")
+	}
+}
+
 func TestParseCatalogV1RejectsEmptyObjectAsLegacy(t *testing.T) {
 	_, err := ParseCatalogV1([]byte(`{}`))
 	if err == nil {

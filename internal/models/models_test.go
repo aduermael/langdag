@@ -849,7 +849,7 @@ func TestFetchLatest_FiltersIncomplete(t *testing.T) {
 	// All models should have both pricing and context window
 	for _, provider := range []string{"openai", "anthropic", "gemini", "grok"} {
 		for _, m := range catalog.ForProvider(provider) {
-			if m.InputPricePer1M <= 0 && m.OutputPricePer1M <= 0 {
+			if !m.Free && m.InputPricePer1M <= 0 && m.OutputPricePer1M <= 0 {
 				t.Errorf("%s/%s: missing pricing", provider, m.ID)
 			}
 			if m.ContextWindow <= 0 {

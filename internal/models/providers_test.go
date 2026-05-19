@@ -1,7 +1,11 @@
 package models
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestParseOpenAIText(t *testing.T) {
@@ -99,6 +103,109 @@ func TestParseOpenAIText(t *testing.T) {
 		if m.OutputPricePer1M != 400 {
 			t.Errorf("o1-pro output = %f, want 400", m.OutputPricePer1M)
 		}
+	}
+}
+
+func TestFetchOpenAIModelsFromDocsPages(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/docs/models/all", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<a href="/api/docs/models/gpt-5.5">GPT-5.5</a>
+<a href="/api/docs/models/gpt-5.5-pro">GPT-5.5 pro</a>
+<a href="/api/docs/models/gpt-image-2">GPT Image 2</a>
+</body></html>`))
+	})
+	mux.HandleFunc("/api/docs/models/gpt-5.5", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<h1>GPT-5.5</h1>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<h2>Pricing</h2>
+<p>Text tokens</p><p>Per 1M tokens</p>
+<p>Input</p><p>$5.00</p><p>Cached input</p><p>$0.50</p><p>Output</p><p>$30.00</p>
+<h2>Snapshots</h2><p>gpt-5.5</p><p>gpt-5.5-2026-04-23</p><h2>Rate limits</h2>
+</body></html>`))
+	})
+	mux.HandleFunc("/api/docs/models/gpt-5.5-pro", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>
+<h1>GPT-5.5 pro</h1>
+<p>1,050,000 context window</p>
+<p>128,000 max output tokens</p>
+<h2>Pricing</h2>
+<p>Text tokens</p><p>Per 1M tokens</p>
+<p>Input</p><p>$30.00</p><p>Output</p><p>$180.00</p>
+<h2>Snapshots</h2><p>Snapshots for GPT-5.5 pro.</p><p>gpt-5.5-pro</p><p>gpt-5.5-pro-2026-04-23</p><h2>Rate limits</h2>
+</body></html>`))
+	})
+	mux.HandleFunc("/api/docs/models/gpt-image-2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><h1>GPT Image 2</h1><p>Text tokens</p></body></html>`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	origSource, origDetails := openAISourceURL, openAIModelDetailsURL
+	defer func() {
+		openAISourceURL = origSource
+		openAIModelDetailsURL = origDetails
+	}()
+	openAISourceURL = server.URL + "/api/docs/models/all"
+	openAIModelDetailsURL = server.URL + "/api/docs/models"
+
+	models, err := fetchOpenAIModels(context.Background())
+	if err != nil {
+		t.Fatalf("fetchOpenAIModels error: %v", err)
+	}
+
+	byID := make(map[string]ModelPricing)
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+
+	if m, ok := byID["gpt-5.5"]; !ok {
+		t.Fatal("gpt-5.5 not found")
+	} else {
+		if m.InputPricePer1M != 5 || m.OutputPricePer1M != 30 {
+			t.Errorf("gpt-5.5 pricing = %f/%f, want 5/30", m.InputPricePer1M, m.OutputPricePer1M)
+		}
+		if m.ContextWindow != 1050000 || m.MaxOutput != 128000 {
+			t.Errorf("gpt-5.5 limits = %d/%d, want 1050000/128000", m.ContextWindow, m.MaxOutput)
+		}
+	}
+	if _, ok := byID["gpt-5.5-2026-04-23"]; !ok {
+		t.Error("gpt-5.5 snapshot not found")
+	}
+	if m, ok := byID["gpt-5.5-pro"]; !ok {
+		t.Fatal("gpt-5.5-pro not found")
+	} else if m.InputPricePer1M != 30 || m.OutputPricePer1M != 180 {
+		t.Errorf("gpt-5.5-pro pricing = %f/%f, want 30/180", m.InputPricePer1M, m.OutputPricePer1M)
+	}
+	if _, ok := byID["gpt-5.5-pro-2026-04-23"]; !ok {
+		t.Error("gpt-5.5-pro snapshot not found")
+	}
+	if _, ok := byID["gpt-image-2"]; ok {
+		t.Error("gpt-image-2 should be skipped without text pricing and context")
+	}
+}
+
+func TestAnthropicBedrockNativeModelIDV1(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "dated", in: "claude-sonnet-4-5-20250929", want: "anthropic.claude-sonnet-4-5-20250929-v1:0"},
+		{name: "already provider qualified", in: "anthropic.claude-sonnet-4-6", want: "anthropic.claude-sonnet-4-6"},
+		{name: "opus 4.6 last v1", in: "claude-opus-4-6", want: "anthropic.claude-opus-4-6-v1"},
+		{name: "sonnet 4.6 unversioned", in: "claude-sonnet-4-6", want: "anthropic.claude-sonnet-4-6"},
+		{name: "future semantic unversioned", in: "claude-opus-4-7", want: "anthropic.claude-opus-4-7"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := anthropicBedrockNativeModelIDV1(tt.in); got != tt.want {
+				t.Fatalf("anthropicBedrockNativeModelIDV1(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -297,6 +404,27 @@ func TestParseGeminiHTML(t *testing.T) {
 	}
 }
 
+func TestGemmaHardcodedModelsAreFreeWithoutServerTools(t *testing.T) {
+	models := gemmaHardcodedModels()
+	if len(models) == 0 {
+		t.Fatal("gemmaHardcodedModels returned no models")
+	}
+	for _, model := range models {
+		if !model.Free {
+			t.Errorf("%s Free = false, want true", model.ID)
+		}
+		if model.InputPricePer1M != 0 || model.OutputPricePer1M != 0 {
+			t.Errorf("%s pricing = %f/%f, want zero free pricing", model.ID, model.InputPricePer1M, model.OutputPricePer1M)
+		}
+		if len(model.ServerTools) != 0 {
+			t.Errorf("%s ServerTools = %+v, want none", model.ID, model.ServerTools)
+		}
+		if model.ContextWindow == 0 || model.MaxOutput == 0 {
+			t.Errorf("%s context/max_output = %d/%d, want populated metadata", model.ID, model.ContextWindow, model.MaxOutput)
+		}
+	}
+}
+
 func TestParseGeminiSpecPage(t *testing.T) {
 	html := `<html><body>
 <dt>Model code</dt><dd>gemini-3-flash-preview</dd>
@@ -327,18 +455,52 @@ func TestParseGeminiDeprecations(t *testing.T) {
 
 	shutdown := parseGeminiDeprecations(html)
 
-	// Models with a shutdown date should be in the set
-	for _, id := range []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"} {
-		if !shutdown[id] {
+	wantDates := map[string]string{
+		"gemini-2.5-pro":   "2026-06-17",
+		"gemini-2.5-flash": "2026-06-17",
+		"gemini-2.0-flash": "2026-06-01",
+	}
+	for id, want := range wantDates {
+		if got, ok := shutdown[id]; !ok {
 			t.Errorf("expected %s to have shutdown date", id)
+		} else if got.Format("2006-01-02") != want {
+			t.Errorf("%s shutdown = %s, want %s", id, got.Format("2006-01-02"), want)
 		}
 	}
 
 	// Models with "No shutdown date announced" should NOT be in the set
 	for _, id := range []string{"gemini-3-flash-preview", "gemini-3.1-pro-preview"} {
-		if shutdown[id] {
+		if _, ok := shutdown[id]; ok {
 			t.Errorf("expected %s to NOT have shutdown date", id)
 		}
+	}
+}
+
+func TestFilterGeminiModelsByShutdownKeepsFutureDates(t *testing.T) {
+	models := []ModelPricing{
+		{ID: "gemini-active"},
+		{ID: "gemini-shuts-down-tomorrow"},
+		{ID: "gemini-shut-down-yesterday"},
+	}
+	shutdown := map[string]time.Time{
+		"gemini-shuts-down-tomorrow": time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC),
+		"gemini-shut-down-yesterday": time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	filtered := filterGeminiModelsByShutdown(models, shutdown, time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC))
+	byID := map[string]bool{}
+	for _, model := range filtered {
+		byID[model.ID] = true
+	}
+
+	if !byID["gemini-active"] {
+		t.Fatal("undated model was filtered out")
+	}
+	if !byID["gemini-shuts-down-tomorrow"] {
+		t.Fatal("future shutdown model was filtered out")
+	}
+	if byID["gemini-shut-down-yesterday"] {
+		t.Fatal("past shutdown model was retained")
 	}
 }
 

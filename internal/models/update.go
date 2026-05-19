@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +35,6 @@ func FetchLatestV1(ctx context.Context) (*CatalogV1, error) {
 		return nil, err
 	}
 	catalog := CatalogV1FromLegacyCatalog(legacy)
-	addDerivedDeploymentOfferingsV1(catalog, legacy.UpdatedAt)
 	NormalizeCatalogV1(catalog)
 	if err := ValidateCatalogV1(catalog); err != nil {
 		return nil, err
@@ -96,16 +96,20 @@ func fetchLatestLegacy(ctx context.Context) (*LegacyCatalog, error) {
 	}
 
 	for _, r := range results {
-		// Filter: require pricing > 0 AND context_window > 0
+		// Filter: require usable pricing information and context_window > 0.
 		var filtered []ModelPricing
 		for _, m := range r.models {
-			if (m.InputPricePer1M > 0 || m.OutputPricePer1M > 0) && m.ContextWindow > 0 {
+			hasPrice := m.Free || m.InputPricePer1M > 0 || m.OutputPricePer1M > 0
+			if hasPrice && m.ContextWindow > 0 {
 				filtered = append(filtered, m)
 			}
 		}
 		// Annotate with known server tool capabilities.
 		if st := providerServerTools[r.provider]; len(st) > 0 {
 			for i := range filtered {
+				if r.provider == "gemini" && strings.HasPrefix(filtered[i].ID, "gemma-") {
+					continue
+				}
 				filtered[i].ServerTools = st
 			}
 		}
@@ -134,7 +138,9 @@ func addDerivedDeploymentOfferingsV1(catalog *CatalogV1, observedAt time.Time) {
 				derived = append(derived, derivedOfferingV1(offering, "anthropic-vertex", nativeID, provenance))
 			}
 		case "gemini-direct":
-			derived = append(derived, derivedOfferingV1(offering, "gemini-vertex", offering.NativeModelID, provenance))
+			if strings.HasPrefix(offering.NativeModelID, "gemini-") {
+				derived = append(derived, derivedOfferingV1(offering, "gemini-vertex", offering.NativeModelID, provenance))
+			}
 		}
 	}
 	for _, offering := range derived {
@@ -187,10 +193,38 @@ func anthropicBedrockNativeModelIDV1(nativeID string) string {
 	if strings.HasPrefix(nativeID, "anthropic.") {
 		return nativeID
 	}
+	if anthropicUsesUnversionedBedrockID(nativeID) {
+		return "anthropic." + nativeID
+	}
+	if nativeID == "claude-opus-4-6" {
+		return "anthropic." + nativeID + "-v1"
+	}
 	if strings.HasSuffix(nativeID, "-v1:0") {
 		return "anthropic." + nativeID
 	}
 	return "anthropic." + nativeID + "-v1:0"
+}
+
+func anthropicUsesUnversionedBedrockID(nativeID string) bool {
+	parts := strings.Split(nativeID, "-")
+	if len(parts) < 4 || parts[0] != "claude" {
+		return false
+	}
+	if len(parts[len(parts)-1]) > 2 || len(parts[len(parts)-2]) > 2 {
+		return false
+	}
+	major, err := strconv.Atoi(parts[len(parts)-2])
+	if err != nil {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return false
+	}
+	if major > 4 {
+		return true
+	}
+	return major == 4 && minor >= 6 && nativeID != "claude-opus-4-6"
 }
 
 func anthropicVertexNativeModelIDV1(nativeID string) string {

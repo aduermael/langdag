@@ -1309,7 +1309,13 @@ func (c *CatalogV1) SourceFromLegacyCatalog(legacy *LegacyCatalog) {
 				},
 				Source: legacy.Source,
 			}
-			if oldModel.InputPricePer1M == 0 && oldModel.OutputPricePer1M == 0 {
+			if oldModel.Free {
+				pricing.Status = PricingFree
+				pricing.RatesPer1M = map[string]float64{
+					"input_tokens":  0,
+					"output_tokens": 0,
+				}
+			} else if oldModel.InputPricePer1M == 0 && oldModel.OutputPricePer1M == 0 {
 				pricing.Status = PricingUnknown
 				pricing.RatesPer1M = nil
 				pricing.MissingDimensions = []string{"input_tokens", "output_tokens"}

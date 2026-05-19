@@ -81,6 +81,7 @@ type ModelPricing struct {
 	ID               string   `json:"id"`
 	InputPricePer1M  float64  `json:"input_price_per_1m"`
 	OutputPricePer1M float64  `json:"output_price_per_1m"`
+	Free             bool     `json:"free,omitempty"`
 	ContextWindow    int      `json:"context_window"`
 	MaxOutput        int      `json:"max_output"`
 	ServerTools      []string `json:"server_tools,omitempty"`
@@ -444,6 +445,7 @@ func modelPricingFromOfferingV1(compiled *CompiledCatalogV1, offering *ModelOffe
 		ID:               offering.NativeModelID,
 		InputPricePer1M:  pricing["input_tokens"],
 		OutputPricePer1M: pricing["output_tokens"],
+		Free:             offering.Pricing.Status == PricingFree,
 	}
 	if model != nil {
 		out.ContextWindow = model.ContextWindow

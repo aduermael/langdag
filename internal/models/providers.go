@@ -5,20 +5,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Source URLs for official provider data (variables for testability).
 var (
-	openAISourceURL    = "https://cdn.openai.com/API/docs/txt/llms-models-pricing.txt"
-	anthropicSourceURL = "https://platform.claude.com/docs/en/docs/about-claude/models"
+	openAISourceURL       = "https://developers.openai.com/api/docs/models/all"
+	openAIModelDetailsURL = "https://developers.openai.com/api/docs/models"
+	anthropicSourceURL    = "https://platform.claude.com/docs/en/docs/about-claude/models"
 	geminiSourceURL       = "https://ai.google.dev/pricing"
 	geminiSpecBaseURL     = "https://ai.google.dev/gemini-api/docs/models"
 	geminiDeprecationsURL = "https://ai.google.dev/gemini-api/docs/deprecations"
-	grokSourceURL      = "https://docs.x.ai/docs/models"
+	grokSourceURL         = "https://docs.x.ai/docs/models"
+
+	providerNow = func() time.Time { return time.Now().UTC() }
 )
 
 // --- Shared helpers ---
@@ -132,7 +137,11 @@ func fetchOpenAIModels(ctx context.Context) ([]ModelPricing, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseOpenAIText(body)
+	modelURLs := parseOpenAIModelLinks(body, openAISourceURL)
+	if len(modelURLs) == 0 {
+		return parseOpenAIText(body)
+	}
+	return fetchOpenAIModelDetails(ctx, modelURLs)
 }
 
 var (
@@ -140,7 +149,198 @@ var (
 	openAISnapshotRe   = regexp.MustCompile(`(?m)^###\s+([\w.-]+)`)
 	openAICtxWindowRe  = regexp.MustCompile(`(?m)^-\s*Context window size:\s*(\d+)`)
 	openAIMaxOutputRe  = regexp.MustCompile(`(?m)^-\s*Maximum output tokens:\s*(\d+)`)
+	openAIModelLinkRe  = regexp.MustCompile(`(?i)href\s*=\s*["']([^"']*/api/docs/models/([a-z0-9][a-z0-9._-]*))/?(?:#[^"']*)?["']`)
+	openAIContextRe    = regexp.MustCompile(`(?i)([\d,]+)\s+context window`)
+	openAIMaxOutputRe2 = regexp.MustCompile(`(?i)([\d,]+)\s+max output tokens`)
+	openAITextPriceRe  = regexp.MustCompile(`(?i)Text tokens\s+.*?\bInput\s+\$([\d.]+)(?:\s+Cached input\s+(?:\$[\d.]+|-))?\s+Output\s+\$([\d.]+)`)
+	openAIModelIDRe    = regexp.MustCompile(`\b(?:gpt|o[0-9]|computer-use|chatgpt|chat-latest|codex|babbage|davinci|omni|text)[a-z0-9._-]*\b`)
 )
+
+func parseOpenAIModelLinks(html, sourceURL string) []string {
+	seen := make(map[string]bool)
+	var urls []string
+	for _, m := range openAIModelLinkRe.FindAllStringSubmatch(html, -1) {
+		slug := strings.Trim(strings.ToLower(m[2]), "/")
+		if !isOpenAIModelSlug(slug) {
+			continue
+		}
+		detailURL := resolveOpenAIModelURL(sourceURL, m[1])
+		if detailURL == "" {
+			detailURL = strings.TrimRight(openAIModelDetailsURL, "/") + "/" + slug
+		}
+		if seen[detailURL] {
+			continue
+		}
+		seen[detailURL] = true
+		urls = append(urls, detailURL)
+	}
+	return urls
+}
+
+func isOpenAIModelSlug(slug string) bool {
+	switch slug {
+	case "", "all", "compare", "model-archive":
+		return false
+	}
+	if strings.HasPrefix(slug, "model-") {
+		return false
+	}
+	return strings.HasPrefix(slug, "gpt-") ||
+		strings.HasPrefix(slug, "o1") ||
+		strings.HasPrefix(slug, "o3") ||
+		strings.HasPrefix(slug, "o4") ||
+		strings.HasPrefix(slug, "computer-use") ||
+		strings.HasPrefix(slug, "chatgpt") ||
+		strings.HasPrefix(slug, "chat-latest") ||
+		strings.HasPrefix(slug, "codex") ||
+		strings.HasPrefix(slug, "babbage") ||
+		strings.HasPrefix(slug, "davinci")
+}
+
+func resolveOpenAIModelURL(sourceURL, href string) string {
+	base, err := url.Parse(sourceURL)
+	if err != nil {
+		return ""
+	}
+	ref, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+	return base.ResolveReference(ref).String()
+}
+
+func fetchOpenAIModelDetails(ctx context.Context, modelURLs []string) ([]ModelPricing, error) {
+	type result struct {
+		models []ModelPricing
+		err    error
+	}
+
+	results := make([]result, len(modelURLs))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 6)
+	for i, modelURL := range modelURLs {
+		wg.Add(1)
+		go func(i int, modelURL string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			body, err := providerHTTPGet(ctx, modelURL)
+			if err != nil {
+				results[i].err = err
+				return
+			}
+			modelID := openAIModelIDFromURL(modelURL)
+			results[i].models = parseOpenAIModelDetail(modelID, body)
+		}(i, modelURL)
+	}
+	wg.Wait()
+
+	models := make(map[string]ModelPricing)
+	var errs []string
+	for i, r := range results {
+		if r.err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", modelURLs[i], r.err))
+			continue
+		}
+		for _, m := range r.models {
+			models[m.ID] = m
+		}
+	}
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("OpenAI model detail fetch failed: %s", strings.Join(errs, "; "))
+	}
+	allModels := make([]ModelPricing, 0, len(models))
+	for _, m := range models {
+		allModels = append(allModels, m)
+	}
+	if len(allModels) == 0 {
+		return nil, fmt.Errorf("no models found in OpenAI model docs")
+	}
+	return allModels, nil
+}
+
+func openAIModelIDFromURL(modelURL string) string {
+	u, err := url.Parse(modelURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.ToLower(parts[len(parts)-1])
+}
+
+func parseOpenAIModelDetail(modelID, html string) []ModelPricing {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	if modelID == "" {
+		return nil
+	}
+	text := stripHTMLTags(html)
+	ctxWindow := parseOpenAINumberAfter(openAIContextRe, text)
+	maxOutput := parseOpenAINumberAfter(openAIMaxOutputRe2, text)
+	inputPrice, outputPrice := parseOpenAITextPrices(text)
+	if ctxWindow == 0 || maxOutput == 0 || (inputPrice == 0 && outputPrice == 0) {
+		return nil
+	}
+
+	ids := openAIModelIDsFromDetail(modelID, text)
+	models := make([]ModelPricing, 0, len(ids))
+	for _, id := range ids {
+		models = append(models, ModelPricing{
+			ID:               id,
+			InputPricePer1M:  inputPrice,
+			OutputPricePer1M: outputPrice,
+			ContextWindow:    ctxWindow,
+			MaxOutput:        maxOutput,
+		})
+	}
+	return models
+}
+
+func parseOpenAINumberAfter(re *regexp.Regexp, text string) int {
+	m := re.FindStringSubmatch(text)
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.ReplaceAll(m[1], ",", ""))
+	return n
+}
+
+func parseOpenAITextPrices(text string) (float64, float64) {
+	m := openAITextPriceRe.FindStringSubmatch(text)
+	if m == nil {
+		return 0, 0
+	}
+	input, _ := strconv.ParseFloat(m[1], 64)
+	output, _ := strconv.ParseFloat(m[2], 64)
+	return roundPrice(input), roundPrice(output)
+}
+
+func openAIModelIDsFromDetail(modelID, text string) []string {
+	ids := []string{modelID}
+	seen := map[string]bool{modelID: true}
+
+	section := text
+	if idx := strings.Index(section, "Snapshots"); idx >= 0 {
+		section = section[idx:]
+		if end := strings.Index(section, "Rate limits"); end >= 0 {
+			section = section[:end]
+		}
+		for _, m := range openAIModelIDRe.FindAllString(strings.ToLower(section), -1) {
+			if m != modelID && !strings.HasPrefix(m, modelID+"-") {
+				continue
+			}
+			if seen[m] {
+				continue
+			}
+			seen[m] = true
+			ids = append(ids, m)
+		}
+	}
+	return ids
+}
 
 func parseOpenAIText(text string) ([]ModelPricing, error) {
 	models := make(map[string]*ModelPricing)
@@ -356,7 +556,7 @@ func fetchGeminiModels(ctx context.Context) ([]ModelPricing, error) {
 		}(i)
 	}
 
-	var shutdownModels map[string]bool
+	var shutdownModels map[string]time.Time
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -369,15 +569,9 @@ func fetchGeminiModels(ctx context.Context) ([]ModelPricing, error) {
 
 	wg.Wait()
 
-	// Step 3: Filter out models that have a shutdown date
+	// Step 3: Filter out models once their shutdown date has arrived.
 	if len(shutdownModels) > 0 {
-		filtered := models[:0]
-		for _, m := range models {
-			if !shutdownModels[m.ID] {
-				filtered = append(filtered, m)
-			}
-		}
-		models = filtered
+		models = filterGeminiModelsByShutdown(models, shutdownModels, providerNow())
 	}
 
 	return models, nil
@@ -486,10 +680,10 @@ var geminiDeprecationRowRe = regexp.MustCompile(
 	`(?i)<tr[^>]*>\s*<td[^>]*>(.*?)</td>\s*<td[^>]*>.*?</td>\s*<td[^>]*>(.*?)</td>`,
 )
 
-// parseGeminiDeprecations extracts model IDs that have an announced shutdown date
-// from the Gemini deprecations page. Returns a set of model IDs to exclude.
-func parseGeminiDeprecations(html string) map[string]bool {
-	shutdownModels := make(map[string]bool)
+// parseGeminiDeprecations extracts announced shutdown dates from the Gemini
+// deprecations page. Models remain usable until their shutdown date arrives.
+func parseGeminiDeprecations(html string) map[string]time.Time {
+	shutdownModels := make(map[string]time.Time)
 	for _, match := range geminiDeprecationRowRe.FindAllStringSubmatch(html, -1) {
 		modelID := strings.TrimSpace(stripHTMLTags(match[1]))
 		shutdownDate := strings.TrimSpace(stripHTMLTags(match[2]))
@@ -500,9 +694,35 @@ func parseGeminiDeprecations(html string) map[string]bool {
 		if strings.Contains(strings.ToLower(shutdownDate), "no shutdown date") {
 			continue
 		}
-		shutdownModels[modelID] = true
+		if parsed, ok := parseGeminiShutdownDate(shutdownDate); ok {
+			shutdownModels[modelID] = parsed
+		}
 	}
 	return shutdownModels
+}
+
+func parseGeminiShutdownDate(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{"January 2, 2006", "Jan 2, 2006", "2006-01-02"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func filterGeminiModelsByShutdown(models []ModelPricing, shutdownModels map[string]time.Time, now time.Time) []ModelPricing {
+	if len(shutdownModels) == 0 {
+		return models
+	}
+	filtered := models[:0]
+	for _, m := range models {
+		shutdown, hasShutdown := shutdownModels[m.ID]
+		if !hasShutdown || shutdown.After(now) {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 func parseCommaNumber(s string) int {
@@ -618,15 +838,15 @@ func parseGrokPage(html string) ([]ModelPricing, error) {
 	return models, nil
 }
 
-// gemmaHardcodedModels returns Gemma model pricing (no scrapable upstream source).
+// gemmaHardcodedModels returns Gemma model metadata for the free Google AI Studio API.
 func gemmaHardcodedModels() []ModelPricing {
 	return []ModelPricing{
-		{ID: "gemma-3-1b-it", InputPricePer1M: 0.005, OutputPricePer1M: 0.015, ContextWindow: 32768, MaxOutput: 8192},
-		{ID: "gemma-3-4b-it", InputPricePer1M: 0.01, OutputPricePer1M: 0.03, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-12b-it", InputPricePer1M: 0.025, OutputPricePer1M: 0.075, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-3-27b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 131072, MaxOutput: 8192},
-		{ID: "gemma-4-31b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
-		{ID: "gemma-4-26b-a4b-it", InputPricePer1M: 0.05, OutputPricePer1M: 0.15, ContextWindow: 262144, MaxOutput: 8192},
+		{ID: "gemma-3-1b-it", Free: true, ContextWindow: 32768, MaxOutput: 8192},
+		{ID: "gemma-3-4b-it", Free: true, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-12b-it", Free: true, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-3-27b-it", Free: true, ContextWindow: 131072, MaxOutput: 8192},
+		{ID: "gemma-4-31b-it", Free: true, ContextWindow: 262144, MaxOutput: 8192},
+		{ID: "gemma-4-26b-a4b-it", Free: true, ContextWindow: 262144, MaxOutput: 8192},
 	}
 }
 
