@@ -1,7 +1,7 @@
 {
   "schema_version": "model-catalog/v1",
-  "generated_at": "2026-05-18T16:56:50.234519Z",
-  "stale_after": "2026-06-17T16:56:50.234519Z",
+  "generated_at": "2026-05-19T19:00:06.930671695Z",
+  "stale_after": "2026-06-18T19:00:06.930671695Z",
   "providers": {
     "anthropic": {
       "id": "anthropic",
@@ -464,7 +464,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "anthropic/claude-haiku-4-5-20251001": {
@@ -478,7 +478,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "anthropic/claude-opus-4-7": {
@@ -492,7 +492,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "anthropic/claude-sonnet-4-6": {
@@ -506,7 +506,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemini-3-flash-preview": {
@@ -520,7 +520,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemini-3.1-pro-preview": {
@@ -534,7 +534,21 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
+      }
+    },
+    "google/gemini-3.5-flash": {
+      "id": "google/gemini-3.5-flash",
+      "provider_id": "google",
+      "name": "gemini-3.5-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "aliases": [
+        "gemini-3.5-flash"
+      ],
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-3-12b-it": {
@@ -548,7 +562,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-3-1b-it": {
@@ -562,7 +576,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-3-27b-it": {
@@ -576,7 +590,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-3-4b-it": {
@@ -590,7 +604,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-4-26b-a4b-it": {
@@ -604,7 +618,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "google/gemma-4-31b-it": {
@@ -618,7 +632,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "ollama/llama3.1:8b": {
@@ -641,7 +655,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4.1-2025-04-14": {
@@ -655,7 +669,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4.1-mini-2025-04-14": {
@@ -669,7 +683,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4.1-nano-2025-04-14": {
@@ -683,7 +697,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4.5-preview-2025-02-27": {
@@ -697,7 +711,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-2024-05-13": {
@@ -711,7 +725,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-2024-08-06": {
@@ -725,7 +739,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-2024-11-20": {
@@ -739,7 +753,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-audio-preview-2024-10-01": {
@@ -753,7 +767,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-audio-preview-2024-12-17": {
@@ -767,7 +781,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-audio-preview-2025-06-03": {
@@ -781,7 +795,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-mini-2024-07-18": {
@@ -795,7 +809,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-mini-audio-preview-2024-12-17": {
@@ -809,7 +823,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-mini-realtime-preview-2024-12-17": {
@@ -823,7 +837,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-mini-search-preview-2025-03-11": {
@@ -837,7 +851,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-realtime-preview-2024-10-01": {
@@ -851,7 +865,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-realtime-preview-2024-12-17": {
@@ -865,7 +879,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-realtime-preview-2025-06-03": {
@@ -879,7 +893,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-4o-search-preview-2025-03-11": {
@@ -893,7 +907,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-5-2025-08-07": {
@@ -907,7 +921,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-5-mini-2025-08-07": {
@@ -921,7 +935,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/gpt-5-nano-2025-08-07": {
@@ -935,7 +949,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o1-2024-12-17": {
@@ -949,7 +963,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o1-mini-2024-09-12": {
@@ -963,7 +977,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o1-preview-2024-09-12": {
@@ -977,7 +991,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o1-pro-2025-03-19": {
@@ -991,7 +1005,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o3-2025-04-16": {
@@ -1005,7 +1019,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o3-deep-research-2025-06-26": {
@@ -1019,7 +1033,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o3-mini-2025-01-31": {
@@ -1033,7 +1047,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o3-pro-2025-06-10": {
@@ -1047,7 +1061,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o4-mini-2025-04-16": {
@@ -1061,7 +1075,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "openai/o4-mini-deep-research-2025-06-26": {
@@ -1075,7 +1089,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "xai/grok-4.20-0309-non-reasoning": {
@@ -1088,7 +1102,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "xai/grok-4.20-0309-reasoning": {
@@ -1101,7 +1115,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "xai/grok-4.20-multi-agent-0309": {
@@ -1114,7 +1128,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "xai/grok-4.3": {
@@ -1127,7 +1141,7 @@
       ],
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     "z-ai/glm-4.5-air:free": {
@@ -1154,7 +1168,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1166,7 +1180,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1182,7 +1196,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1,
           "output_tokens": 5
@@ -1191,7 +1205,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1207,7 +1221,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1219,7 +1233,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1235,7 +1249,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1247,7 +1261,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1263,7 +1277,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1,
           "output_tokens": 5
@@ -1272,7 +1286,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1288,7 +1302,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1300,7 +1314,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1316,7 +1330,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1328,7 +1342,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1344,7 +1358,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 5,
           "output_tokens": 25
@@ -1353,7 +1367,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1369,7 +1383,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1381,7 +1395,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1397,7 +1411,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1409,7 +1423,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1425,7 +1439,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 3,
           "output_tokens": 15
@@ -1434,7 +1448,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1450,7 +1464,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1462,7 +1476,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1478,7 +1492,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.5,
           "output_tokens": 3
@@ -1487,7 +1501,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1503,7 +1517,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1515,7 +1529,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1531,7 +1545,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2,
           "output_tokens": 12
@@ -1540,7 +1554,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1556,7 +1570,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1568,7 +1582,60 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
+      }
+    },
+    {
+      "id": "gemini-direct:gemini-3.5-flash",
+      "canonical_model_id": "google/gemini-3.5-flash",
+      "deployment_id": "gemini-direct",
+      "native_model_id": "gemini-3.5-flash",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "supported"
+        }
+      },
+      "pricing": {
+        "status": "known",
+        "currency": "USD",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
+        "rates_per_1m": {
+          "input_tokens": 1.5,
+          "output_tokens": 9
+        },
+        "source": "providers"
+      },
+      "provenance": {
+        "source": "legacy-provider-keyed-catalog",
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
+      }
+    },
+    {
+      "id": "gemini-vertex:gemini-3.5-flash",
+      "canonical_model_id": "google/gemini-3.5-flash",
+      "deployment_id": "gemini-vertex",
+      "native_model_id": "gemini-3.5-flash",
+      "capabilities": {
+        "server_tools": {
+          "web_search": "unknown"
+        }
+      },
+      "pricing": {
+        "status": "unknown",
+        "currency": "USD",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
+        "missing_dimensions": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "notes": [
+          "Deployment-specific pricing is not inferred from direct provider pricing."
+        ],
+        "source": "generated-deployment-placeholder"
+      },
+      "provenance": {
+        "source": "generated-from-provider-catalog",
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1584,7 +1651,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.025,
           "output_tokens": 0.075
@@ -1593,7 +1660,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1609,7 +1676,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1621,7 +1688,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1637,7 +1704,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.005,
           "output_tokens": 0.015
@@ -1646,7 +1713,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1662,7 +1729,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1674,7 +1741,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1690,7 +1757,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.05,
           "output_tokens": 0.15
@@ -1699,7 +1766,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1715,7 +1782,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1727,7 +1794,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1743,7 +1810,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.01,
           "output_tokens": 0.03
@@ -1752,7 +1819,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1768,7 +1835,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1780,7 +1847,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1796,7 +1863,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.05,
           "output_tokens": 0.15
@@ -1805,7 +1872,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1821,7 +1888,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1833,7 +1900,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1849,7 +1916,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.05,
           "output_tokens": 0.15
@@ -1858,7 +1925,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1874,7 +1941,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -1886,7 +1953,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1927,7 +1994,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 3,
           "output_tokens": 12
@@ -1936,7 +2003,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1952,7 +2019,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2,
           "output_tokens": 8
@@ -1961,7 +2028,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -1977,7 +2044,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.4,
           "output_tokens": 1.6
@@ -1986,7 +2053,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2002,7 +2069,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.1,
           "output_tokens": 0.4
@@ -2011,7 +2078,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2027,7 +2094,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 75,
           "output_tokens": 150
@@ -2036,7 +2103,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2052,7 +2119,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 5,
           "output_tokens": 15
@@ -2061,7 +2128,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2077,7 +2144,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2086,7 +2153,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2102,7 +2169,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2111,7 +2178,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2127,7 +2194,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2136,7 +2203,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2152,7 +2219,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2161,7 +2228,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2177,7 +2244,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2186,7 +2253,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2202,7 +2269,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.15,
           "output_tokens": 0.6
@@ -2211,7 +2278,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2227,7 +2294,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.15,
           "output_tokens": 0.6
@@ -2236,7 +2303,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2252,7 +2319,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.6,
           "output_tokens": 2.4
@@ -2261,7 +2328,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2277,7 +2344,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.15,
           "output_tokens": 0.6
@@ -2286,7 +2353,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2302,7 +2369,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 5,
           "output_tokens": 20
@@ -2311,7 +2378,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2327,7 +2394,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 5,
           "output_tokens": 20
@@ -2336,7 +2403,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2352,7 +2419,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 5,
           "output_tokens": 20
@@ -2361,7 +2428,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2377,7 +2444,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2.5,
           "output_tokens": 10
@@ -2386,7 +2453,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2402,7 +2469,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.25,
           "output_tokens": 10
@@ -2411,7 +2478,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2427,7 +2494,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.25,
           "output_tokens": 2
@@ -2436,7 +2503,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2452,7 +2519,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 0.05,
           "output_tokens": 0.4
@@ -2461,7 +2528,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2477,7 +2544,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 15,
           "output_tokens": 60
@@ -2486,7 +2553,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2502,7 +2569,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.1,
           "output_tokens": 4.4
@@ -2511,7 +2578,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2527,7 +2594,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 15,
           "output_tokens": 60
@@ -2536,7 +2603,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2552,7 +2619,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 150,
           "output_tokens": 600
@@ -2561,7 +2628,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2577,7 +2644,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2,
           "output_tokens": 8
@@ -2586,7 +2653,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2602,7 +2669,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 10,
           "output_tokens": 40
@@ -2611,7 +2678,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2627,7 +2694,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.1,
           "output_tokens": 4.4
@@ -2636,7 +2703,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2652,7 +2719,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 20,
           "output_tokens": 80
@@ -2661,7 +2728,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2677,7 +2744,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.1,
           "output_tokens": 4.4
@@ -2686,7 +2753,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2702,7 +2769,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 2,
           "output_tokens": 8
@@ -2711,7 +2778,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2727,7 +2794,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.25,
           "output_tokens": 2.5
@@ -2736,7 +2803,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2752,7 +2819,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.25,
           "output_tokens": 2.5
@@ -2761,7 +2828,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2777,7 +2844,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.25,
           "output_tokens": 2.5
@@ -2786,7 +2853,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2802,7 +2869,7 @@
       "pricing": {
         "status": "known",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "rates_per_1m": {
           "input_tokens": 1.25,
           "output_tokens": 2.5
@@ -2811,7 +2878,7 @@
       },
       "provenance": {
         "source": "legacy-provider-keyed-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2855,7 +2922,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2864,7 +2931,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2881,7 +2948,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2890,7 +2957,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2907,7 +2974,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2916,7 +2983,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2933,7 +3000,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2942,7 +3009,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2959,7 +3026,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2968,7 +3035,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -2985,7 +3052,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -2994,7 +3061,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3011,7 +3078,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3020,7 +3087,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3037,7 +3104,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3046,7 +3113,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3063,7 +3130,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3072,7 +3139,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3089,7 +3156,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3098,7 +3165,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3115,7 +3182,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3124,7 +3191,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3141,7 +3208,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3150,7 +3217,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3167,7 +3234,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3176,7 +3243,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3193,7 +3260,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3202,7 +3269,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3219,7 +3286,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3228,7 +3295,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3245,7 +3312,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3254,7 +3321,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3271,7 +3338,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3280,7 +3347,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3297,7 +3364,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3306,7 +3373,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3323,7 +3390,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3332,7 +3399,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3349,7 +3416,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3358,7 +3425,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3375,7 +3442,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3384,7 +3451,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3401,7 +3468,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3410,7 +3477,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3427,7 +3494,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3436,7 +3503,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3453,7 +3520,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3462,7 +3529,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3479,7 +3546,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3488,7 +3555,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3505,7 +3572,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3514,7 +3581,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3531,7 +3598,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3540,7 +3607,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3557,7 +3624,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3566,7 +3633,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3583,7 +3650,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3592,7 +3659,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3609,7 +3676,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3618,7 +3685,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3635,7 +3702,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3644,7 +3711,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     },
     {
@@ -3661,7 +3728,7 @@
       "pricing": {
         "status": "unknown",
         "currency": "USD",
-        "effective_at": "2026-05-18T16:56:50.234519Z",
+        "effective_at": "2026-05-19T19:00:06.930671695Z",
         "missing_dimensions": [
           "input_tokens",
           "output_tokens"
@@ -3670,7 +3737,7 @@
       },
       "provenance": {
         "source": "generated-from-provider-catalog",
-        "observed_at": "2026-05-18T16:56:50.234519Z"
+        "observed_at": "2026-05-19T19:00:06.930671695Z"
       }
     }
   ],
@@ -3682,6 +3749,7 @@
     "computer-use-preview-2025-03-11": "openai/computer-use-preview-2025-03-11",
     "gemini-3-flash-preview": "google/gemini-3-flash-preview",
     "gemini-3.1-pro-preview": "google/gemini-3.1-pro-preview",
+    "gemini-3.5-flash": "google/gemini-3.5-flash",
     "gemma-3-12b-it": "google/gemma-3-12b-it",
     "gemma-3-1b-it": "google/gemma-3-1b-it",
     "gemma-3-27b-it": "google/gemma-3-27b-it",
