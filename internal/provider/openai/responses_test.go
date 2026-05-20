@@ -220,6 +220,17 @@ func TestConvertResponsesMessages_ToolUseAndResult(t *testing.T) {
 	if !ok || msg1.Role != "assistant" {
 		t.Errorf("input[1] should be assistant message, got %T %+v", input[1], input[1])
 	}
+	msg1Content, ok := msg1.Content.([]interface{})
+	if !ok || len(msg1Content) != 1 {
+		t.Fatalf("input[1].content should be one assistant output part, got %#v", msg1.Content)
+	}
+	outputText, ok := msg1Content[0].(responsesOutputText)
+	if !ok {
+		t.Fatalf("input[1].content[0] should be output_text, got %T %#v", msg1Content[0], msg1Content[0])
+	}
+	if outputText.Type != "output_text" || outputText.Text != "Let me check." {
+		t.Fatalf("assistant text part = %+v, want output_text Let me check.", outputText)
+	}
 
 	// Item 2: function call
 	fc, ok := input[2].(responsesFunctionCallInput)
@@ -249,6 +260,113 @@ func TestConvertResponsesMessages_ToolUseAndResult(t *testing.T) {
 	}
 	if fco.Output != "72°F" {
 		t.Errorf("function_call_output.output = %q, want %q", fco.Output, "72°F")
+	}
+}
+
+func TestConvertResponsesMessages_AssistantPlainTextUsesOutputText(t *testing.T) {
+	messages := []types.Message{
+		{Role: "assistant", Content: json.RawMessage(`"Done."`)},
+	}
+
+	_, input := convertResponsesMessages(messages, "")
+	if len(input) != 1 {
+		t.Fatalf("expected 1 input item, got %d", len(input))
+	}
+	msg, ok := input[0].(responsesInputMessage)
+	if !ok || msg.Role != "assistant" {
+		t.Fatalf("input[0] should be assistant message, got %T %+v", input[0], input[0])
+	}
+	parts, ok := msg.Content.([]interface{})
+	if !ok || len(parts) != 1 {
+		t.Fatalf("assistant content should be one output part, got %#v", msg.Content)
+	}
+	part, ok := parts[0].(responsesOutputText)
+	if !ok {
+		t.Fatalf("assistant content part should be output_text, got %T %#v", parts[0], parts[0])
+	}
+	if part.Type != "output_text" || part.Text != "Done." {
+		t.Fatalf("assistant content part = %+v, want output_text Done.", part)
+	}
+}
+
+func TestBuildOpenAIResponsesRequest_Debug20260520ToolResultHistory(t *testing.T) {
+	firstToolUseBlocks := []types.ContentBlock{
+		{Type: "tool_use", ID: "call_status", Name: "git", Input: json.RawMessage(`{"subcommand":"status","args":["--short","--branch"]}`)},
+		{Type: "tool_use", ID: "call_log", Name: "git", Input: json.RawMessage(`{"subcommand":"log","args":["--oneline"]}`)},
+	}
+	firstToolUseJSON, _ := json.Marshal(firstToolUseBlocks)
+	firstToolResultBlocks := []types.ContentBlock{
+		{Type: "tool_result", ToolUseID: "call_status", Content: "## branch [ahead 2]\n"},
+		{Type: "tool_result", ToolUseID: "call_log", Content: "ee1597f change\n7769421 change\n"},
+	}
+	firstToolResultJSON, _ := json.Marshal(firstToolResultBlocks)
+	pushToolUseBlocks := []types.ContentBlock{
+		{Type: "text", Text: "You are ahead by 2 commits. Push?"},
+		{Type: "tool_use", ID: "call_push", Name: "git", Input: json.RawMessage(`{"subcommand":"push","args":["origin","branch"]}`)},
+	}
+	pushToolUseJSON, _ := json.Marshal(pushToolUseBlocks)
+	pushToolResultBlocks := []types.ContentBlock{
+		{Type: "tool_result", ToolUseID: "call_push", Content: "To github.com:aduermael/herm.git\n"},
+	}
+	pushToolResultJSON, _ := json.Marshal(pushToolResultBlocks)
+
+	req := &types.CompletionRequest{
+		Model: "gpt-5.5-2026-04-23",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Can you push those 2 commits?"`)},
+			{Role: "assistant", Content: firstToolUseJSON},
+			{Role: "user", Content: firstToolResultJSON},
+			{Role: "assistant", Content: pushToolUseJSON},
+			{Role: "user", Content: pushToolResultJSON},
+		},
+	}
+
+	body := buildOpenAIResponsesRequest(req, true)
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("failed to unmarshal request: %v", err)
+	}
+	for _, key := range []string{"messages", "max_tokens", "think"} {
+		if _, ok := payload[key]; ok {
+			t.Fatalf("request included %q: %s", key, string(body))
+		}
+	}
+	input, ok := payload["input"].([]interface{})
+	if !ok || len(input) != 8 {
+		t.Fatalf("input length = %d, want 8; body=%s", len(input), string(body))
+	}
+	assistant, ok := input[5].(map[string]interface{})
+	if !ok {
+		t.Fatalf("input[5] = %T, want assistant message", input[5])
+	}
+	if assistant["type"] != "message" || assistant["role"] != "assistant" {
+		t.Fatalf("input[5] = %#v, want assistant message", assistant)
+	}
+	content, ok := assistant["content"].([]interface{})
+	if !ok || len(content) != 1 {
+		t.Fatalf("input[5].content = %#v, want one content part", assistant["content"])
+	}
+	textPart, ok := content[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("input[5].content[0] = %T, want object", content[0])
+	}
+	if textPart["type"] != "output_text" {
+		t.Fatalf("input[5].content[0].type = %v, want output_text; body=%s", textPart["type"], string(body))
+	}
+
+	pushCall, ok := input[6].(map[string]interface{})
+	if !ok {
+		t.Fatalf("input[6] = %T, want function_call", input[6])
+	}
+	if pushCall["type"] != "function_call" || pushCall["call_id"] != "call_push" {
+		t.Fatalf("input[6] = %#v, want function_call call_push", pushCall)
+	}
+	pushResult, ok := input[7].(map[string]interface{})
+	if !ok {
+		t.Fatalf("input[7] = %T, want function_call_output", input[7])
+	}
+	if pushResult["type"] != "function_call_output" || pushResult["call_id"] != "call_push" {
+		t.Fatalf("input[7] = %#v, want function_call_output call_push", pushResult)
 	}
 }
 
@@ -653,6 +771,31 @@ func TestConvertResponsesMessages_MalformedJSON(t *testing.T) {
 	}
 	if msg.Content != `{invalid}` {
 		t.Errorf("content = %v, want raw fallback", msg.Content)
+	}
+}
+
+func TestConvertResponsesMessages_MalformedAssistantJSONUsesOutputText(t *testing.T) {
+	messages := []types.Message{
+		{Role: "assistant", Content: json.RawMessage(`{invalid}`)},
+	}
+	_, input := convertResponsesMessages(messages, "")
+	if len(input) != 1 {
+		t.Fatalf("expected 1 input, got %d", len(input))
+	}
+	msg, ok := input[0].(responsesInputMessage)
+	if !ok {
+		t.Fatalf("expected responsesInputMessage, got %T", input[0])
+	}
+	parts, ok := msg.Content.([]interface{})
+	if !ok || len(parts) != 1 {
+		t.Fatalf("assistant fallback content should be one output part, got %#v", msg.Content)
+	}
+	part, ok := parts[0].(responsesOutputText)
+	if !ok {
+		t.Fatalf("assistant fallback part should be output_text, got %T %#v", parts[0], parts[0])
+	}
+	if part.Type != "output_text" || part.Text != `{invalid}` {
+		t.Fatalf("assistant fallback part = %+v, want output_text raw content", part)
 	}
 }
 

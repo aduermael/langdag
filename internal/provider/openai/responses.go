@@ -263,7 +263,7 @@ func convertResponsesMessages(messages []types.Message, system string) (string, 
 			input = append(input, responsesInputMessage{
 				Type:    "message",
 				Role:    msg.Role,
-				Content: text,
+				Content: responsesMessageTextContent(msg.Role, text),
 			})
 			continue
 		}
@@ -275,7 +275,7 @@ func convertResponsesMessages(messages []types.Message, system string) (string, 
 			input = append(input, responsesInputMessage{
 				Type:    "message",
 				Role:    msg.Role,
-				Content: string(msg.Content),
+				Content: responsesMessageTextContent(msg.Role, string(msg.Content)),
 			})
 			continue
 		}
@@ -289,10 +289,7 @@ func convertResponsesMessages(messages []types.Message, system string) (string, 
 		for _, block := range blocks {
 			switch block.Type {
 			case "text":
-				textParts = append(textParts, responsesInputText{
-					Type: "input_text",
-					Text: block.Text,
-				})
+				textParts = append(textParts, responsesTextPart(msg.Role, block.Text))
 			case "image":
 				hasImages = true
 				var url string
@@ -309,10 +306,7 @@ func convertResponsesMessages(messages []types.Message, system string) (string, 
 				}
 			case "document":
 				if block.Data != "" && block.MediaType == "text/plain" {
-					textParts = append(textParts, responsesInputText{
-						Type: "input_text",
-						Text: block.Data,
-					})
+					textParts = append(textParts, responsesTextPart(msg.Role, block.Data))
 				}
 			case "tool_use":
 				toolCalls = append(toolCalls, responsesFunctionCallInput{
@@ -374,15 +368,36 @@ func convertResponsesMessages(messages []types.Message, system string) (string, 
 					texts = append(texts, block.Text)
 				}
 			}
+			content := responsesMessageTextContent(msg.Role, strings.Join(texts, "\n"))
 			input = append(input, responsesInputMessage{
 				Type:    "message",
 				Role:    msg.Role,
-				Content: strings.Join(texts, "\n"),
+				Content: content,
 			})
 		}
 	}
 
 	return system, input
+}
+
+func responsesMessageTextContent(role, text string) interface{} {
+	if role == "assistant" {
+		return []interface{}{responsesTextPart(role, text)}
+	}
+	return text
+}
+
+func responsesTextPart(role, text string) interface{} {
+	if role == "assistant" {
+		return responsesOutputText{
+			Type: "output_text",
+			Text: text,
+		}
+	}
+	return responsesInputText{
+		Type: "input_text",
+		Text: text,
+	}
 }
 
 // convertResponsesTools converts langdag tool definitions to Responses API tool params.
