@@ -102,6 +102,29 @@ func TestCatalogV1ReferenceValidatesAndCompiles(t *testing.T) {
 	}
 }
 
+func TestCatalogV1NormalizesOpenAIDirectToResponses(t *testing.T) {
+	catalog := ReferenceCatalogV1()
+	deployment := catalog.Deployments["openai-direct"]
+	deployment.APIProtocolID = "openai-chat-completions"
+	deployment.APIProtocolIDs = nil
+
+	data := mustMarshalCatalogV1(t, catalog)
+	parsed, err := ParseRemoteCatalogV1(data)
+	if err != nil {
+		t.Fatalf("ParseRemoteCatalogV1: %v", err)
+	}
+	normalized := parsed.Deployments["openai-direct"]
+	if normalized == nil {
+		t.Fatal("missing openai-direct deployment")
+	}
+	if normalized.APIProtocolID != "openai-responses" {
+		t.Fatalf("openai-direct api_protocol_id = %q, want openai-responses", normalized.APIProtocolID)
+	}
+	if !stringSliceContainsV1(normalized.APIProtocolIDs, "openai-responses") || !stringSliceContainsV1(normalized.APIProtocolIDs, "openai-chat-completions") {
+		t.Fatalf("openai-direct api_protocol_ids = %+v, want responses and chat completions", normalized.APIProtocolIDs)
+	}
+}
+
 func TestCatalogV1SchemaDefinesNestedStrictContract(t *testing.T) {
 	var schema map[string]any
 	if err := json.Unmarshal([]byte(CatalogV1JSONSchema), &schema); err != nil {

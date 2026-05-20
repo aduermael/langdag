@@ -84,6 +84,7 @@ type DeploymentV1 struct {
 	Name                   string              `json:"name"`
 	ProviderID             string              `json:"provider_id"`
 	APIProtocolID          string              `json:"api_protocol_id"`
+	APIProtocolIDs         []string            `json:"api_protocol_ids,omitempty"`
 	AdapterConstructor     string              `json:"adapter_constructor"`
 	CredentialRequirements []CredentialV1      `json:"credential_requirements,omitempty"`
 	EnvFallbacks           []EnvFallbackV1     `json:"env_fallbacks,omitempty"`
@@ -123,6 +124,7 @@ type ModelOfferingV1 struct {
 	CanonicalModelID string          `json:"canonical_model_id"`
 	DeploymentID     string          `json:"deployment_id"`
 	NativeModelID    string          `json:"native_model_id"`
+	APIProtocolID    string          `json:"api_protocol_id,omitempty"`
 	Capabilities     CapabilitySetV1 `json:"capabilities,omitempty"`
 	Pricing          PricingV1       `json:"pricing"`
 	Provenance       *ProvenanceV1   `json:"provenance,omitempty"`
@@ -140,6 +142,7 @@ type ModelOfferingTemplateV1 struct {
 	ID                  string              `json:"id"`
 	CanonicalModelID    string              `json:"canonical_model_id"`
 	DeploymentID        string              `json:"deployment_id"`
+	APIProtocolID       string              `json:"api_protocol_id,omitempty"`
 	NativeModelIDSource NativeModelIDSource `json:"native_model_id_source"`
 	MappingRequired     bool                `json:"mapping_required"`
 	Capabilities        CapabilitySetV1     `json:"capabilities,omitempty"`
@@ -196,6 +199,7 @@ type DeploymentBindingV1 struct {
 	DeploymentID        string              `json:"deployment_id"`
 	ProviderID          string              `json:"provider_id"`
 	APIProtocolID       string              `json:"api_protocol_id"`
+	APIProtocolIDs      []string            `json:"api_protocol_ids,omitempty"`
 	AdapterConstructor  string              `json:"adapter_constructor"`
 	CredentialFields    []string            `json:"credential_fields"`
 	NativeModelIDSource NativeModelIDSource `json:"native_model_id_source"`
@@ -262,6 +266,7 @@ const CatalogV1JSONSchema = `{
         "name": { "type": "string", "minLength": 1 },
         "provider_id": { "$ref": "#/$defs/token_id" },
         "api_protocol_id": { "$ref": "#/$defs/token_id" },
+        "api_protocol_ids": { "$ref": "#/$defs/string_list" },
         "adapter_constructor": { "type": "string", "minLength": 1 },
         "credential_requirements": { "type": "array", "items": { "$ref": "#/$defs/credential" } },
         "env_fallbacks": { "type": "array", "items": { "$ref": "#/$defs/env_fallback" } },
@@ -295,6 +300,7 @@ const CatalogV1JSONSchema = `{
         "canonical_model_id": { "type": "string", "pattern": "^[a-z0-9][^\\s/]+/.+$" },
         "deployment_id": { "$ref": "#/$defs/token_id" },
         "native_model_id": { "type": "string", "minLength": 1 },
+        "api_protocol_id": { "$ref": "#/$defs/token_id" },
         "capabilities": { "$ref": "#/$defs/capabilities" },
         "pricing": { "$ref": "#/$defs/pricing" },
         "provenance": { "$ref": "#/$defs/provenance" }
@@ -308,6 +314,7 @@ const CatalogV1JSONSchema = `{
         "id": { "type": "string", "minLength": 1 },
         "canonical_model_id": { "type": "string", "pattern": "^[a-z0-9][^\\s/]+/.+$" },
         "deployment_id": { "$ref": "#/$defs/token_id" },
+        "api_protocol_id": { "$ref": "#/$defs/token_id" },
         "native_model_id_source": { "$ref": "#/$defs/native_model_id_source" },
         "mapping_required": { "type": "boolean", "const": true },
         "capabilities": { "$ref": "#/$defs/capabilities" },
@@ -406,7 +413,8 @@ func DeploymentBindingsV1() []DeploymentBindingV1 {
 		{
 			DeploymentID:        "openai-direct",
 			ProviderID:          "openai",
-			APIProtocolID:       "openai-chat-completions",
+			APIProtocolID:       "openai-responses",
+			APIProtocolIDs:      []string{"openai-responses", "openai-chat-completions"},
 			AdapterConstructor:  "openai.New",
 			CredentialFields:    []string{"api_key", "base_url"},
 			NativeModelIDSource: NativeModelIDCatalogKnown,
@@ -585,6 +593,7 @@ func (t ModelOfferingTemplateV1) Materialize(nativeModelID string) (ModelOfferin
 		CanonicalModelID: t.CanonicalModelID,
 		DeploymentID:     t.DeploymentID,
 		NativeModelID:    nativeModelID,
+		APIProtocolID:    t.APIProtocolID,
 		Capabilities:     t.Capabilities,
 		Pricing:          t.Pricing,
 		Provenance:       t.Provenance,
@@ -598,6 +607,7 @@ func (t ModelOfferingTemplateV1) Materialize(nativeModelID string) (ModelOfferin
 func deploymentFromBindingV1(binding DeploymentBindingV1, provenance *ProvenanceV1) *DeploymentV1 {
 	requirements := make([]CredentialV1, 0, len(binding.CredentialFields))
 	env := make([]EnvFallbackV1, 0, len(binding.CredentialFields))
+	apiProtocolIDs := append([]string(nil), binding.APIProtocolIDs...)
 	for _, field := range binding.CredentialFields {
 		if field == "model_mappings" {
 			requirements = append(requirements, CredentialV1{Field: field, Required: true})
@@ -631,6 +641,7 @@ func deploymentFromBindingV1(binding DeploymentBindingV1, provenance *Provenance
 		Name:                   deploymentDisplayNameV1(binding.DeploymentID),
 		ProviderID:             binding.ProviderID,
 		APIProtocolID:          binding.APIProtocolID,
+		APIProtocolIDs:         apiProtocolIDs,
 		AdapterConstructor:     binding.AdapterConstructor,
 		CredentialRequirements: requirements,
 		EnvFallbacks:           env,
@@ -750,6 +761,17 @@ func ValidateCatalogV1(catalog *CatalogV1) error {
 		if catalog.APIProtocols[deployment.APIProtocolID] == nil {
 			add("deployment %q references unknown api_protocol %q", deployment.ID, deployment.APIProtocolID)
 		}
+		if len(deployment.APIProtocolIDs) > 0 && !stringSliceContainsV1(deployment.APIProtocolIDs, deployment.APIProtocolID) {
+			add("deployment %q api_protocol_ids must include api_protocol_id %q", deployment.ID, deployment.APIProtocolID)
+		}
+		for _, protocolID := range deployment.APIProtocolIDs {
+			if !catalogProtocolIDRe.MatchString(protocolID) {
+				add("deployment %q has invalid api_protocol_ids entry %q", deployment.ID, protocolID)
+			}
+			if catalog.APIProtocols[protocolID] == nil {
+				add("deployment %q references unknown api_protocol %q in api_protocol_ids", deployment.ID, protocolID)
+			}
+		}
 		if deployment.AdapterConstructor == "" {
 			add("deployment %q missing adapter_constructor", deployment.ID)
 		}
@@ -817,6 +839,14 @@ func ValidateCatalogV1(catalog *CatalogV1) error {
 		if catalog.Deployments[offering.DeploymentID] == nil {
 			add("offering %q references unknown deployment %q", offering.ID, offering.DeploymentID)
 		}
+		if offering.APIProtocolID != "" {
+			if catalog.APIProtocols[offering.APIProtocolID] == nil {
+				add("offering %q references unknown api_protocol %q", offering.ID, offering.APIProtocolID)
+			}
+			if deployment := catalog.Deployments[offering.DeploymentID]; deployment != nil && !deploymentSupportsProtocolV1(deployment, offering.APIProtocolID) {
+				add("offering %q api_protocol_id %q is not supported by deployment %q", offering.ID, offering.APIProtocolID, offering.DeploymentID)
+			}
+		}
 		validateCapabilitiesV1(add, offering.ID, offering.Capabilities)
 		validatePricingV1(add, offering.ID, offering.Pricing)
 	}
@@ -854,6 +884,14 @@ func ValidateCatalogV1(catalog *CatalogV1) error {
 		}
 		if template.NativeModelIDSource != NativeModelIDUserConfigured {
 			add("offering_template %q must use native_model_id_source %q", template.ID, NativeModelIDUserConfigured)
+		}
+		if template.APIProtocolID != "" {
+			if catalog.APIProtocols[template.APIProtocolID] == nil {
+				add("offering_template %q references unknown api_protocol %q", template.ID, template.APIProtocolID)
+			}
+			if deployment != nil && !deploymentSupportsProtocolV1(deployment, template.APIProtocolID) {
+				add("offering_template %q api_protocol_id %q is not supported by deployment %q", template.ID, template.APIProtocolID, template.DeploymentID)
+			}
 		}
 		if !template.MappingRequired {
 			add("offering_template %q must set mapping_required", template.ID)
@@ -921,6 +959,14 @@ func CompileCatalogV1(catalog *CatalogV1) (*CompiledCatalogV1, error) {
 		}
 		if deployment.APIProtocol == nil {
 			return nil, fmt.Errorf("catalog v1: deployment %q references unknown api_protocol %q", deployment.ID, deployment.APIProtocolID)
+		}
+		if len(deployment.APIProtocolIDs) > 0 && !stringSliceContainsV1(deployment.APIProtocolIDs, deployment.APIProtocolID) {
+			return nil, fmt.Errorf("catalog v1: deployment %q api_protocol_ids must include api_protocol_id %q", deployment.ID, deployment.APIProtocolID)
+		}
+		for _, protocolID := range deployment.APIProtocolIDs {
+			if compiled.ProtocolsByID[protocolID] == nil {
+				return nil, fmt.Errorf("catalog v1: deployment %q references unknown api_protocol %q in api_protocol_ids", deployment.ID, protocolID)
+			}
 		}
 		compiled.DeploymentsByID[id] = deployment
 	}
@@ -1065,6 +1111,13 @@ func compileOfferingProblemsV1(compiled *CompiledCatalogV1, offering *ModelOffer
 	if compiled.DeploymentsByID[offering.DeploymentID] == nil {
 		problems = append(problems, fmt.Sprintf("unknown deployment %q", offering.DeploymentID))
 	}
+	if offering.APIProtocolID != "" {
+		if compiled.ProtocolsByID[offering.APIProtocolID] == nil {
+			problems = append(problems, fmt.Sprintf("unknown api_protocol %q", offering.APIProtocolID))
+		} else if deployment := compiled.DeploymentsByID[offering.DeploymentID]; deployment != nil && !deploymentSupportsProtocolV1(deployment, offering.APIProtocolID) {
+			problems = append(problems, fmt.Sprintf("api_protocol %q is not supported by deployment %q", offering.APIProtocolID, offering.DeploymentID))
+		}
+	}
 	collectCapabilityProblemsV1(&problems, offering.ID, offering.Capabilities)
 	collectPricingProblemsV1(&problems, offering.ID, offering.Pricing)
 	return problems
@@ -1088,6 +1141,13 @@ func compileOfferingTemplateProblemsV1(compiled *CompiledCatalogV1, template *Mo
 	if template.NativeModelIDSource != NativeModelIDUserConfigured {
 		problems = append(problems, fmt.Sprintf("native_model_id_source must be %q", NativeModelIDUserConfigured))
 	}
+	if template.APIProtocolID != "" {
+		if compiled.ProtocolsByID[template.APIProtocolID] == nil {
+			problems = append(problems, fmt.Sprintf("unknown api_protocol %q", template.APIProtocolID))
+		} else if deployment != nil && !deploymentSupportsProtocolV1(deployment, template.APIProtocolID) {
+			problems = append(problems, fmt.Sprintf("api_protocol %q is not supported by deployment %q", template.APIProtocolID, template.DeploymentID))
+		}
+	}
 	if !template.MappingRequired {
 		problems = append(problems, "mapping_required must be set")
 	}
@@ -1102,9 +1162,11 @@ func linkOfferingV1(compiled *CompiledCatalogV1, offering *ModelOfferingV1) {
 	if offering.Model != nil {
 		offering.Provider = offering.Model.Provider
 	}
-	if offering.Deployment != nil {
-		offering.APIProtocol = offering.Deployment.APIProtocol
+	protocolID := offering.APIProtocolID
+	if protocolID == "" && offering.Deployment != nil {
+		protocolID = offering.Deployment.APIProtocolID
 	}
+	offering.APIProtocol = compiled.ProtocolsByID[protocolID]
 }
 
 func linkOfferingTemplateV1(compiled *CompiledCatalogV1, template *ModelOfferingTemplateV1) {
@@ -1113,9 +1175,11 @@ func linkOfferingTemplateV1(compiled *CompiledCatalogV1, template *ModelOffering
 	if template.Model != nil {
 		template.Provider = template.Model.Provider
 	}
-	if template.Deployment != nil {
-		template.APIProtocol = template.Deployment.APIProtocol
+	protocolID := template.APIProtocolID
+	if protocolID == "" && template.Deployment != nil {
+		protocolID = template.Deployment.APIProtocolID
 	}
+	template.APIProtocol = compiled.ProtocolsByID[protocolID]
 }
 
 func ParseCatalogV1(data []byte) (*CatalogV1, error) {
@@ -1450,6 +1514,25 @@ func validNativeModelSourceV1(source NativeModelIDSource) bool {
 	default:
 		return false
 	}
+}
+
+func deploymentSupportsProtocolV1(deployment *DeploymentV1, protocolID string) bool {
+	if deployment == nil || protocolID == "" {
+		return false
+	}
+	if len(deployment.APIProtocolIDs) == 0 {
+		return deployment.APIProtocolID == protocolID
+	}
+	return stringSliceContainsV1(deployment.APIProtocolIDs, protocolID)
+}
+
+func stringSliceContainsV1(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func validateCapabilitiesV1(add func(string, ...any), offeringID string, capabilities CapabilitySetV1) {

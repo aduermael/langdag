@@ -1,9 +1,9 @@
 // Package openai — Responses API support for OpenAI-compatible providers.
 //
 // This file contains request building, response parsing, and SSE streaming for
-// the Responses API (/v1/responses). The Responses API is the modern endpoint
-// used by xAI/Grok (and increasingly by OpenAI) that supports server-side tools
-// such as web_search, x_search, and code_interpreter alongside function calling.
+// the Responses API (/v1/responses). The Responses API is the modern OpenAI
+// endpoint and is also used by xAI/Grok for server-side tools such as
+// web_search, x_search, and code_interpreter alongside function calling.
 package openai
 
 import (
@@ -19,14 +19,23 @@ import (
 // --- Responses API request types ---
 
 type responsesRequest struct {
-	Model           string        `json:"model"`
-	Input           []interface{} `json:"input"`
-	Instructions    string        `json:"instructions,omitempty"`
-	Tools           []interface{} `json:"tools,omitempty"`
-	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
-	Temperature     *float64      `json:"temperature,omitempty"`
-	Stream          bool          `json:"stream"`
-	Store           bool          `json:"store"`
+	Model           string              `json:"model"`
+	Input           []interface{}       `json:"input"`
+	Instructions    string              `json:"instructions,omitempty"`
+	Tools           []interface{}       `json:"tools,omitempty"`
+	MaxOutputTokens int                 `json:"max_output_tokens,omitempty"`
+	Temperature     *float64            `json:"temperature,omitempty"`
+	Reasoning       *responsesReasoning `json:"reasoning,omitempty"`
+	Stream          bool                `json:"stream"`
+	Store           bool                `json:"store"`
+}
+
+type responsesReasoning struct {
+	Effort string `json:"effort,omitempty"`
+}
+
+type responsesRequestOptions struct {
+	includeReasoning bool
 }
 
 // Input item types for the Responses API.
@@ -82,12 +91,24 @@ type responsesServerTool struct {
 // --- Responses API response types ---
 
 type responsesResponse struct {
-	ID          string            `json:"id"`
-	Model       string            `json:"model"`
-	Output      []responsesOutput `json:"output"`
-	Usage       *responsesUsage   `json:"usage,omitempty"`
-	Status      string            `json:"status"`
-	ServiceTier string            `json:"service_tier,omitempty"`
+	ID                string                      `json:"id"`
+	Model             string                      `json:"model"`
+	Output            []responsesOutput           `json:"output"`
+	Usage             *responsesUsage             `json:"usage,omitempty"`
+	Status            string                      `json:"status"`
+	IncompleteDetails *responsesIncompleteDetails `json:"incomplete_details,omitempty"`
+	Error             *responsesError             `json:"error,omitempty"`
+	ServiceTier       string                      `json:"service_tier,omitempty"`
+}
+
+type responsesIncompleteDetails struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+type responsesError struct {
+	Message string `json:"message,omitempty"`
+	Type    string `json:"type,omitempty"`
+	Code    string `json:"code,omitempty"`
 }
 
 type responsesOutput struct {
@@ -103,6 +124,7 @@ type responsesOutput struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 }
 
 type responsesContentBlock struct {
@@ -140,11 +162,19 @@ type responsesStreamEvent struct {
 	// For response.output_text.delta
 	Delta string `json:"delta,omitempty"`
 
+	// For response.function_call_arguments.done and custom tool events
+	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
+	Name      string `json:"name,omitempty"`
+
 	// For response.output_item.added
 	Item *responsesOutput `json:"item,omitempty"`
 
 	// For response.completed
 	Response *responsesResponse `json:"response,omitempty"`
+
+	// For error and response.failed
+	Error *responsesError `json:"error,omitempty"`
 
 	// Common fields
 	OutputIndex  int    `json:"output_index"`
@@ -155,6 +185,14 @@ type responsesStreamEvent struct {
 // --- Request building ---
 
 func buildResponsesRequest(req *types.CompletionRequest, stream bool) []byte {
+	return buildResponsesRequestWithOptions(req, stream, responsesRequestOptions{})
+}
+
+func buildOpenAIResponsesRequest(req *types.CompletionRequest, stream bool) []byte {
+	return buildResponsesRequestWithOptions(req, stream, responsesRequestOptions{includeReasoning: true})
+}
+
+func buildResponsesRequestWithOptions(req *types.CompletionRequest, stream bool, opts responsesRequestOptions) []byte {
 	instructions, input := convertResponsesMessages(req.Messages, req.System)
 
 	rr := responsesRequest{
@@ -174,9 +212,43 @@ func buildResponsesRequest(req *types.CompletionRequest, stream bool) []byte {
 	if len(req.Tools) > 0 {
 		rr.Tools = convertResponsesTools(req.Tools)
 	}
+	if opts.includeReasoning {
+		if effort := openAIResponsesReasoningEffort(req); effort != "" {
+			rr.Reasoning = &responsesReasoning{Effort: effort}
+		}
+	}
 
 	body, _ := json.Marshal(rr)
 	return body
+}
+
+func openAIResponsesReasoningEffort(req *types.CompletionRequest) string {
+	if req == nil || req.Think == nil {
+		return ""
+	}
+	model := strings.ToLower(req.Model)
+	if *req.Think {
+		if isOpenAIResponsesReasoningModel(model) {
+			return "medium"
+		}
+		return ""
+	}
+	if supportsOpenAIReasoningNone(model) {
+		return "none"
+	}
+	return ""
+}
+
+func isOpenAIResponsesReasoningModel(model string) bool {
+	return strings.HasPrefix(model, "gpt-5") || strings.HasPrefix(model, "o")
+}
+
+func supportsOpenAIReasoningNone(model string) bool {
+	return strings.HasPrefix(model, "gpt-5.1") ||
+		strings.HasPrefix(model, "gpt-5.2") ||
+		strings.HasPrefix(model, "gpt-5.3") ||
+		strings.HasPrefix(model, "gpt-5.4") ||
+		strings.HasPrefix(model, "gpt-5.5")
 }
 
 // convertResponsesMessages converts langdag messages to Responses API input items.
@@ -362,11 +434,31 @@ func convertResponsesResult(resp *responsesResponse) *types.CompletionResponse {
 				Name:  out.Name,
 				Input: json.RawMessage(out.Arguments),
 			})
+		case "custom_tool_call":
+			hasFunctionCalls = true
+			input, _ := json.Marshal(out.Input)
+			cr.Content = append(cr.Content, types.ContentBlock{
+				Type:  "tool_use",
+				ID:    out.CallID,
+				Name:  out.Name,
+				Input: input,
+			})
 		}
 	}
 
 	if hasFunctionCalls {
 		cr.StopReason = "tool_calls"
+	} else if resp.Status == "incomplete" {
+		cr.StopReason = "incomplete"
+		if resp.IncompleteDetails != nil && resp.IncompleteDetails.Reason != "" {
+			if resp.IncompleteDetails.Reason == "max_output_tokens" {
+				cr.StopReason = "max_tokens"
+			} else {
+				cr.StopReason = resp.IncompleteDetails.Reason
+			}
+		}
+	} else if resp.Status == "failed" && resp.Error != nil {
+		cr.StopReason = "error"
 	} else {
 		cr.StopReason = "stop"
 	}
@@ -418,6 +510,64 @@ func providerCostFromResponsesUsage(u *responsesUsage) *types.ProviderCost {
 	}
 }
 
+func contentBlockFromResponsesToolCall(out *responsesOutput) *types.ContentBlock {
+	if out == nil {
+		return &types.ContentBlock{Type: "tool_use"}
+	}
+	id := out.CallID
+	if id == "" {
+		id = out.ID
+	}
+	cb := &types.ContentBlock{
+		Type: "tool_use",
+		ID:   id,
+		Name: out.Name,
+	}
+	switch out.Type {
+	case "custom_tool_call":
+		cb.Input = rawJSONString(out.Input)
+	default:
+		cb.Input = json.RawMessage(out.Arguments)
+	}
+	return cb
+}
+
+func emitResponsesToolCallDone(events chan<- types.StreamEvent, emitted map[int]bool, outputIndex int, cb *types.ContentBlock) {
+	if cb == nil || emitted[outputIndex] {
+		return
+	}
+	emitted[outputIndex] = true
+	events <- types.StreamEvent{
+		Type:         types.StreamEventContentDone,
+		ContentBlock: cb,
+	}
+}
+
+func rawJSONString(value string) json.RawMessage {
+	data, _ := json.Marshal(value)
+	return data
+}
+
+func responsesAPIError(prefix string, errResp *responsesError) error {
+	return responsesStreamError(prefix, errResp)
+}
+
+func responsesStreamError(prefix string, errResp *responsesError) error {
+	if errResp == nil {
+		return fmt.Errorf("%s", prefix)
+	}
+	if errResp.Message != "" {
+		if errResp.Code != "" || errResp.Type != "" {
+			return fmt.Errorf("%s: %s (type=%s code=%s)", prefix, errResp.Message, errResp.Type, errResp.Code)
+		}
+		return fmt.Errorf("%s: %s", prefix, errResp.Message)
+	}
+	if errResp.Code != "" || errResp.Type != "" {
+		return fmt.Errorf("%s: type=%s code=%s", prefix, errResp.Type, errResp.Code)
+	}
+	return fmt.Errorf("%s", prefix)
+}
+
 // --- SSE streaming ---
 
 func parseResponsesSSEStream(body io.Reader, events chan<- types.StreamEvent) {
@@ -427,6 +577,8 @@ func parseResponsesSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	currentFunctionCalls := map[int]*types.ContentBlock{}
+	customToolInputs := map[int]string{}
+	emittedFunctionCalls := map[int]bool{}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -446,6 +598,24 @@ func parseResponsesSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 		}
 
 		switch event.Type {
+		case "error":
+			events <- types.StreamEvent{
+				Type:  types.StreamEventError,
+				Error: responsesStreamError("responses: stream error", event.Error),
+			}
+			return
+
+		case "response.failed":
+			streamErr := event.Error
+			if streamErr == nil && event.Response != nil {
+				streamErr = event.Response.Error
+			}
+			events <- types.StreamEvent{
+				Type:  types.StreamEventError,
+				Error: responsesStreamError("responses: response failed", streamErr),
+			}
+			return
+
 		case "response.output_text.delta":
 			events <- types.StreamEvent{
 				Type:    types.StreamEventDelta,
@@ -454,12 +624,8 @@ func parseResponsesSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 		case "response.output_item.added":
 			// Track new function call items
-			if event.Item != nil && event.Item.Type == "function_call" {
-				currentFunctionCalls[event.OutputIndex] = &types.ContentBlock{
-					Type: "tool_use",
-					ID:   event.Item.CallID,
-					Name: event.Item.Name,
-				}
+			if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
+				currentFunctionCalls[event.OutputIndex] = contentBlockFromResponsesToolCall(event.Item)
 			}
 
 		case "response.function_call_arguments.delta":
@@ -478,10 +644,54 @@ func parseResponsesSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 		case "response.function_call_arguments.done":
 			if cb, ok := currentFunctionCalls[event.OutputIndex]; ok {
-				events <- types.StreamEvent{
-					Type:         types.StreamEventContentDone,
-					ContentBlock: cb,
+				if event.Name != "" {
+					cb.Name = event.Name
 				}
+				if event.Arguments != "" {
+					cb.Input = json.RawMessage(event.Arguments)
+				}
+				emitResponsesToolCallDone(events, emittedFunctionCalls, event.OutputIndex, cb)
+			}
+
+		case "response.custom_tool_call_input.delta":
+			existing, ok := currentFunctionCalls[event.OutputIndex]
+			if !ok {
+				existing = &types.ContentBlock{Type: "tool_use"}
+				currentFunctionCalls[event.OutputIndex] = existing
+			}
+			if event.Delta != "" {
+				customToolInputs[event.OutputIndex] += event.Delta
+				existing.Input = rawJSONString(customToolInputs[event.OutputIndex])
+			}
+
+		case "response.custom_tool_call_input.done":
+			if cb, ok := currentFunctionCalls[event.OutputIndex]; ok {
+				if event.Name != "" {
+					cb.Name = event.Name
+				}
+				if event.Input != "" {
+					customToolInputs[event.OutputIndex] = event.Input
+					cb.Input = rawJSONString(event.Input)
+				}
+				emitResponsesToolCallDone(events, emittedFunctionCalls, event.OutputIndex, cb)
+			}
+
+		case "response.output_item.done":
+			if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
+				cb := contentBlockFromResponsesToolCall(event.Item)
+				if existing, ok := currentFunctionCalls[event.OutputIndex]; ok {
+					if existing.ID != "" {
+						cb.ID = existing.ID
+					}
+					if existing.Name != "" {
+						cb.Name = existing.Name
+					}
+					if len(existing.Input) > 0 && (len(cb.Input) == 0 || string(cb.Input) == `""`) {
+						cb.Input = existing.Input
+					}
+				}
+				currentFunctionCalls[event.OutputIndex] = cb
+				emitResponsesToolCallDone(events, emittedFunctionCalls, event.OutputIndex, cb)
 			}
 
 		case "response.completed":

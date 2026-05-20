@@ -154,6 +154,77 @@ func TestDeploymentRouterMaterializesAzureModelMapping(t *testing.T) {
 	}
 }
 
+func TestDeploymentRouterPassesOfferingAPIProtocol(t *testing.T) {
+	catalog := models.ReferenceCatalogV1()
+	for i := range catalog.Offerings {
+		if catalog.Offerings[i].ID == "openai-direct:gpt-4.1-2025-04-14" {
+			catalog.Offerings[i].APIProtocolID = "openai-chat-completions"
+		}
+	}
+	compiled, err := models.CompileCatalogV1(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := &captureProvider{name: "openai-direct"}
+	router, err := NewDeploymentRouter(DeploymentRouterOptions{
+		Catalog: compiled,
+		Deployments: map[string]DeploymentAdapter{
+			"openai-direct": deploymentAdapter("openai-direct", inner),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "openai/gpt-4.1-2025-04-14",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inner.lastReq.APIProtocolID != "openai-chat-completions" {
+		t.Fatalf("request api protocol = %q, want openai-chat-completions", inner.lastReq.APIProtocolID)
+	}
+	if resp.ModelResolution == nil || resp.ModelResolution.APIProtocolID != "openai-chat-completions" {
+		t.Fatalf("response model resolution = %+v, want chat completions protocol", resp.ModelResolution)
+	}
+}
+
+func TestDeploymentRouterDefaultsOpenAIDirectToResponsesDespiteStaleDeploymentProtocol(t *testing.T) {
+	catalog := models.ReferenceCatalogV1()
+	catalog.Deployments["openai-direct"].APIProtocolID = "openai-chat-completions"
+	catalog.Deployments["openai-direct"].APIProtocolIDs = nil
+	compiled, err := models.CompileCatalogV1(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := &captureProvider{name: "openai-direct"}
+	router, err := NewDeploymentRouter(DeploymentRouterOptions{
+		Catalog: compiled,
+		Deployments: map[string]DeploymentAdapter{
+			"openai-direct": deploymentAdapter("openai-direct", inner),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "openai/gpt-4.1-2025-04-14",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inner.lastReq.APIProtocolID != "openai-responses" {
+		t.Fatalf("request api protocol = %q, want openai-responses", inner.lastReq.APIProtocolID)
+	}
+	if resp.ModelResolution == nil || resp.ModelResolution.APIProtocolID != "openai-responses" {
+		t.Fatalf("response model resolution = %+v, want responses protocol", resp.ModelResolution)
+	}
+}
+
 func TestDeploymentRouterSkipsIneligibleDeployments(t *testing.T) {
 	openAI := &captureProvider{name: "openai-direct"}
 	openRouter := &captureProvider{name: "openrouter"}
@@ -261,6 +332,40 @@ func TestDeploymentRouterOpenRouterDiscoveredCanonicalInMultiDeploymentRoute(t *
 	}
 	if resp.ModelResolution == nil || resp.ModelResolution.CanonicalModelID != "openrouter/gpt-oss-20b:free" || resp.ModelResolution.NativeModelID != "gpt-oss-20b:free" {
 		t.Fatalf("bad OpenRouter canonical resolution: %+v", resp.ModelResolution)
+	}
+}
+
+func TestDeploymentRouterUnknownFutureOpenAIModelWorksWithMultipleDeployments(t *testing.T) {
+	openAI := &captureProvider{name: "openai-direct"}
+	openRouter := &captureProvider{name: "openrouter"}
+	router := newTestDeploymentRouter(t, map[string]DeploymentAdapter{
+		"openai-direct": deploymentAdapter("openai-direct", openAI),
+		"openrouter":    deploymentAdapter("openrouter", openRouter),
+	}, RoutingPolicy{
+		Default: []RoutingStage{{Deployments: []DeploymentChoice{{DeploymentID: "openrouter", Weight: 100}}}},
+		Providers: map[string][]RoutingStage{
+			"openai": {{Deployments: []DeploymentChoice{{DeploymentID: "openai-direct", Weight: 100}}}},
+		},
+	})
+
+	resp, err := router.Complete(context.Background(), &types.CompletionRequest{
+		Model:    "openai/gpt-next-2099-01-01",
+		Messages: []types.Message{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if openAI.calls != 1 {
+		t.Fatalf("openai-direct calls = %d, want 1", openAI.calls)
+	}
+	if openRouter.calls != 0 {
+		t.Fatalf("openrouter calls = %d, want 0", openRouter.calls)
+	}
+	if openAI.lastReq.Model != "gpt-next-2099-01-01" {
+		t.Fatalf("native model = %q, want gpt-next-2099-01-01", openAI.lastReq.Model)
+	}
+	if resp.ModelResolution == nil || resp.ModelResolution.APIProtocolID != "openai-responses" {
+		t.Fatalf("model resolution = %+v, want openai responses", resp.ModelResolution)
 	}
 }
 

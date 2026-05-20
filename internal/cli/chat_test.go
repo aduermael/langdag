@@ -41,7 +41,7 @@ func TestNewLibraryClientUsesEmbeddedRuntimeCatalog(t *testing.T) {
 
 	var requestedModel string
 	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
+		if r.URL.Path != "/responses" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		var req struct {
@@ -52,13 +52,10 @@ func TestNewLibraryClientUsesEmbeddedRuntimeCatalog(t *testing.T) {
 		}
 		requestedModel = req.Model
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprintf(w, `data: {"id":"chatcmpl-cache-cli","model":%q,"choices":[{"index":0,"delta":{"content":"cache cli"},"finish_reason":null}]}
+		_, _ = fmt.Fprintf(w, `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"cache cli"}
 
-data: {"id":"chatcmpl-cache-cli","model":%q,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2}}
-
-data: [DONE]
-
-`, nativeID, nativeID)
+data: {"type":"response.completed","response":{"id":"resp-cache-cli","model":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"cache cli"}]}],"usage":{"input_tokens":5,"output_tokens":2},"status":"completed"}}
+`, nativeID)
 	}))
 	defer openAI.Close()
 	t.Setenv("OPENAI_BASE_URL", openAI.URL)

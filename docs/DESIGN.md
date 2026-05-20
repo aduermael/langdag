@@ -699,7 +699,7 @@ description: string             # Optional: description
 defaults:
   provider: anthropic           # Default provider
   model: claude-sonnet-4-20250514  # Default model
-  max_tokens: 4096              # Default max tokens
+  max_tokens: 16384             # Default max tokens
   temperature: 0.7              # Default temperature
 
 # tool definitions
@@ -741,7 +741,7 @@ description: Research a topic and produce a structured report
 
 defaults:
   model: claude-sonnet-4-20250514
-  max_tokens: 4096
+  max_tokens: 16384
 
 tools:
   - name: web_search

@@ -240,6 +240,7 @@ func (r *DeploymentRouter) completeWithDeployment(ctx context.Context, req *type
 		return nil, err
 	}
 	enrichResponseFromOffering(resp, offering)
+	enrichResponseProtocolFromRequest(resp, nativeReq)
 	return resp, nil
 }
 
@@ -275,6 +276,7 @@ func (r *DeploymentRouter) streamWithDeployment(ctx context.Context, out chan<- 
 		case types.StreamEventDone:
 			sawDone = true
 			enrichResponseFromOffering(event.Response, offering)
+			enrichResponseProtocolFromRequest(event.Response, nativeReq)
 			flushBuffered()
 		case types.StreamEventError:
 			if emittedOutput {
@@ -473,7 +475,24 @@ func (r *DeploymentRouter) resolveOffering(target modelTarget, deploymentID stri
 			return r.syntheticOffering(deployment, target.CanonicalModelID, target.NativeModelIDHint), adapter, nil
 		}
 	}
+	if target.SyntheticDeploymentID == "" && target.NativeModelIDHint != "" {
+		deployment := r.catalog.DeploymentsByID[deploymentID]
+		if r.deploymentCanServeUnknownCanonical(deployment, target.CanonicalModelID) {
+			return r.syntheticOffering(deployment, target.CanonicalModelID, syntheticNativeModelID(deployment, target.CanonicalModelID)), adapter, nil
+		}
+	}
 	return nil, DeploymentAdapter{}, fmt.Errorf("deployment %q cannot serve %q", deploymentID, target.CanonicalModelID)
+}
+
+func (r *DeploymentRouter) deploymentCanServeUnknownCanonical(deployment *models.DeploymentV1, canonicalModelID string) bool {
+	if deployment == nil || deployment.NativeModelIDSource != models.NativeModelIDCatalogKnown {
+		return false
+	}
+	owner, _, ok := strings.Cut(canonicalModelID, "/")
+	if !ok || owner == "" {
+		return false
+	}
+	return canonicalProviderID(owner) == deployment.ProviderID
 }
 
 func (r *DeploymentRouter) discoveredOfferings(deploymentID, onlyCanonical, nativeHint string) []*models.ModelOfferingV1 {
@@ -620,7 +639,29 @@ func openRouterNativeModelID(canonicalID string) string {
 func requestForOffering(req *types.CompletionRequest, offering *models.ModelOfferingV1, adapter DeploymentAdapter) *types.CompletionRequest {
 	copied := *req
 	copied.Model = offering.NativeModelID
+	if copied.APIProtocolID == "" {
+		copied.APIProtocolID = apiProtocolIDForOffering(offering)
+	}
 	return filterToolsForOffering(&copied, offering, adapter)
+}
+
+func apiProtocolIDForOffering(offering *models.ModelOfferingV1) string {
+	if offering == nil {
+		return ""
+	}
+	if offering.APIProtocolID != "" {
+		return offering.APIProtocolID
+	}
+	if offering.DeploymentID == "openai-direct" {
+		return "openai-responses"
+	}
+	if offering.APIProtocol != nil {
+		return offering.APIProtocol.ID
+	}
+	if offering.Deployment != nil {
+		return offering.Deployment.APIProtocolID
+	}
+	return ""
 }
 
 func filterToolsForOffering(req *types.CompletionRequest, offering *models.ModelOfferingV1, adapter DeploymentAdapter) *types.CompletionRequest {
@@ -725,6 +766,13 @@ func enrichResponseFromOffering(resp *types.CompletionResponse, offering *models
 		resp.PricingSnapshot = &snapshot
 	}
 	resp.EnsureNormalizedUsage()
+}
+
+func enrichResponseProtocolFromRequest(resp *types.CompletionResponse, req *types.CompletionRequest) {
+	if resp == nil || req == nil || req.APIProtocolID == "" || resp.ModelResolution == nil {
+		return
+	}
+	resp.ModelResolution.APIProtocolID = req.APIProtocolID
 }
 
 func modelInfoFromOffering(offering *models.ModelOfferingV1) types.ModelInfo {

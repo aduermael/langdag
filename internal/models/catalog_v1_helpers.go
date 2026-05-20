@@ -28,6 +28,7 @@ func NormalizeCatalogV1(catalog *CatalogV1) {
 	if catalog == nil {
 		return
 	}
+	normalizeKnownDeploymentProtocolsV1(catalog)
 	for _, provider := range catalog.Providers {
 		if provider != nil {
 			sort.Strings(provider.Aliases)
@@ -56,6 +57,45 @@ func NormalizeCatalogV1(catalog *CatalogV1) {
 	for i := range catalog.OfferingTemplates {
 		normalizePricingV1(&catalog.OfferingTemplates[i].Pricing)
 	}
+}
+
+func normalizeKnownDeploymentProtocolsV1(catalog *CatalogV1) {
+	if catalog.APIProtocols == nil {
+		catalog.APIProtocols = map[string]*APIProtocolV1{}
+	}
+	if catalog.APIProtocols["openai-responses"] == nil {
+		catalog.APIProtocols["openai-responses"] = &APIProtocolV1{ID: "openai-responses", Name: "OpenAI Responses"}
+	}
+	if catalog.APIProtocols["openai-chat-completions"] == nil {
+		catalog.APIProtocols["openai-chat-completions"] = &APIProtocolV1{ID: "openai-chat-completions", Name: "OpenAI Chat Completions"}
+	}
+	deployment := catalog.Deployments["openai-direct"]
+	if deployment == nil {
+		return
+	}
+	deployment.APIProtocolID = "openai-responses"
+	deployment.APIProtocolIDs = appendUniqueStringsV1(deployment.APIProtocolIDs, "openai-responses", "openai-chat-completions")
+}
+
+func appendUniqueStringsV1(values []string, additions ...string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values)+len(additions))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	for _, value := range additions {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func normalizePricingV1(pricing *PricingV1) {

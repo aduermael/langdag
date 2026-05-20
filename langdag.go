@@ -364,6 +364,7 @@ type PromptOption func(*promptOptions)
 
 type promptOptions struct {
 	model                string
+	apiProtocolID        string
 	systemPrompt         string
 	maxTokens            int
 	maxOutputGroupTokens int
@@ -376,6 +377,15 @@ type promptOptions struct {
 func WithModel(model string) PromptOption {
 	return func(o *promptOptions) {
 		o.model = model
+	}
+}
+
+// WithAPIProtocol selects a provider API surface for providers that expose
+// multiple protocols for the same deployment, for example
+// "openai-responses" or "openai-chat-completions".
+func WithAPIProtocol(apiProtocolID string) PromptOption {
+	return func(o *promptOptions) {
+		o.apiProtocolID = apiProtocolID
 	}
 }
 
@@ -510,7 +520,7 @@ type StreamChunk struct {
 // Returns a PromptResult with the streaming response.
 func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.Prompt(ctx, message, o.model, o.systemPrompt, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
+	events, err := c.convMgr.PromptWithAPIProtocol(ctx, message, o.model, o.apiProtocolID, o.systemPrompt, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +532,7 @@ func (c *Client) Prompt(ctx context.Context, message string, opts ...PromptOptio
 // PromptFrom continues a conversation from an existing node.
 func (c *Client) PromptFrom(ctx context.Context, nodeID string, message string, opts ...PromptOption) (*PromptResult, error) {
 	o := applyOptions(opts)
-	events, err := c.convMgr.PromptFrom(ctx, nodeID, message, o.model, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
+	events, err := c.convMgr.PromptFromWithAPIProtocol(ctx, nodeID, message, o.model, o.apiProtocolID, o.tools, o.think, o.maxTokens, o.maxOutputGroupTokens)
 	if err != nil {
 		return nil, err
 	}

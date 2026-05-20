@@ -39,6 +39,12 @@ func NewManager(store storage.Storage, prov provider.Provider) *Manager {
 // It creates a root user node, sends to the LLM, and streams the response.
 // The assistant node is saved when the stream completes.
 func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
+	return m.PromptWithAPIProtocol(ctx, message, model, "", systemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
+}
+
+// PromptWithAPIProtocol starts a new conversation while requesting a specific
+// provider API protocol when the selected provider supports more than one.
+func (m *Manager) PromptWithAPIProtocol(ctx context.Context, message, model, apiProtocolID, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	rootID := uuid.New().String()
 	rootNode := &types.Node{
 		ID:           rootID,
@@ -60,13 +66,19 @@ func (m *Manager) Prompt(ctx context.Context, message, model, systemPrompt strin
 		{Role: "user", Content: contentToRawMessage(message)},
 	}
 
-	return m.streamResponse(ctx, rootNode, messages, model, systemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
+	return m.streamResponse(ctx, rootNode, messages, model, apiProtocolID, systemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
 }
 
 // PromptFrom continues a conversation from an existing node.
 // It creates a user child node, builds message history by walking to the root,
 // sends to the LLM, and streams the response.
 func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
+	return m.PromptFromWithAPIProtocol(ctx, parentNodeID, message, model, "", tools, think, maxTokens, maxOutputGroupTokens)
+}
+
+// PromptFromWithAPIProtocol continues a conversation while requesting a
+// specific provider API protocol when available.
+func (m *Manager) PromptFromWithAPIProtocol(ctx context.Context, parentNodeID, message, model, apiProtocolID string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	// Get ancestors (path from root to parentNode)
 	ancestors, err := m.storage.GetAncestors(ctx, parentNodeID)
 	if err != nil {
@@ -135,7 +147,7 @@ func (m *Manager) PromptFrom(ctx context.Context, parentNodeID, message, model s
 		})
 	}
 
-	return m.streamResponse(ctx, userNode, messages, model, root.SystemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
+	return m.streamResponse(ctx, userNode, messages, model, apiProtocolID, root.SystemPrompt, tools, think, maxTokens, maxOutputGroupTokens)
 }
 
 // injectSyntheticToolResults inserts synthetic tool_result nodes into the
@@ -195,6 +207,7 @@ func extractToolResultIDsFromContent(content string) []string {
 // defaultOutputGroupBudgetMultiplier is the multiplier applied to maxTokens
 // to derive the default output group token budget when none is specified.
 const defaultOutputGroupBudgetMultiplier = 4
+const defaultMaxTokens = 16384
 
 // streamResponse sends messages to the LLM and wraps the provider events,
 // saving the assistant node when the stream completes.
@@ -206,17 +219,18 @@ const defaultOutputGroupBudgetMultiplier = 4
 // node stores all accumulated content (self-contained). Continuation stops when
 // the model finishes (end_turn/tool_use), when the cumulative output tokens
 // exceed the group budget, or when a continuation produces no new content.
-func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
+func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, messages []types.Message, model, apiProtocolID, systemPrompt string, tools []types.ToolDefinition, think *bool, maxTokens, maxOutputGroupTokens int) (<-chan types.StreamEvent, error) {
 	if maxTokens <= 0 {
-		maxTokens = 4096
+		maxTokens = defaultMaxTokens
 	}
 	req := &types.CompletionRequest{
-		Model:     model,
-		Messages:  messages,
-		System:    systemPrompt,
-		MaxTokens: maxTokens,
-		Tools:     tools,
-		Think:     think,
+		Model:         model,
+		Messages:      messages,
+		System:        systemPrompt,
+		MaxTokens:     maxTokens,
+		Tools:         tools,
+		Think:         think,
+		APIProtocolID: apiProtocolID,
 	}
 
 	providerEvents, err := m.provider.Stream(ctx, req)
@@ -387,12 +401,13 @@ func (m *Manager) streamResponse(ctx context.Context, parentNode *types.Node, me
 			})
 
 			contReq := &types.CompletionRequest{
-				Model:     model,
-				Messages:  contMessages,
-				System:    systemPrompt,
-				MaxTokens: maxTokens,
-				Tools:     tools,
-				Think:     think,
+				Model:         model,
+				Messages:      contMessages,
+				System:        systemPrompt,
+				MaxTokens:     maxTokens,
+				Tools:         tools,
+				Think:         think,
+				APIProtocolID: apiProtocolID,
 			}
 
 			var contErr error
