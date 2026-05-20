@@ -383,7 +383,11 @@
       "id": "openai-direct",
       "name": "OpenAI direct",
       "provider_id": "openai",
-      "api_protocol_id": "openai-chat-completions",
+      "api_protocol_id": "openai-responses",
+      "api_protocol_ids": [
+        "openai-responses",
+        "openai-chat-completions"
+      ],
       "adapter_constructor": "openai.New",
       "credential_requirements": [
         {

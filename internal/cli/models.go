@@ -123,7 +123,7 @@ func runModels(cmd *cobra.Command, args []string) {
 			offering.CanonicalModelID,
 			model.ProviderID,
 			offering.DeploymentID,
-			deployment.APIProtocolID,
+			effectiveOfferingProtocolID(&offering, deployment),
 			offering.NativeModelID,
 			formatCatalogPrice(offering.Pricing, "input_tokens"),
 			formatCatalogPrice(offering.Pricing, "output_tokens"),
@@ -217,6 +217,11 @@ func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCata
 		if protocol := compiled.ProtocolsByID[deployment.APIProtocolID]; protocol != nil {
 			out.APIProtocols[protocol.ID] = protocol
 		}
+		for _, protocolID := range deployment.APIProtocolIDs {
+			if protocol := compiled.ProtocolsByID[protocolID]; protocol != nil {
+				out.APIProtocols[protocol.ID] = protocol
+			}
+		}
 	}
 	includeModel := func(model *models.ModelV1) {
 		if model == nil {
@@ -227,6 +232,9 @@ func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCata
 			out.Providers[provider.ID] = provider
 		}
 	}
+	includeProtocolID := func(protocolID string) {
+		includeProtocolIDInCatalog(out, compiled, protocolID)
+	}
 	for _, offering := range catalog.Offerings {
 		model := compiled.ModelsByID[offering.CanonicalModelID]
 		deployment := compiled.DeploymentsByID[offering.DeploymentID]
@@ -236,6 +244,7 @@ func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCata
 		out.Offerings = append(out.Offerings, offering)
 		includeModel(model)
 		includeDeployment(deployment)
+		includeProtocolID(effectiveOfferingProtocolID(&offering, deployment))
 	}
 	for _, template := range catalog.OfferingTemplates {
 		model := compiled.ModelsByID[template.CanonicalModelID]
@@ -246,6 +255,7 @@ func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCata
 		out.OfferingTemplates = append(out.OfferingTemplates, template)
 		includeModel(model)
 		includeDeployment(deployment)
+		includeProtocolID(effectiveTemplateProtocolID(&template, deployment))
 	}
 	for alias, target := range catalog.Aliases {
 		if out.Models[target] != nil {
@@ -270,6 +280,45 @@ func filterCatalogForJSON(catalog *models.Catalog, compiled *models.CompiledCata
 		return catalog
 	}
 	return out
+}
+
+func includeProtocolIDInCatalog(out *models.Catalog, compiled *models.CompiledCatalogV1, protocolID string) {
+	if protocolID == "" {
+		return
+	}
+	if protocol := compiled.ProtocolsByID[protocolID]; protocol != nil {
+		out.APIProtocols[protocol.ID] = protocol
+	}
+}
+
+func effectiveOfferingProtocolID(offering *models.ModelOfferingV1, deployment *models.DeploymentV1) string {
+	if offering != nil {
+		if offering.APIProtocolID != "" {
+			return offering.APIProtocolID
+		}
+		if offering.APIProtocol != nil {
+			return offering.APIProtocol.ID
+		}
+	}
+	if deployment != nil {
+		return deployment.APIProtocolID
+	}
+	return ""
+}
+
+func effectiveTemplateProtocolID(template *models.ModelOfferingTemplateV1, deployment *models.DeploymentV1) string {
+	if template != nil {
+		if template.APIProtocolID != "" {
+			return template.APIProtocolID
+		}
+		if template.APIProtocol != nil {
+			return template.APIProtocol.ID
+		}
+	}
+	if deployment != nil {
+		return deployment.APIProtocolID
+	}
+	return ""
 }
 
 func catalogFilterMatches(compiled *models.CompiledCatalogV1, model *models.ModelV1, deployment *models.DeploymentV1, deploymentID, filter string) bool {

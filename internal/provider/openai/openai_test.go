@@ -1,14 +1,340 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"langdag.com/langdag/types"
 )
+
+func TestOpenAIProviderCompleteUsesResponsesAPI(t *testing.T) {
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawRequest = true
+		if r.URL.Path != "/responses" {
+			t.Errorf("path = %q, want /responses", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("authorization = %q, want Bearer test-key", r.Header.Get("Authorization"))
+		}
+		if !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+			t.Errorf("content-type = %q, want application/json", r.Header.Get("Content-Type"))
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["model"] != "gpt-5.5" {
+			t.Errorf("model = %v, want gpt-5.5", body["model"])
+		}
+		if body["stream"] != false {
+			t.Errorf("stream = %v, want false", body["stream"])
+		}
+		if body["store"] != false {
+			t.Errorf("store = %v, want false", body["store"])
+		}
+		if body["max_output_tokens"] != float64(42) {
+			t.Errorf("max_output_tokens = %v, want 42", body["max_output_tokens"])
+		}
+		if _, ok := body["messages"]; ok {
+			t.Errorf("request included chat completions messages field: %+v", body)
+		}
+		if _, ok := body["max_tokens"]; ok {
+			t.Errorf("request included chat completions max_tokens field: %+v", body)
+		}
+		if _, ok := body["think"]; ok {
+			t.Errorf("request included non-OpenAI think field: %+v", body)
+		}
+
+		tools, ok := body["tools"].([]interface{})
+		if !ok || len(tools) != 1 {
+			t.Fatalf("tools = %#v, want one Responses hosted tool", body["tools"])
+		}
+		tool, ok := tools[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("tools[0] = %#v, want object", tools[0])
+		}
+		if tool["type"] != "web_search" {
+			t.Errorf("tools[0].type = %v, want web_search", tool["type"])
+		}
+		if tool["type"] == "web_search_preview" {
+			t.Errorf("tools[0].type used legacy chat completions value")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"resp_1","model":"gpt-5.5","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}],"usage":{"input_tokens":10,"output_tokens":2},"status":"completed"}`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	resp, err := provider.Complete(context.Background(), &types.CompletionRequest{
+		Model:     "gpt-5.5",
+		System:    "Be concise.",
+		MaxTokens: 42,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+		Tools: []types.ToolDefinition{{Name: types.ServerToolWebSearch}},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if !sawRequest {
+		t.Fatal("server did not receive request")
+	}
+	if resp.ID != "resp_1" || resp.Model != "gpt-5.5" {
+		t.Fatalf("response identity = %q/%q, want resp_1/gpt-5.5", resp.ID, resp.Model)
+	}
+	if len(resp.Content) != 1 || resp.Content[0].Text != "Hello" {
+		t.Fatalf("content = %+v, want Hello text block", resp.Content)
+	}
+	if resp.Usage.InputTokens != 10 || resp.Usage.OutputTokens != 2 {
+		t.Fatalf("usage = %+v, want 10/2", resp.Usage)
+	}
+}
+
+func TestOpenAIProviderStreamUsesResponsesAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Errorf("path = %q, want /responses", r.URL.Path)
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["stream"] != true {
+			t.Errorf("stream = %v, want true", body["stream"])
+		}
+		if _, ok := body["messages"]; ok {
+			t.Errorf("request included chat completions messages field: %+v", body)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Hello"}
+
+data: {"type":"response.completed","response":{"id":"resp_stream","model":"gpt-5.5","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}],"usage":{"input_tokens":3,"output_tokens":1},"status":"completed"}}
+
+`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	events, err := provider.Stream(context.Background(), &types.CompletionRequest{
+		Model: "gpt-5.5",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var text string
+	var done *types.CompletionResponse
+	for ev := range events {
+		switch ev.Type {
+		case types.StreamEventDelta:
+			text += ev.Content
+		case types.StreamEventDone:
+			done = ev.Response
+		case types.StreamEventError:
+			t.Fatalf("unexpected stream error: %v", ev.Error)
+		}
+	}
+	if text != "Hello" {
+		t.Fatalf("stream text = %q, want Hello", text)
+	}
+	if done == nil || done.ID != "resp_stream" || done.StopReason != "stop" {
+		t.Fatalf("done response = %+v, want resp_stream stop", done)
+	}
+}
+
+func TestOpenAIProviderCompleteResponsesFailureReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Errorf("path = %q, want /responses", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"resp_failed","model":"gpt-5.5","status":"failed","error":{"message":"bad request","type":"invalid_request_error","code":"invalid_value"}}`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	_, err := provider.Complete(context.Background(), &types.CompletionRequest{
+		Model: "gpt-5.5",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+	})
+	if err == nil {
+		t.Fatal("Complete returned nil error for failed Responses body")
+	}
+	if !strings.Contains(err.Error(), "bad request") || !strings.Contains(err.Error(), "invalid_value") {
+		t.Fatalf("error = %v, want provider error details", err)
+	}
+}
+
+func TestOpenAIProviderCompleteCanUseChatCompletionsAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("path = %q, want /chat/completions", r.URL.Path)
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["model"] != "gpt-4.1" {
+			t.Errorf("model = %v, want gpt-4.1", body["model"])
+		}
+		if _, ok := body["messages"]; !ok {
+			t.Fatalf("chat completions request missing messages: %+v", body)
+		}
+		if _, ok := body["max_tokens"]; ok {
+			t.Errorf("chat completions request included deprecated max_tokens field: %+v", body)
+		}
+		if body["max_completion_tokens"] != float64(32) {
+			t.Errorf("max_completion_tokens = %v, want 32", body["max_completion_tokens"])
+		}
+		if _, ok := body["input"]; ok {
+			t.Errorf("chat completions request included Responses input field: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_1","model":"gpt-4.1","choices":[{"message":{"role":"assistant","content":"Hello chat"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2}}`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	resp, err := provider.Complete(context.Background(), &types.CompletionRequest{
+		Model:         "gpt-4.1",
+		APIProtocolID: openAIProtocolChatCompletions,
+		MaxTokens:     32,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if resp.ID != "chatcmpl_1" {
+		t.Fatalf("ID = %q, want chatcmpl_1", resp.ID)
+	}
+	if len(resp.Content) != 1 || resp.Content[0].Text != "Hello chat" {
+		t.Fatalf("content = %+v, want chat text", resp.Content)
+	}
+}
+
+func TestOpenAIProviderChatCompletionsOmitsThinkAndMapsReasoning(t *testing.T) {
+	think := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if _, ok := body["think"]; ok {
+			t.Fatalf("chat completions request included non-OpenAI think field: %+v", body)
+		}
+		if body["reasoning_effort"] != "medium" {
+			t.Fatalf("reasoning_effort = %v, want medium", body["reasoning_effort"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_1","model":"gpt-5.5-2026-04-23","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	_, err := provider.Complete(context.Background(), &types.CompletionRequest{
+		Model:         "gpt-5.5-2026-04-23",
+		APIProtocolID: openAIProtocolChatCompletions,
+		Think:         &think,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+}
+
+func TestOpenAIProviderChatCompletionsOmitsHostedToolsForGeneralModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("path = %q, want /chat/completions", r.URL.Path)
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		tools, ok := body["tools"].([]interface{})
+		if !ok || len(tools) != 1 {
+			t.Fatalf("tools = %#v, want only the client function tool", body["tools"])
+		}
+		tool, ok := tools[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("tools[0] = %#v, want object", tools[0])
+		}
+		if tool["type"] != "function" {
+			t.Fatalf("tools[0].type = %v, want function", tool["type"])
+		}
+		if tool["type"] == "web_search_preview" || tool["type"] == "web_search" {
+			t.Fatalf("chat completions request leaked hosted web search tool: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl_1","model":"gpt-4.1","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer server.Close()
+
+	provider := New("test-key", server.URL)
+	_, err := provider.Complete(context.Background(), &types.CompletionRequest{
+		Model:         "gpt-4.1",
+		APIProtocolID: openAIProtocolChatCompletions,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+		},
+		Tools: []types.ToolDefinition{
+			{Name: types.ServerToolWebSearch, Description: "Search the web"},
+			{Name: "get_weather", Description: "Get weather", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+}
+
+func TestOpenAIProviderModelsIncludeSnapshotsWithServerTools(t *testing.T) {
+	models := New("test-key", "").Models()
+	byID := map[string]types.ModelInfo{}
+	for _, model := range models {
+		byID[model.ID] = model
+	}
+	for _, id := range []string{
+		"gpt-5.5-2026-04-23",
+		"gpt-4.1-2025-04-14",
+	} {
+		model, ok := byID[id]
+		if !ok {
+			t.Fatalf("Models() missing %q", id)
+		}
+		if !stringSliceContains(model.ServerTools, types.ServerToolWebSearch) {
+			t.Fatalf("model %q server tools = %+v, want web_search", id, model.ServerTools)
+		}
+	}
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
 
 func TestConvertMessages_PlainText(t *testing.T) {
 	messages := []types.Message{

@@ -120,9 +120,10 @@ type ToolDefinition struct {
 // Use this as the Name in a ToolDefinition to enable the provider's built-in web search.
 // Each provider maps the name to its native equivalent:
 //   - Anthropic: web_search_20250305
-//   - OpenAI:    web_search_preview
+//   - OpenAI:    web_search (Responses API)
 //   - Gemini:    google_search
 //   - Grok:      web_search (Responses API)
+//   - Legacy OpenAI Chat Completions adapters: web_search_preview
 const ServerToolWebSearch = "web_search"
 
 // IsClientTool reports whether t is a client-side (user-defined function) tool.
@@ -140,14 +141,15 @@ func (t ToolDefinition) IsClientTool() bool {
 
 // CompletionRequest represents a request to an LLM provider.
 type CompletionRequest struct {
-	Model       string           `json:"model"`
-	Messages    []Message        `json:"messages"`
-	System      string           `json:"system,omitempty"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Temperature float64          `json:"temperature,omitempty"`
-	StopSeqs    []string         `json:"stop_sequences,omitempty"`
-	Tools       []ToolDefinition `json:"tools,omitempty"`
-	Think       *bool            `json:"think,omitempty"` // nil = provider default, true = enable, false = disable
+	Model         string           `json:"model"`
+	Messages      []Message        `json:"messages"`
+	System        string           `json:"system,omitempty"`
+	MaxTokens     int              `json:"max_tokens,omitempty"`
+	Temperature   float64          `json:"temperature,omitempty"`
+	StopSeqs      []string         `json:"stop_sequences,omitempty"`
+	Tools         []ToolDefinition `json:"tools,omitempty"`
+	Think         *bool            `json:"think,omitempty"`           // nil = provider default, true = enable, false = disable
+	APIProtocolID string           `json:"api_protocol_id,omitempty"` // optional provider API surface override, e.g. openai-responses
 }
 
 // CompletionResponse represents a response from an LLM provider.

@@ -91,7 +91,7 @@ func TestCreateDeploymentAwareProviderUsesEmbeddedRuntimeCatalog(t *testing.T) {
 
 	var requestedModel string
 	openAI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
+		if r.URL.Path != "/responses" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		var req struct {
@@ -102,7 +102,7 @@ func TestCreateDeploymentAwareProviderUsesEmbeddedRuntimeCatalog(t *testing.T) {
 		}
 		requestedModel = req.Model
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"id":"chatcmpl-cache-api","model":%q,"choices":[{"message":{"role":"assistant","content":"cache api"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`, nativeID)
+		_, _ = fmt.Fprintf(w, `{"id":"resp-cache-api","model":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"cache api"}]}],"usage":{"input_tokens":5,"output_tokens":2},"status":"completed"}`, nativeID)
 	}))
 	defer openAI.Close()
 

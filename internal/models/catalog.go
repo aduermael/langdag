@@ -530,6 +530,9 @@ func ModelResolutionMetadataFromOffering(offering *ModelOfferingV1) types.ModelR
 			resolution.ProviderID = owner
 		}
 	}
+	if offering.APIProtocolID != "" {
+		resolution.APIProtocolID = offering.APIProtocolID
+	}
 	if resolution.APIProtocolID == "" && offering.APIProtocol != nil {
 		resolution.APIProtocolID = offering.APIProtocol.ID
 	}

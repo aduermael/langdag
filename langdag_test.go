@@ -2333,6 +2333,24 @@ func TestWithThink_Omitted(t *testing.T) {
 	}
 }
 
+func TestWithAPIProtocol_Propagated(t *testing.T) {
+	client, prov := newTestClientWithProvider(t, "api protocol response")
+	ctx := context.Background()
+
+	result, err := client.Prompt(ctx, "hello", langdag.WithAPIProtocol("openai-chat-completions"))
+	if err != nil {
+		t.Fatalf("Prompt with WithAPIProtocol: %v", err)
+	}
+	drainStream(t, result)
+
+	if prov.LastRequest == nil {
+		t.Fatal("expected provider to receive a request")
+	}
+	if prov.LastRequest.APIProtocolID != "openai-chat-completions" {
+		t.Errorf("APIProtocolID = %q, want openai-chat-completions", prov.LastRequest.APIProtocolID)
+	}
+}
+
 // --- WithMaxTokens propagation tests ---
 
 func TestWithMaxTokens_Propagated(t *testing.T) {
@@ -2357,7 +2375,7 @@ func TestWithMaxTokens_DefaultFallback(t *testing.T) {
 	client, prov := newTestClientWithProvider(t, "ok")
 	ctx := context.Background()
 
-	// No WithMaxTokens — should fall back to 4096
+	// No WithMaxTokens — should fall back to 16384
 	result, err := client.Prompt(ctx, "hello")
 	if err != nil {
 		t.Fatalf("Prompt without WithMaxTokens: %v", err)
@@ -2367,8 +2385,8 @@ func TestWithMaxTokens_DefaultFallback(t *testing.T) {
 	if prov.LastRequest == nil {
 		t.Fatal("expected provider to receive a request")
 	}
-	if prov.LastRequest.MaxTokens != 4096 {
-		t.Errorf("MaxTokens = %d, want 4096", prov.LastRequest.MaxTokens)
+	if prov.LastRequest.MaxTokens != 16384 {
+		t.Errorf("MaxTokens = %d, want 16384", prov.LastRequest.MaxTokens)
 	}
 }
 

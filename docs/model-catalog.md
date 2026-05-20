@@ -81,7 +81,7 @@ strictly schema-validated before use.
 | `anthropic` | `anthropic` | `anthropic-messages` | `anthropic-direct` |
 | `anthropic-bedrock` | `anthropic` | `anthropic-messages` | `anthropic-bedrock` |
 | `anthropic-vertex` | `anthropic` | `anthropic-messages` | `anthropic-vertex` |
-| `openai` | `openai` | `openai-chat-completions` | `openai-direct` |
+| `openai` | `openai` | `openai-responses` by default; `openai-chat-completions` can be requested | `openai-direct` |
 | `openai-azure` | `openai` | `openai-chat-completions` | `openai-azure` |
 | `gemini` / `gemma` | `google` | `gemini-generate-content` | `gemini-direct` |
 | `gemini-vertex` | `google` | `gemini-generate-content` | `gemini-vertex` |

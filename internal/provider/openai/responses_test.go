@@ -103,6 +103,89 @@ func TestBuildResponsesRequest_WithTools(t *testing.T) {
 	}
 }
 
+func TestBuildOpenAIResponsesRequest_ReasoningFromThink(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		think      bool
+		wantEffort string
+	}{
+		{name: "enabled", think: true, wantEffort: "medium"},
+		{name: "disabled", think: false, wantEffort: "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &types.CompletionRequest{
+				Model: "gpt-5.5",
+				Messages: []types.Message{
+					{Role: "user", Content: json.RawMessage(`"Hello"`)},
+				},
+				Think: &tc.think,
+			}
+
+			body := buildOpenAIResponsesRequest(req, false)
+			var m map[string]interface{}
+			if err := json.Unmarshal(body, &m); err != nil {
+				t.Fatalf("failed to unmarshal request: %v", err)
+			}
+			if _, ok := m["think"]; ok {
+				t.Fatalf("request included non-OpenAI think field: %s", string(body))
+			}
+			reasoning, ok := m["reasoning"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("reasoning = %#v, want object", m["reasoning"])
+			}
+			if reasoning["effort"] != tc.wantEffort {
+				t.Fatalf("reasoning.effort = %v, want %q", reasoning["effort"], tc.wantEffort)
+			}
+		})
+	}
+}
+
+func TestBuildOpenAIResponsesRequest_OmitsReasoningForNonReasoningModel(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model: "gpt-4.1",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		},
+		Think: &think,
+	}
+
+	body := buildOpenAIResponsesRequest(req, false)
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("failed to unmarshal request: %v", err)
+	}
+	if _, ok := m["reasoning"]; ok {
+		t.Fatalf("reasoning should be omitted for non-reasoning model: %s", string(body))
+	}
+	if _, ok := m["think"]; ok {
+		t.Fatalf("request included non-OpenAI think field: %s", string(body))
+	}
+}
+
+func TestBuildResponsesRequest_GrokDoesNotMapThinkToOpenAIReasoning(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model: "grok-3",
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+		},
+		Think: &think,
+	}
+
+	body := buildResponsesRequest(req, false)
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("failed to unmarshal request: %v", err)
+	}
+	if _, ok := m["reasoning"]; ok {
+		t.Fatalf("Grok request should not include OpenAI reasoning: %s", string(body))
+	}
+	if _, ok := m["think"]; ok {
+		t.Fatalf("Responses request should not include legacy think field: %s", string(body))
+	}
+}
+
 func TestConvertResponsesMessages_ToolUseAndResult(t *testing.T) {
 	toolUseBlocks := []types.ContentBlock{
 		{Type: "text", Text: "Let me check."},
@@ -346,6 +429,34 @@ func TestConvertResponsesResult_WithFunctionCall(t *testing.T) {
 	}
 }
 
+func TestConvertResponsesResult_IncompleteMaxOutputTokens(t *testing.T) {
+	resp := &responsesResponse{
+		ID:     "resp_max",
+		Model:  "gpt-5.5",
+		Status: "incomplete",
+		IncompleteDetails: &responsesIncompleteDetails{
+			Reason: "max_output_tokens",
+		},
+		Output: []responsesOutput{
+			{
+				Type: "message",
+				Role: "assistant",
+				Content: []responsesContentBlock{
+					{Type: "output_text", Text: "Partial"},
+				},
+			},
+		},
+	}
+
+	cr := convertResponsesResult(resp)
+	if cr.StopReason != "max_tokens" {
+		t.Fatalf("StopReason = %q, want max_tokens", cr.StopReason)
+	}
+	if len(cr.Content) != 1 || cr.Content[0].Text != "Partial" {
+		t.Fatalf("Content = %+v, want partial text", cr.Content)
+	}
+}
+
 func TestParseResponsesSSEStream_TextOnly(t *testing.T) {
 	sse := strings.Join([]string{
 		`data: {"type":"response.created","response":{"id":"resp_1","model":"grok-3","output":[],"status":"in_progress"}}`,
@@ -468,6 +579,58 @@ func TestParseResponsesSSEStream_FunctionCall(t *testing.T) {
 	}
 	if doneResp.StopReason != "tool_calls" {
 		t.Errorf("stop reason = %q, want %q", doneResp.StopReason, "tool_calls")
+	}
+}
+
+func TestParseResponsesSSEStream_FunctionCallDoneArguments(t *testing.T) {
+	sse := strings.Join([]string{
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_final","name":"search","arguments":""}}`,
+		`data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"q\":\"part"}`,
+		`data: {"type":"response.function_call_arguments.done","output_index":0,"arguments":"{\"q\":\"final\"}"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_final","model":"gpt-5.5","output":[{"type":"function_call","call_id":"call_final","name":"search","arguments":"{\"q\":\"final\"}"}],"status":"completed"}}`,
+	}, "\n")
+
+	events := make(chan types.StreamEvent, 100)
+	go func() {
+		defer close(events)
+		parseResponsesSSEStream(strings.NewReader(sse), events)
+	}()
+
+	var contentDone *types.ContentBlock
+	for ev := range events {
+		if ev.Type == types.StreamEventContentDone {
+			contentDone = ev.ContentBlock
+		}
+	}
+
+	if contentDone == nil {
+		t.Fatal("expected content_done event with function call")
+	}
+	if string(contentDone.Input) != `{"q":"final"}` {
+		t.Fatalf("content_done.input = %s, want final arguments", string(contentDone.Input))
+	}
+}
+
+func TestParseResponsesSSEStream_ErrorEvent(t *testing.T) {
+	sse := `data: {"type":"error","error":{"message":"bad request","type":"invalid_request_error","code":"invalid_value"}}`
+
+	events := make(chan types.StreamEvent, 100)
+	go func() {
+		defer close(events)
+		parseResponsesSSEStream(strings.NewReader(sse), events)
+	}()
+
+	var gotError error
+	for ev := range events {
+		if ev.Type == types.StreamEventError {
+			gotError = ev.Error
+		}
+	}
+	if gotError == nil {
+		t.Fatal("expected stream error")
+	}
+	if !strings.Contains(gotError.Error(), "bad request") || !strings.Contains(gotError.Error(), "invalid_value") {
+		t.Fatalf("error = %q, want message and code", gotError.Error())
 	}
 }
 

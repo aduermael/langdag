@@ -16,19 +16,27 @@ import (
 // --- Request types ---
 
 type chatCompletionRequest struct {
-	Model         string           `json:"model"`
-	Messages      []requestMessage `json:"messages"`
-	MaxTokens     int              `json:"max_tokens,omitempty"`
-	Temperature   *float64         `json:"temperature,omitempty"`
-	Stop          []string         `json:"stop,omitempty"`
-	Tools         []requestTool    `json:"tools,omitempty"`
-	Stream        bool             `json:"stream,omitempty"`
-	StreamOptions *streamOptions   `json:"stream_options,omitempty"`
-	Think         *bool            `json:"think,omitempty"`
+	Model               string           `json:"model"`
+	Messages            []requestMessage `json:"messages"`
+	MaxTokens           int              `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int              `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64         `json:"temperature,omitempty"`
+	Stop                []string         `json:"stop,omitempty"`
+	Tools               []requestTool    `json:"tools,omitempty"`
+	Stream              bool             `json:"stream,omitempty"`
+	StreamOptions       *streamOptions   `json:"stream_options,omitempty"`
+	Think               *bool            `json:"think,omitempty"`
+	ReasoningEffort     string           `json:"reasoning_effort,omitempty"`
 }
 
 type streamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
+}
+
+type chatCompletionRequestOptions struct {
+	UseMaxCompletionTokens bool
+	IncludeThink           bool
+	IncludeReasoningEffort bool
 }
 
 type requestMessage struct {
@@ -132,6 +140,17 @@ var openAIServerTools = map[string]string{
 // --- Request building ---
 
 func buildRequest(req *types.CompletionRequest, stream bool, toolMapping map[string]string) []byte {
+	return buildChatCompletionRequestWithOptions(req, stream, toolMapping, chatCompletionRequestOptions{IncludeThink: true})
+}
+
+func buildOpenAIChatCompletionRequest(req *types.CompletionRequest, stream bool, toolMapping map[string]string) []byte {
+	return buildChatCompletionRequestWithOptions(req, stream, toolMapping, chatCompletionRequestOptions{
+		UseMaxCompletionTokens: true,
+		IncludeReasoningEffort: true,
+	})
+}
+
+func buildChatCompletionRequestWithOptions(req *types.CompletionRequest, stream bool, toolMapping map[string]string, opts chatCompletionRequestOptions) []byte {
 	messages := convertMessages(req.Messages, req.System)
 
 	cr := chatCompletionRequest{
@@ -141,7 +160,11 @@ func buildRequest(req *types.CompletionRequest, stream bool, toolMapping map[str
 	}
 
 	if req.MaxTokens > 0 {
-		cr.MaxTokens = req.MaxTokens
+		if opts.UseMaxCompletionTokens {
+			cr.MaxCompletionTokens = req.MaxTokens
+		} else {
+			cr.MaxTokens = req.MaxTokens
+		}
 	}
 	if req.Temperature > 0 {
 		cr.Temperature = &req.Temperature
@@ -152,8 +175,11 @@ func buildRequest(req *types.CompletionRequest, stream bool, toolMapping map[str
 	if len(req.Tools) > 0 {
 		cr.Tools = convertTools(req.Tools, toolMapping)
 	}
-	if req.Think != nil {
+	if opts.IncludeThink && req.Think != nil {
 		cr.Think = req.Think
+	}
+	if opts.IncludeReasoningEffort {
+		cr.ReasoningEffort = openAIResponsesReasoningEffort(req)
 	}
 	if stream {
 		cr.StreamOptions = &streamOptions{IncludeUsage: true}
@@ -283,6 +309,9 @@ func convertTools(tools []types.ToolDefinition, mapping map[string]string) []req
 		}
 
 		// Server-side tool: map name if known, otherwise pass through as-is
+		if mapping == nil {
+			continue
+		}
 		typeName := tool.Name
 		if mapped, ok := mapping[tool.Name]; ok {
 			typeName = mapped
@@ -303,7 +332,7 @@ func convertResponse(resp *chatCompletionResponse) *types.CompletionResponse {
 	if len(resp.Choices) > 0 {
 		c := resp.Choices[0]
 		if c.FinishReason != nil {
-			cr.StopReason = *c.FinishReason
+			cr.StopReason = chatFinishReasonToStopReason(*c.FinishReason)
 		}
 
 		if c.Message.Content != nil {
@@ -385,6 +414,7 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	var finalUsage *types.Usage
 	var finalProviderCost *types.ProviderCost
 	var responseID, responseModel, serviceTier string
+	var finalStopReason string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -460,6 +490,7 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 
 		if chunk.Choices[0].FinishReason != nil {
 			fr := *chunk.Choices[0].FinishReason
+			finalStopReason = chatFinishReasonToStopReason(fr)
 			if fr == "tool_calls" || fr == "stop" {
 				for _, tc := range currentToolCalls {
 					events <- types.StreamEvent{
@@ -485,9 +516,10 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 	}
 
 	resp := &types.CompletionResponse{
-		ID:      responseID,
-		Model:   responseModel,
-		Content: content,
+		ID:         responseID,
+		Model:      responseModel,
+		Content:    content,
+		StopReason: finalStopReason,
 	}
 	if finalUsage != nil {
 		resp.Usage = *finalUsage
@@ -499,4 +531,11 @@ func parseSSEStream(body io.Reader, events chan<- types.StreamEvent) {
 		Type:     types.StreamEventDone,
 		Response: resp,
 	}
+}
+
+func chatFinishReasonToStopReason(reason string) string {
+	if reason == "length" {
+		return "max_tokens"
+	}
+	return reason
 }

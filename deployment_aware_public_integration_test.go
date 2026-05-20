@@ -27,7 +27,7 @@ func newPhase8OpenAICompatServer(t *testing.T, status int, body string) *phase8O
 	t.Helper()
 	s := &phase8OpenAICompatServer{status: status, contentType: "application/json"}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
+		if r.URL.Path != "/responses" && r.URL.Path != "/chat/completions" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		var req struct {
@@ -72,14 +72,9 @@ func TestNewLoadsEmbeddedRuntimeCatalogForRouting(t *testing.T) {
 	const canonicalID = "openai/gpt-4.1-2025-04-14"
 	const nativeID = "gpt-4.1-2025-04-14"
 
-	body := `data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[{"index":0,"delta":{"content":"cache route"},"finish_reason":null}]}
+	body := `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"cache route"}
 
-data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}
-
-data: {"id":"chatcmpl-runtime-cache","model":"` + nativeID + `","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-
+data: {"type":"response.completed","response":{"id":"resp-runtime-cache","model":"` + nativeID + `","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"cache route"}]}],"usage":{"input_tokens":5,"output_tokens":2},"status":"completed"}}
 `
 	server := newPhase8OpenAICompatServer(t, http.StatusOK, body)
 	server.contentType = "text/event-stream"
@@ -156,14 +151,9 @@ func TestNewCanUseExplicitRemoteRuntimeCatalog(t *testing.T) {
 	}))
 	defer catalogServer.Close()
 
-	body := `data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[{"index":0,"delta":{"content":"remote route"},"finish_reason":null}]}
+	body := `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"remote route"}
 
-data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}
-
-data: {"id":"chatcmpl-remote-catalog","model":"` + nativeID + `","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-
+data: {"type":"response.completed","response":{"id":"resp-remote-catalog","model":"` + nativeID + `","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"remote route"}]}],"usage":{"input_tokens":5,"output_tokens":2},"status":"completed"}}
 `
 	server := newPhase8OpenAICompatServer(t, http.StatusOK, body)
 	server.contentType = "text/event-stream"

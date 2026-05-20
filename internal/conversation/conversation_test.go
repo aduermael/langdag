@@ -1096,7 +1096,7 @@ func TestPrompt_MaxTokensPropagated(t *testing.T) {
 	}
 }
 
-func TestPrompt_MaxTokensDefaultsTo4096(t *testing.T) {
+func TestPrompt_MaxTokensDefaultsTo16384(t *testing.T) {
 	mgr, prov, cleanup := newTestManagerWithMock(t, mock.Config{Mode: "fixed", FixedResponse: "ok"})
 	defer cleanup()
 
@@ -1110,8 +1110,8 @@ func TestPrompt_MaxTokensDefaultsTo4096(t *testing.T) {
 	if prov.LastRequest == nil {
 		t.Fatal("expected LastRequest to be set")
 	}
-	if prov.LastRequest.MaxTokens != 4096 {
-		t.Errorf("MaxTokens = %d, want 4096", prov.LastRequest.MaxTokens)
+	if prov.LastRequest.MaxTokens != 16384 {
+		t.Errorf("MaxTokens = %d, want 16384", prov.LastRequest.MaxTokens)
 	}
 }
 

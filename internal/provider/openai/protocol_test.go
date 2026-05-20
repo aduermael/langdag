@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"langdag.com/langdag/types"
@@ -94,6 +95,24 @@ func TestConvertTools_UnknownServerToolPassedThrough(t *testing.T) {
 	}
 }
 
+func TestConvertTools_NilMappingDropsServerTools(t *testing.T) {
+	tools := []types.ToolDefinition{
+		{Name: types.ServerToolWebSearch},
+		{
+			Name:        "get_weather",
+			Description: "Get weather",
+			InputSchema: json.RawMessage(`{"type":"object"}`),
+		},
+	}
+	result := convertTools(tools, nil)
+	if len(result) != 1 {
+		t.Fatalf("expected one client tool, got %d: %+v", len(result), result)
+	}
+	if result[0].Type != "function" || result[0].Function == nil || result[0].Function.Name != "get_weather" {
+		t.Fatalf("result = %+v, want get_weather function only", result)
+	}
+}
+
 func TestConvertTools_WebSearchWithSchemaIsClientTool(t *testing.T) {
 	tools := []types.ToolDefinition{
 		{
@@ -140,6 +159,62 @@ func TestBuildRequest_ThinkTrue(t *testing.T) {
 	}
 	if v != true {
 		t.Errorf("think = %v, want true", v)
+	}
+}
+
+func TestBuildOpenAIChatCompletionRequest_UsesOpenAIFields(t *testing.T) {
+	think := true
+	req := &types.CompletionRequest{
+		Model:     "gpt-5.5-2026-04-23",
+		MaxTokens: 123,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+		Think: &think,
+	}
+
+	body := buildOpenAIChatCompletionRequest(req, false, nil)
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if _, ok := m["max_tokens"]; ok {
+		t.Fatalf("request included max_tokens: %s", string(body))
+	}
+	if m["max_completion_tokens"] != float64(123) {
+		t.Fatalf("max_completion_tokens = %v, want 123", m["max_completion_tokens"])
+	}
+	if _, ok := m["think"]; ok {
+		t.Fatalf("request included think: %s", string(body))
+	}
+	if m["reasoning_effort"] != "medium" {
+		t.Fatalf("reasoning_effort = %v, want medium", m["reasoning_effort"])
+	}
+}
+
+func TestParseSSEStreamMapsLengthFinishReasonToMaxTokens(t *testing.T) {
+	body := strings.NewReader(`data: {"id":"chatcmpl_1","model":"gpt-4.1","choices":[{"delta":{"content":"part"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl_1","model":"gpt-4.1","choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":2}}
+
+data: [DONE]
+
+`)
+	events := make(chan types.StreamEvent, 8)
+	parseSSEStream(body, events)
+	close(events)
+
+	var done *types.CompletionResponse
+	for event := range events {
+		if event.Type == types.StreamEventDone {
+			done = event.Response
+		}
+	}
+	if done == nil {
+		t.Fatal("missing done event")
+	}
+	if done.StopReason != "max_tokens" {
+		t.Fatalf("StopReason = %q, want max_tokens", done.StopReason)
 	}
 }
 
