@@ -610,6 +610,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 		var accumulated string
 		var stopReason string
 		var doneResponse *types.CompletionResponse
+		emittedContentBlocks := map[string]bool{}
 		var terminated bool
 		for event := range events {
 			switch event.Type {
@@ -617,6 +618,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 				accumulated += event.Content
 				ch <- StreamChunk{Content: event.Content}
 			case types.StreamEventContentDone:
+				markContentBlockEmitted(emittedContentBlocks, event.ContentBlock)
 				ch <- StreamChunk{ContentBlock: event.ContentBlock}
 			case types.StreamEventDone:
 				if event.Response != nil {
@@ -632,6 +634,7 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 				result.NodeID = event.NodeID
 				result.Content = accumulated
 				result.mu.Unlock()
+				emitMissingDoneContentBlocks(ch, emittedContentBlocks, doneResponse)
 				ch <- streamDoneChunk(event.NodeID, stopReason, doneResponse)
 				terminated = true
 			}
@@ -652,6 +655,39 @@ func buildResult(events <-chan types.StreamEvent) *PromptResult {
 	}()
 
 	return result
+}
+
+func markContentBlockEmitted(emitted map[string]bool, block *types.ContentBlock) {
+	if key := contentBlockStreamKey(block); key != "" {
+		emitted[key] = true
+	}
+}
+
+func emitMissingDoneContentBlocks(ch chan<- StreamChunk, emitted map[string]bool, response *types.CompletionResponse) {
+	if response == nil {
+		return
+	}
+	for i := range response.Content {
+		block := response.Content[i]
+		if block.Type != "tool_use" {
+			continue
+		}
+		key := contentBlockStreamKey(&block)
+		if key != "" && emitted[key] {
+			continue
+		}
+		if key != "" {
+			emitted[key] = true
+		}
+		ch <- StreamChunk{ContentBlock: &block}
+	}
+}
+
+func contentBlockStreamKey(block *types.ContentBlock) string {
+	if block == nil || block.ID == "" {
+		return ""
+	}
+	return block.Type + ":" + block.ID
 }
 
 func streamDoneChunk(nodeID, stopReason string, response *types.CompletionResponse) StreamChunk {
